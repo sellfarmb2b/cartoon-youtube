@@ -1,0 +1,121 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+ENV/
+.venv/
+
+# PyInstaller
+build/
+dist/
+# *.spec 파일은 보통 커밋하는 것이 좋습니다 (PyInstaller 설정)
+# 필요시 아래 줄의 주석을 해제하세요: # *.spec
+*.app
+*.exe
+*.pkg
+*.dmg
+# 문서 폴더는 버전 관리에 포함
+.docs
+
+# 생성된 파일들 및 정적 파일
+generated_assets/
+static/generated_assets/
+static/*.mp4
+static/*.mp3
+static/*.png
+static/*.jpg
+static/*.jpeg
+*.mp3
+*.mp4
+*.png
+*.jpg
+*.jpeg
+*.srt
+*.ass
+*.json
+!package.json
+!package-lock.json
+
+# 테스트 파일
+test_image.png
+test_*.png
+test_*.mp4
+test_*.mp3
+
+# 테스트용 이미지 폴더 (선택적 - 테스트 이미지를 공유하려면 이 줄을 제거하세요)
+# photo/
+
+# API Keys 및 보안 (절대 커밋하지 마세요!)
+# app.py에 API 키가 포함되어 있을 수 있으므로 주의하세요!
+*.key
+*.pem
+.env**
+!.env.example
+secrets.json
+config.json
+
+# IDE 및 에디터
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+.cursor/
+*.code-workspace
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# 로그 파일
+*.log
+logs/
+*.log.*
+
+# 임시 파일
+*.tmp
+*.temp
+*.bak
+*.backup
+*~
+
+# 압축 파일 (선택적 - 필요시 제거)
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# 데이터베이스
+*.db
+*.sqlite
+*.sqlite3
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json

@@ -1,0 +1,11 @@
+flask>=2.3.0
+requests>=2.31.0
+ffmpeg-python>=0.2.0
+mutagen>=1.47.0
+pillow>=10.0.0
+elevenlabs>=0.2.0
+openai>=1.0.0
+replicate>=0.15.0
+pyinstaller>=5.13.0
+python-dotenv>=1.0.0
+
