@@ -9,6 +9,7 @@ import base64
 import threading
 import shutil
 import zipfile
+import random
 from uuid import uuid4
 from io import BytesIO
 from itertools import islice
@@ -1593,11 +1594,52 @@ def create_video(
             if os.path.exists(scene_subtitle_srt) and os.path.getsize(scene_subtitle_srt) > 0:
                 srt_to_ass(scene_subtitle_srt, scene_subtitle_ass)
             
-            # 비디오 스트림 생성
-            video_stream = (
+            # 비디오 스트림 생성 (랜덤 모션 효과 적용)
+            # 먼저 이미지를 1920x1080으로 스케일
+            scaled_stream = (
                 ffmpeg.input(image_path, loop=1, t=duration, framerate=VIDEO_FPS)
                 .filter("scale", 1920, 1080)
             )
+            
+            # 랜덤으로 모션 효과 선택 (좌→우, 우→좌, 확대)
+            motion_type = random.choice(['pan_left_to_right', 'pan_right_to_left', 'zoom_in'])
+            
+            if motion_type == 'pan_left_to_right':
+                # 좌측에서 우측으로 이동 (이미지를 약간 크게 만들어서 crop으로 이동 효과)
+                # 이미지를 1.2배 확대한 후 좌→우로 이동
+                crop_width = 1920
+                crop_height = 1080
+                # x 좌표를 0에서 (이미지 너비 - crop_width)로 이동
+                # 이미지를 1.2배 확대했으므로 원본 1920 -> 2304, 이동 범위는 0 ~ 384
+                video_stream = (
+                    scaled_stream
+                    .filter("scale", 2304, 1296)  # 1.2배 확대
+                    .filter("crop", crop_width, crop_height, 
+                            f"t*({2304-crop_width})/{duration}",  # x 좌표: 0에서 384로 이동
+                            f"({1296-crop_height})/2")  # y 좌표: 중앙 고정
+                )
+            elif motion_type == 'pan_right_to_left':
+                # 우측에서 좌측으로 이동
+                crop_width = 1920
+                crop_height = 1080
+                # x 좌표를 (이미지 너비 - crop_width)에서 0으로 이동
+                video_stream = (
+                    scaled_stream
+                    .filter("scale", 2304, 1296)  # 1.2배 확대
+                    .filter("crop", crop_width, crop_height,
+                            f"({2304-crop_width})-t*({2304-crop_width})/{duration}",  # x 좌표: 384에서 0으로 이동
+                            f"({1296-crop_height})/2")  # y 좌표: 중앙 고정
+                )
+            else:  # zoom_in
+                # 확대 효과 (zoompan 필터 사용)
+                # 1.0배에서 1.2배로 천천히 확대
+                zoom_start = 1.0
+                zoom_end = 1.2
+                video_stream = (
+                    scaled_stream
+                    .filter("zoompan",
+                            f"z='if(lte(zoom,{zoom_start}),{zoom_start},min(zoom+0.0015,{zoom_end}))':d={int(duration * VIDEO_FPS)}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080")
+                )
             
             # 오디오 스트림 생성
             if audio_file and os.path.exists(audio_file):
