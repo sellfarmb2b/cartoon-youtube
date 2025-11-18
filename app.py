@@ -1037,6 +1037,7 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation") -> 
 
     if replicate_api_available:
         try:
+            print(f"[generate_image] Replicate API 사용 - 모드: {mode}, 파일: {os.path.basename(filename)}")
             headers = {
                 "Authorization": f"Token {REPLICATE_API_TOKEN}",
                 "Content-Type": "application/json",
@@ -1069,7 +1070,8 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation") -> 
                 )
                 body = {"input": replicate_input}
 
-            create_res = requests.post(request_url, headers=headers, json=body)
+            print(f"[generate_image] Replicate API 요청 전송 중...")
+            create_res = requests.post(request_url, headers=headers, json=body, timeout=30)
             if create_res.status_code not in (200, 201):
                 print(f"[IMG] (Replicate) 생성 실패: {create_res.status_code} {create_res.text}")
             else:
@@ -1078,20 +1080,28 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation") -> 
                 get_url = prediction.get("urls", {}).get("get")
                 if not get_url and pred_id:
                     get_url = f"https://api.replicate.com/v1/predictions/{pred_id}"
+                print(f"[generate_image] 예측 ID: {pred_id}, 상태 확인 시작 (최대 180초 대기)")
                 final = None
-                for _ in range(180):
+                poll_count = 0
+                for poll_count in range(180):
                     if not get_url:
+                        print(f"[generate_image] get_url이 없어서 중단")
                         break
-                    res = requests.get(get_url, headers=headers)
+                    res = requests.get(get_url, headers=headers, timeout=10)
                     if res.status_code != 200:
                         print(f"[IMG] (Replicate) 상태 조회 실패: {res.status_code} {res.text}")
                         break
                     data = res.json()
                     status = data.get("status")
+                    if poll_count % 10 == 0:  # 10초마다 로그 출력
+                        print(f"[generate_image] 상태 확인 중... ({poll_count}초 경과, 상태: {status})")
                     if status in ("succeeded", "failed", "canceled"):
                         final = data
+                        print(f"[generate_image] 최종 상태: {status} (총 {poll_count}초 소요)")
                         break
                     time.sleep(1)
+                if poll_count >= 179:
+                    print(f"[generate_image] 타임아웃: 180초 동안 완료되지 않음")
                 if final and final.get("status") == "succeeded":
                     outputs = final.get("output")
                     image_url = None
@@ -1109,16 +1119,24 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation") -> 
                         image_url = outputs.get("url") or outputs.get("image")
                         image_b64 = outputs.get("image_base64")
                     if image_b64:
+                        print(f"[generate_image] base64 이미지 저장 중...")
                         save_image_bytes_as_png(base64.b64decode(image_b64), filename)
+                        print(f"[generate_image] 이미지 저장 완료: {filename}")
                         return True
                     if image_url:
+                        print(f"[generate_image] 이미지 URL에서 다운로드 중: {image_url}")
                         resp = requests.get(image_url, timeout=60)
                         resp.raise_for_status()
                         save_image_bytes_as_png(resp.content, filename)
+                        print(f"[generate_image] 이미지 다운로드 및 저장 완료: {filename}")
                         return True
                     print("[IMG] (Replicate) 출력이 비어 있습니다.")
+                elif final:
+                    print(f"[IMG] (Replicate) 예측 실패: {final.get('status')}, 에러: {final.get('error')}")
         except Exception as exc:
             print(f"[IMG] (Replicate) 예외 발생: {exc}")
+            import traceback
+            traceback.print_exc()
 
     if mode != "realistic" and stability_api_available:
         try:
@@ -1605,40 +1623,45 @@ def create_video(
             motion_type = random.choice(['pan_left_to_right', 'pan_right_to_left', 'zoom_in'])
             
             if motion_type == 'pan_left_to_right':
-                # 좌측에서 우측으로 이동 (이미지를 약간 크게 만들어서 crop으로 이동 효과)
+                # 좌측에서 우측으로 이동 (crop 필터 사용)
                 # 이미지를 1.2배 확대한 후 좌→우로 이동
                 crop_width = 1920
                 crop_height = 1080
-                # x 좌표를 0에서 (이미지 너비 - crop_width)로 이동
-                # 이미지를 1.2배 확대했으므로 원본 1920 -> 2304, 이동 범위는 0 ~ 384
+                max_x = 2304 - crop_width  # 384
+                # FFmpeg 표현식: x 좌표를 0에서 max_x로 이동
+                x_expr = f"t*{max_x}/{duration}"
+                y_pos = int((1296 - crop_height) / 2)  # 108
                 video_stream = (
                     scaled_stream
                     .filter("scale", 2304, 1296)  # 1.2배 확대
-                    .filter("crop", crop_width, crop_height, 
-                            f"t*({2304-crop_width})/{duration}",  # x 좌표: 0에서 384로 이동
-                            f"({1296-crop_height})/2")  # y 좌표: 중앙 고정
+                    .filter("crop", crop_width, crop_height, x=x_expr, y=y_pos)
                 )
             elif motion_type == 'pan_right_to_left':
                 # 우측에서 좌측으로 이동
                 crop_width = 1920
                 crop_height = 1080
-                # x 좌표를 (이미지 너비 - crop_width)에서 0으로 이동
+                max_x = 2304 - crop_width  # 384
+                # FFmpeg 표현식: x 좌표를 max_x에서 0으로 이동
+                x_expr = f"{max_x}-t*{max_x}/{duration}"
+                y_pos = int((1296 - crop_height) / 2)  # 108
                 video_stream = (
                     scaled_stream
                     .filter("scale", 2304, 1296)  # 1.2배 확대
-                    .filter("crop", crop_width, crop_height,
-                            f"({2304-crop_width})-t*({2304-crop_width})/{duration}",  # x 좌표: 384에서 0으로 이동
-                            f"({1296-crop_height})/2")  # y 좌표: 중앙 고정
+                    .filter("crop", crop_width, crop_height, x=x_expr, y=y_pos)
                 )
             else:  # zoom_in
                 # 확대 효과 (zoompan 필터 사용)
                 # 1.0배에서 1.2배로 천천히 확대
-                zoom_start = 1.0
-                zoom_end = 1.2
+                total_frames = int(duration * VIDEO_FPS)
+                zoom_increment = 0.2 / total_frames  # 0.2를 전체 프레임 수로 나눔
                 video_stream = (
                     scaled_stream
-                    .filter("zoompan",
-                            f"z='if(lte(zoom,{zoom_start}),{zoom_start},min(zoom+0.0015,{zoom_end}))':d={int(duration * VIDEO_FPS)}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080")
+                    .filter("zoompan", 
+                            z=f"if(lte(zoom,1.0),1.0,min(zoom+{zoom_increment:.6f},1.2))",
+                            d=total_frames,
+                            x="iw/2-(iw/zoom/2)",
+                            y="ih/2-(ih/zoom/2)",
+                            s="1920x1080")
                 )
             
             # 오디오 스트림 생성
@@ -2491,27 +2514,76 @@ def api_generate_images():
             image_results = []
             image_files = {}
             
+            print(f"[이미지 생성 시작] 총 {total}개 이미지 생성 예정")
+            
             for idx, (sentence, prompt) in enumerate(zip(sentences, prompts), start=1):
-                # 진행도 업데이트
-                progress_pct = int((idx / total) * 100)
-                with jobs_lock:
-                    job_data = jobs.get(job_id)
-                    if job_data is not None:
-                        job_data["stage_progress"] = progress_pct
-                        job_data["current_stage"] = f"이미지 생성 중... ({idx}/{total})"
-                        job_data["progress"].append(f"{idx}번 이미지 생성 중...")
-                
-                image_filename = os.path.join(assets_folder, f"scene_{idx}_image.png")
-                success = generate_image(prompt, image_filename, mode=mode)
-                if not success or not os.path.exists(image_filename):
-                    Image.new("RGB", (1920, 1080), color="black").save(image_filename)
-                
-                abs_path = os.path.abspath(image_filename)
-                image_files[idx] = abs_path
-                rel_path = os.path.relpath(abs_path, STATIC_FOLDER)
-                # url_for 대신 직접 경로 구성 (백그라운드 스레드에서 안전)
-                image_url = "/static/" + rel_path.replace(os.sep, "/")
-                image_results.append({"index": idx, "sentence": sentence, "prompt": prompt, "image_url": image_url})
+                try:
+                    # 진행도 업데이트 (시작)
+                    progress_pct = int((idx / total) * 100)
+                    with jobs_lock:
+                        job_data = jobs.get(job_id)
+                        if job_data is not None:
+                            job_data["stage_progress"] = progress_pct
+                            job_data["current_stage"] = f"이미지 생성 중... ({idx}/{total})"
+                            job_data["progress"].append(f"{idx}번 이미지 생성 시작...")
+                    
+                    print(f"[이미지 생성] {idx}/{total} 시작 - 프롬프트: {prompt[:50]}...")
+                    
+                    image_filename = os.path.join(assets_folder, f"scene_{idx}_image.png")
+                    
+                    # 이미지 생성 실행
+                    success = generate_image(prompt, image_filename, mode=mode)
+                    
+                    # 생성 결과 확인
+                    if not success or not os.path.exists(image_filename):
+                        print(f"[경고] {idx}번 이미지 생성 실패 또는 파일 없음, 기본 이미지 생성")
+                        Image.new("RGB", (1920, 1080), color="black").save(image_filename)
+                        with jobs_lock:
+                            job_data = jobs.get(job_id)
+                            if job_data is not None:
+                                job_data["progress"].append(f"{idx}번 이미지 생성 실패 (기본 이미지 사용)")
+                    else:
+                        file_size = os.path.getsize(image_filename)
+                        print(f"[이미지 생성] {idx}/{total} 완료 - 파일 크기: {file_size} bytes")
+                        with jobs_lock:
+                            job_data = jobs.get(job_id)
+                            if job_data is not None:
+                                job_data["progress"].append(f"{idx}번 이미지 생성 완료 ({file_size} bytes)")
+                    
+                    abs_path = os.path.abspath(image_filename)
+                    image_files[idx] = abs_path
+                    rel_path = os.path.relpath(abs_path, STATIC_FOLDER)
+                    # url_for 대신 직접 경로 구성 (백그라운드 스레드에서 안전)
+                    image_url = "/static/" + rel_path.replace(os.sep, "/")
+                    image_results.append({"index": idx, "sentence": sentence, "prompt": prompt, "image_url": image_url})
+                    
+                except Exception as img_exc:
+                    # 개별 이미지 생성 실패 시에도 계속 진행
+                    print(f"[경고] {idx}번 이미지 생성 중 예외 발생: {img_exc}")
+                    import traceback
+                    traceback.print_exc()
+                    
+                    # 기본 이미지 생성
+                    image_filename = os.path.join(assets_folder, f"scene_{idx}_image.png")
+                    try:
+                        Image.new("RGB", (1920, 1080), color="black").save(image_filename)
+                    except:
+                        pass
+                    
+                    with jobs_lock:
+                        job_data = jobs.get(job_id)
+                        if job_data is not None:
+                            job_data["progress"].append(f"{idx}번 이미지 생성 중 오류 발생: {str(img_exc)}")
+                    
+                    # 파일 정보는 추가
+                    if os.path.exists(image_filename):
+                        abs_path = os.path.abspath(image_filename)
+                        image_files[idx] = abs_path
+                        rel_path = os.path.relpath(abs_path, STATIC_FOLDER)
+                        image_url = "/static/" + rel_path.replace(os.sep, "/")
+                        image_results.append({"index": idx, "sentence": sentence, "prompt": prompt, "image_url": image_url})
+            
+            print(f"[이미지 생성 완료] 총 {len(image_results)}개 이미지 생성됨")
             
             with jobs_lock:
                 job_data = jobs.get(job_id)
@@ -2520,14 +2592,18 @@ def api_generate_images():
                     job_data["stage_progress"] = 100
                     job_data["current_stage"] = "이미지 생성 완료"
                     job_data["status"] = "completed"
+                    job_data["progress"].append(f"모든 이미지 생성 완료 ({len(image_results)}/{total})")
         except Exception as exc:
-            print(f"[경고] 이미지 생성 실패: {exc}")
+            print(f"[경고] 이미지 생성 전체 실패: {exc}")
+            import traceback
+            traceback.print_exc()
             with jobs_lock:
                 job_data = jobs.get(job_id)
                 if job_data is not None:
                     job_data["status"] = "error"
                     job_data["error"] = str(exc)
                     job_data["current_stage"] = "이미지 생성 실패"
+                    job_data["progress"].append(f"이미지 생성 전체 실패: {str(exc)}")
     
     # 백그라운드 스레드로 실행
     thread = threading.Thread(target=generate_images_with_progress, daemon=True)
@@ -2580,42 +2656,98 @@ def api_generate_images_direct():
             image_results = []
             image_files = {}
             
+            print(f"[이미지 생성 시작] 총 {total}개 이미지 생성 예정 (테스트 모드: {test_mode})")
+            
             for idx, (sentence, prompt) in enumerate(zip(sentences, prompts), start=1):
-                # 진행도 업데이트
-                progress_pct = int((idx / total) * 100)
-                with jobs_lock:
-                    job_data = jobs.get(job_id)
-                    if job_data is not None:
-                        job_data["stage_progress"] = progress_pct
-                        job_data["current_stage"] = f"이미지 생성 중... ({idx}/{total})"
-                        job_data["progress"].append(f"{idx}번 이미지 생성 중...")
-                
-                image_filename = os.path.join(assets_folder, f"scene_{idx}_image.png")
-                
-                # 테스트 모드일 때 photo 폴더의 이미지 사용
-                if test_mode:
-                    photo_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "photo")
-                    # scene 번호에 맞는 이미지 찾기 (순환 사용)
-                    photo_image_path = os.path.join(photo_folder, f"scene_{((idx - 1) % 167) + 1}_image.png")
-                    if os.path.exists(photo_image_path):
-                        import shutil
-                        shutil.copy2(photo_image_path, image_filename)
-                        print(f"[테스트 모드] photo 폴더 이미지 사용: {photo_image_path} -> {image_filename}")
+                try:
+                    # 진행도 업데이트 (시작)
+                    progress_pct = int((idx / total) * 100)
+                    with jobs_lock:
+                        job_data = jobs.get(job_id)
+                        if job_data is not None:
+                            job_data["stage_progress"] = progress_pct
+                            job_data["current_stage"] = f"이미지 생성 중... ({idx}/{total})"
+                            job_data["progress"].append(f"{idx}번 이미지 생성 시작...")
+                    
+                    print(f"[이미지 생성] {idx}/{total} 시작 - 프롬프트: {prompt[:50]}...")
+                    
+                    image_filename = os.path.join(assets_folder, f"scene_{idx}_image.png")
+                    
+                    # 테스트 모드일 때 photo 폴더의 이미지 사용
+                    if test_mode:
+                        photo_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "photo")
+                        # scene 번호에 맞는 이미지 찾기 (순환 사용)
+                        photo_image_path = os.path.join(photo_folder, f"scene_{((idx - 1) % 167) + 1}_image.png")
+                        if os.path.exists(photo_image_path):
+                            import shutil
+                            shutil.copy2(photo_image_path, image_filename)
+                            print(f"[테스트 모드] photo 폴더 이미지 사용: {photo_image_path} -> {image_filename}")
+                            with jobs_lock:
+                                job_data = jobs.get(job_id)
+                                if job_data is not None:
+                                    job_data["progress"].append(f"{idx}번 이미지 복사 완료 (테스트 모드)")
+                        else:
+                            # photo 폴더에 이미지가 없으면 기본 이미지 사용
+                            Image.new("RGB", (1920, 1080), color="black").save(image_filename)
+                            print(f"[테스트 모드] photo 폴더 이미지 없음, 기본 이미지 생성: {photo_image_path}")
+                            with jobs_lock:
+                                job_data = jobs.get(job_id)
+                                if job_data is not None:
+                                    job_data["progress"].append(f"{idx}번 이미지 기본 이미지 생성 (테스트 모드)")
                     else:
-                        # photo 폴더에 이미지가 없으면 기본 이미지 사용
+                        # 이미지 생성 실행
+                        success = generate_image(prompt, image_filename, mode=mode)
+                        
+                        # 생성 결과 확인
+                        if not success or not os.path.exists(image_filename):
+                            print(f"[경고] {idx}번 이미지 생성 실패 또는 파일 없음, 기본 이미지 생성")
+                            Image.new("RGB", (1920, 1080), color="black").save(image_filename)
+                            with jobs_lock:
+                                job_data = jobs.get(job_id)
+                                if job_data is not None:
+                                    job_data["progress"].append(f"{idx}번 이미지 생성 실패 (기본 이미지 사용)")
+                        else:
+                            file_size = os.path.getsize(image_filename)
+                            print(f"[이미지 생성] {idx}/{total} 완료 - 파일 크기: {file_size} bytes")
+                            with jobs_lock:
+                                job_data = jobs.get(job_id)
+                                if job_data is not None:
+                                    job_data["progress"].append(f"{idx}번 이미지 생성 완료 ({file_size} bytes)")
+                    
+                    abs_path = os.path.abspath(image_filename)
+                    image_files[idx] = abs_path
+                    rel_path = os.path.relpath(abs_path, STATIC_FOLDER)
+                    # url_for 대신 직접 경로 구성 (백그라운드 스레드에서 안전)
+                    image_url = "/static/" + rel_path.replace(os.sep, "/")
+                    image_results.append({"index": idx, "sentence": sentence, "prompt": prompt, "image_url": image_url})
+                    
+                except Exception as img_exc:
+                    # 개별 이미지 생성 실패 시에도 계속 진행
+                    print(f"[경고] {idx}번 이미지 생성 중 예외 발생: {img_exc}")
+                    import traceback
+                    traceback.print_exc()
+                    
+                    # 기본 이미지 생성
+                    image_filename = os.path.join(assets_folder, f"scene_{idx}_image.png")
+                    try:
                         Image.new("RGB", (1920, 1080), color="black").save(image_filename)
-                        print(f"[테스트 모드] photo 폴더 이미지 없음, 기본 이미지 생성: {photo_image_path}")
-                else:
-                    success = generate_image(prompt, image_filename, mode=mode)
-                    if not success or not os.path.exists(image_filename):
-                        Image.new("RGB", (1920, 1080), color="black").save(image_filename)
-                
-                abs_path = os.path.abspath(image_filename)
-                image_files[idx] = abs_path
-                rel_path = os.path.relpath(abs_path, STATIC_FOLDER)
-                # url_for 대신 직접 경로 구성 (백그라운드 스레드에서 안전)
-                image_url = "/static/" + rel_path.replace(os.sep, "/")
-                image_results.append({"index": idx, "sentence": sentence, "prompt": prompt, "image_url": image_url})
+                    except:
+                        pass
+                    
+                    with jobs_lock:
+                        job_data = jobs.get(job_id)
+                        if job_data is not None:
+                            job_data["progress"].append(f"{idx}번 이미지 생성 중 오류 발생: {str(img_exc)}")
+                    
+                    # 파일 정보는 추가
+                    if os.path.exists(image_filename):
+                        abs_path = os.path.abspath(image_filename)
+                        image_files[idx] = abs_path
+                        rel_path = os.path.relpath(abs_path, STATIC_FOLDER)
+                        image_url = "/static/" + rel_path.replace(os.sep, "/")
+                        image_results.append({"index": idx, "sentence": sentence, "prompt": prompt, "image_url": image_url})
+            
+            print(f"[이미지 생성 완료] 총 {len(image_results)}개 이미지 생성됨")
             
             with jobs_lock:
                 job_data = jobs.get(job_id)
@@ -2624,8 +2756,9 @@ def api_generate_images_direct():
                     job_data["stage_progress"] = 100
                     job_data["current_stage"] = "이미지 생성 완료"
                     job_data["status"] = "completed"
+                    job_data["progress"].append(f"모든 이미지 생성 완료 ({len(image_results)}/{total})")
         except Exception as exc:
-            print(f"[경고] 이미지 생성 실패: {exc}")
+            print(f"[경고] 이미지 생성 전체 실패: {exc}")
             import traceback
             traceback.print_exc()
             with jobs_lock:
@@ -2634,6 +2767,7 @@ def api_generate_images_direct():
                     job_data["status"] = "error"
                     job_data["error"] = str(exc)
                     job_data["current_stage"] = "이미지 생성 실패"
+                    job_data["progress"].append(f"이미지 생성 전체 실패: {str(exc)}")
     
     # 백그라운드 스레드로 실행
     thread = threading.Thread(target=generate_images_with_progress, daemon=True)
