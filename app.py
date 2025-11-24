@@ -1754,6 +1754,7 @@ def create_video(
     for idx, scene in enumerate(scene_data_with_timestamps, 1):
         scene_id = scene.get('scene_id')
         image_path = scene.get("image_file")
+        print(f"[씬 처리 시작] {idx}/{len(scene_data_with_timestamps)} - scene_{scene_id}")
         print(f"[이미지 확인] scene_{scene_id}: 원본 경로={image_path}")
         
         # 이미지 파일 존재 및 유효성 검증
@@ -1925,8 +1926,12 @@ def create_video(
                 # 오류 디버깅을 위해 quiet=False로 설정
                 ffmpeg.run(scene_output, overwrite_output=True, quiet=False)
                 
-                # 생성된 비디오의 실제 duration 확인
+                # 생성된 비디오 파일 확인
                 if os.path.exists(scene_video_file):
+                    file_size = os.path.getsize(scene_video_file)
+                    print(f"[성공] scene_{scene_id} 비디오 생성 완료: {os.path.basename(scene_video_file)} (크기: {file_size} bytes)")
+                    
+                    # 생성된 비디오의 실제 duration 확인
                     try:
                         probe = ffmpeg.probe(scene_video_file)
                         video_streams = [s for s in probe.get('streams', []) if s.get('codec_type') == 'video']
@@ -2019,18 +2024,33 @@ def create_video(
             except:
                 pass
     
-    # 모든 씬 비디오 파일이 생성되었는지 확인
+    # 전체 씬 비디오 생성 완료 후 확인
+    print(f"[create_video] 전체 씬 비디오 생성 완료. 총 {len(scene_video_files)}개 파일 예상")
     existing_scene_files = [f for f in scene_video_files if os.path.exists(f)]
-    if len(existing_scene_files) != len(scene_video_files):
-        print(f"[경고] 일부 씬 비디오 파일이 생성되지 않았습니다. ({len(existing_scene_files)}/{len(scene_video_files)})")
+    existing_count = len(existing_scene_files)
+    print(f"[create_video] 실제 존재하는 씬 비디오 파일: {existing_count}/{len(scene_video_files)}개")
+    if existing_count < len(scene_video_files):
+        missing_files = [f for f in scene_video_files if not os.path.exists(f)]
+        print(f"[경고] 누락된 씬 비디오 파일 ({len(missing_files)}개):")
+        for missing_file in missing_files:
+            print(f"  - {os.path.basename(missing_file)}")
+        print(f"[경고] 일부 씬 비디오 파일이 생성되지 않았습니다. ({existing_count}/{len(scene_video_files)})")
     
     # FFmpeg concat demuxer를 사용하여 모든 씬 비디오 합치기 (메모리 효율적)
     try:
+        # 디버깅: scene_video_files 리스트 확인
+        print(f"[DEBUG] scene_video_files 리스트 길이: {len(scene_video_files)}")
+        for i, scene_file in enumerate(scene_video_files, 1):
+            exists = os.path.exists(scene_file)
+            size = os.path.getsize(scene_file) if exists else 0
+            print(f"[DEBUG] scene_video_files[{i-1}]: {os.path.basename(scene_file)} - 존재: {exists}, 크기: {size} bytes")
+        
         # concat 파일 리스트 생성
         concat_list_file = os.path.join(temp_scene_folder, "concat_list.txt")
         file_count = 0
+        concat_file_contents = []  # 디버깅용
         with open(concat_list_file, "w", encoding="utf-8") as f:
-            for scene_file in scene_video_files:
+            for idx, scene_file in enumerate(scene_video_files, 1):
                 if os.path.exists(scene_file):
                     # 절대 경로로 변환 (FFmpeg concat demuxer는 상대 경로에 문제가 있을 수 있음)
                     abs_path = os.path.abspath(scene_file)
@@ -2038,12 +2058,24 @@ def create_video(
                     escaped_path = abs_path.replace("'", "'\\''")
                     f.write(f"file '{escaped_path}'\n")
                     file_count += 1
+                    concat_file_contents.append(f"  [{idx}] {os.path.basename(scene_file)}")
+                else:
+                    print(f"[경고] 씬 비디오 파일이 존재하지 않아 concat_list에서 제외: {scene_file}")
         
         if file_count == 0:
             raise RuntimeError("합칠 씬 비디오 파일이 없습니다.")
         
         print(f"[create_video] concat_list_file 생성 완료: {file_count}개 파일")
         print(f"[create_video] concat_list_file 경로: {concat_list_file}")
+        print(f"[create_video] concat_list에 포함된 파일 목록:")
+        for content in concat_file_contents:
+            print(content)
+        
+        # concat_list.txt 파일 내용 확인 (디버깅)
+        if os.path.exists(concat_list_file):
+            with open(concat_list_file, "r", encoding="utf-8") as f:
+                concat_content = f.read()
+                print(f"[DEBUG] concat_list.txt 내용:\n{concat_content}")
         
         if progress_cb:
             progress_cb("FFmpeg로 최종 영상을 렌더링 중입니다.")
