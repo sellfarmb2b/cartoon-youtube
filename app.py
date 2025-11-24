@@ -2798,10 +2798,22 @@ def run_generation_job(
         # 파일이 실제로 존재하는지 확인하고, 존재할 때만 video_filename 설정
         # video_file은 get_job_paths에서 이미 올바른 경로로 설정되어 있어야 함
         # (STATIC_FOLDER/final_video_{job_id}.mp4)
+        print(f"[작업 완료 확인] video_file 경로: {video_file}")
+        print(f"[작업 완료 확인] STATIC_FOLDER: {STATIC_FOLDER}")
+        print(f"[작업 완료 확인] job_id: {job_id}")
+        
+        # 비디오 파일 존재 여부 확인 (최대 5초 대기)
+        max_wait = 5
+        wait_count = 0
+        while not os.path.exists(video_file) and wait_count < max_wait:
+            print(f"[작업 완료 확인] 비디오 파일 대기 중... ({wait_count + 1}/{max_wait})")
+            time.sleep(1)
+            wait_count += 1
+        
         if os.path.exists(video_file):
             file_size = os.path.getsize(video_file)
             # video_filename은 STATIC_FOLDER를 기준으로 한 상대 경로로 저장
-            # 예: generated_assets/{job_id}/final_video_{job_id}.mp4
+            # 예: final_video_{job_id}.mp4
             video_filename = os.path.relpath(video_file, STATIC_FOLDER)
             # Windows 경로 구분자를 /로 통일
             video_filename = video_filename.replace(os.sep, '/')
