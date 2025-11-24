@@ -2322,6 +2322,19 @@ def run_generation_job(
 ):
     assets_folder, subtitle_file, video_file = get_job_paths(job_id)
     
+    # API 키 확인 및 환경 변수 fallback
+    if not replicate_api_key or (isinstance(replicate_api_key, str) and not replicate_api_key.strip()):
+        replicate_api_key = REPLICATE_API_TOKEN
+        print(f"[API 키] Replicate API 키: 사용자 입력 없음, 환경 변수 사용")
+    else:
+        print(f"[API 키] Replicate API 키: 사용자 입력 사용")
+    
+    if not elevenlabs_api_key or (isinstance(elevenlabs_api_key, str) and not elevenlabs_api_key.strip()):
+        elevenlabs_api_key = ELEVENLABS_API_KEY
+        print(f"[API 키] ElevenLabs API 키: 사용자 입력 없음, 환경 변수 사용")
+    else:
+        print(f"[API 키] ElevenLabs API 키: 사용자 입력 사용")
+    
     # video_file 경로 확인 및 로깅
     print(f"[초기화] video_file 경로: {video_file}")
     print(f"[초기화] STATIC_FOLDER: {STATIC_FOLDER}")
