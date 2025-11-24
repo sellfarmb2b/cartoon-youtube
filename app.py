@@ -1817,7 +1817,7 @@ def create_video(
         
         # 개별 씬 비디오 파일 경로
         scene_video_file = os.path.join(temp_scene_folder, f"scene_{scene_id}_video.mp4")
-        scene_video_files.append(scene_video_file)
+        # 주의: scene_video_files 리스트에 추가는 비디오 생성 성공 후에만 수행
         
         try:
             # 각 씬의 자막 파일 생성 (전체 자막 파일에서 해당 씬 부분만 추출)
@@ -1931,6 +1931,11 @@ def create_video(
                     file_size = os.path.getsize(scene_video_file)
                     print(f"[성공] scene_{scene_id} 비디오 생성 완료: {os.path.basename(scene_video_file)} (크기: {file_size} bytes)")
                     
+                    # 비디오 생성 성공 후 리스트에 추가 (순서 보장)
+                    if scene_video_file not in scene_video_files:
+                        scene_video_files.append(scene_video_file)
+                        print(f"[DEBUG] scene_{scene_id} 비디오 파일을 리스트에 추가: {os.path.basename(scene_video_file)}")
+                    
                     # 생성된 비디오의 실제 duration 확인
                     try:
                         probe = ffmpeg.probe(scene_video_file)
@@ -2002,6 +2007,10 @@ def create_video(
                     )
                     ffmpeg.run(simple_output, overwrite_output=True, quiet=False)
                     print(f"[성공] scene_{scene_id} 기본 스트림으로 생성 완료")
+                    # 재시도 성공 후에도 리스트에 추가
+                    if os.path.exists(scene_video_file) and scene_video_file not in scene_video_files:
+                        scene_video_files.append(scene_video_file)
+                        print(f"[DEBUG] scene_{scene_id} 비디오 파일을 리스트에 추가 (재시도 성공): {os.path.basename(scene_video_file)}")
                 except Exception as retry_exc:
                     print(f"[실패] scene_{scene_id} 재시도도 실패: {retry_exc}")
                     raise ffmpeg_exc  # 원래 오류를 다시 발생
@@ -2021,6 +2030,10 @@ def create_video(
                 silent_audio = ffmpeg.input('anullsrc=channel_layout=mono:sample_rate=44100', f='lavfi', t=duration)
                 fallback_output = ffmpeg.output(silent_video, silent_audio, scene_video_file, vcodec="libx264", acodec="aac", pix_fmt="yuv420p", preset="ultrafast", t=duration)
                 ffmpeg.run(fallback_output, overwrite_output=True, quiet=True)
+                # fallback 비디오 생성 성공 후 리스트에 추가
+                if os.path.exists(scene_video_file) and scene_video_file not in scene_video_files:
+                    scene_video_files.append(scene_video_file)
+                    print(f"[DEBUG] scene_{scene_id} 비디오 파일을 리스트에 추가 (fallback): {os.path.basename(scene_video_file)}")
             except:
                 pass
     
@@ -2045,12 +2058,28 @@ def create_video(
             size = os.path.getsize(scene_file) if exists else 0
             print(f"[DEBUG] scene_video_files[{i-1}]: {os.path.basename(scene_file)} - 존재: {exists}, 크기: {size} bytes")
         
+        # scene_id 순서대로 정렬 (파일명에서 scene_id 추출)
+        def extract_scene_id(filepath):
+            """파일명에서 scene_id를 추출하여 정렬에 사용"""
+            import re
+            basename = os.path.basename(filepath)
+            match = re.search(r'scene_(\d+)_video\.mp4', basename)
+            if match:
+                return int(match.group(1))
+            return 0  # 매칭 실패 시 0 반환
+        
+        scene_video_files_sorted = sorted(scene_video_files, key=extract_scene_id)
+        print(f"[DEBUG] scene_video_files 정렬 완료: {len(scene_video_files_sorted)}개 파일")
+        for i, scene_file in enumerate(scene_video_files_sorted, 1):
+            scene_id = extract_scene_id(scene_file)
+            print(f"[DEBUG] 정렬된 리스트[{i-1}]: scene_{scene_id} - {os.path.basename(scene_file)}")
+        
         # concat 파일 리스트 생성
         concat_list_file = os.path.join(temp_scene_folder, "concat_list.txt")
         file_count = 0
         concat_file_contents = []  # 디버깅용
         with open(concat_list_file, "w", encoding="utf-8") as f:
-            for idx, scene_file in enumerate(scene_video_files, 1):
+            for idx, scene_file in enumerate(scene_video_files_sorted, 1):
                 if os.path.exists(scene_file):
                     # 절대 경로로 변환 (FFmpeg concat demuxer는 상대 경로에 문제가 있을 수 있음)
                     abs_path = os.path.abspath(scene_file)
