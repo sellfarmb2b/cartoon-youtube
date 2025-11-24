@@ -84,6 +84,15 @@ OPENAI_PROMPT_WORKERS = 4  # 병렬 워커 수 증가 (2 → 4)
 SCRIPT_CHUNK_MAX_SENTENCES = 100  # 한 청크당 최대 문장 수 증가 (80 → 100)
 SCRIPT_CHUNK_TARGET_MINUTES = 5  # 목표 분량 (분)
 
+# Replicate API Rate Limiting 설정
+# 문서: https://replicate.com/docs/topics/predictions/rate-limits
+# - 예측 생성: 분당 600개 요청 (최소 0.1초 간격)
+# - 다른 엔드포인트: 분당 3000개 요청
+REPLICATE_MIN_REQUEST_INTERVAL = 0.1  # 최소 요청 간격 (초) - 분당 600개 제한 준수
+REPLICATE_RATE_LIMIT_RETRY_DELAY = 30  # 429 에러 발생 시 재시도 대기 시간 (초)
+_last_replicate_request_time = 0  # 마지막 Replicate API 요청 시간
+_replicate_request_lock = threading.Lock()  # 요청 간격 제어를 위한 락
+
 
 REALISTIC_STYLE_WRAPPER = (
     "A hyperrealistic, photorealistic masterpiece, 8K, ultra-detailed, sharp focus,"
@@ -128,6 +137,7 @@ ELEVENLABS_VOICE_IDS = [
     "ZJCNdZEjYwkOElxugmW2",
     "U1cJYS4EdbaHmfR7YzHd",
     "KlstlYt9VVf3zgie2Oht",
+    "YIHgthsAAn8LcGSRSVXn",
 ]
 
 _cached_voice_list = None
@@ -186,13 +196,14 @@ def generate_voice_preview_audio(voice_id: str, sample_text: str) -> Optional[by
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
     payload = {
         "text": sample_text,
-        "model_id": "eleven_multilingual_v2",
+        "model_id": "eleven_turbo_v2_5",  # 더 빠르고 고품질 모델로 업그레이드
         "voice_settings": {
-            "stability": 0.7,
-            "similarity_boost": 0.7,
+            "stability": 0.75,  # 안정성 증가
+            "similarity_boost": 0.85,  # 유사도 증가
             "style": 0.0,
             "use_speaker_boost": True,
         },
+        "output_format": "mp3_44100_256",  # 비트레이트 증가로 음질 개선
     }
     headers = {"xi-api-key": ELEVENLABS_API_KEY, "Accept": "audio/mpeg"}
     try:
@@ -959,21 +970,26 @@ def generate_visual_prompts(sentences: List[str], mode: str = "animation", progr
 # =============================================================================
 
 
-def generate_tts_with_alignment(voice_id: str, text: str, audio_filename: str):
+def generate_tts_with_alignment(voice_id: str, text: str, audio_filename: str, elevenlabs_api_key: Optional[str] = None):
     if not is_voice_allowed(voice_id):
         voice_id = get_default_voice_id()
+    # 사용자가 입력한 API 키를 우선 사용, 없으면 기본값 사용
+    api_key = elevenlabs_api_key or ELEVENLABS_API_KEY
+    if not api_key:
+        print("[TTS] ElevenLabs API 키가 설정되지 않았습니다.")
+        return None
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/with-timestamps"
-    headers = {"xi-api-key": ELEVENLABS_API_KEY, "Accept": "application/json"}
+    headers = {"xi-api-key": api_key, "Accept": "application/json"}
     payload = {
         "text": text,
-        "model_id": "eleven_multilingual_v2",
+        "model_id": "eleven_turbo_v2_5",  # 더 빠르고 고품질 모델로 업그레이드
         "voice_settings": {
-            "stability": 0.7,
-            "similarity_boost": 0.7,
+            "stability": 0.75,  # 안정성 증가 (0.5-1.0, 높을수록 일관성)
+            "similarity_boost": 0.85,  # 유사도 증가 (0.0-1.0, 높을수록 원본 목소리에 가까움)
             "style": 0.0,
-            "use_speaker_boost": True,
+            "use_speaker_boost": True,  # 스피커 부스트 활성화
         },
-        "output_format": "mp3_44100_128",
+        "output_format": "mp3_44100_256",  # 비트레이트 증가 (128 -> 256)로 음질 개선
     }
     try:
         resp = requests.post(url, headers=headers, json=payload, timeout=120)
@@ -995,7 +1011,7 @@ def generate_tts_with_alignment(voice_id: str, text: str, audio_filename: str):
 
 
 replicate_api_available = bool(REPLICATE_API_TOKEN)
-stability_api_available = bool(STABILITY_API_KEY)
+# stability_api_available = bool(STABILITY_API_KEY)  # Stability API 사용 안 함
 openai_available = bool(OPENAI_API_KEY)
 
 
@@ -1015,7 +1031,7 @@ def save_image_bytes_as_png(content: bytes, filename: str, target_size=(1280, 76
             f.write(content)
 
 
-def generate_image(prompt_text: str, filename: str, mode: str = "animation") -> bool:
+def generate_image(prompt_text: str, filename: str, mode: str = "animation", replicate_api_key: Optional[str] = None) -> bool:
     mode = (mode or "animation").lower()
     fallback_context = "scene description"
     if prompt_text:
@@ -1035,11 +1051,22 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation") -> 
             "realistic human, detailed human skin, photograph, 3d render, blank white background, line-art only, text, watermark"
         )
 
-    if replicate_api_available:
+    # 사용자가 입력한 API 키를 우선 사용, 없으면 기본값 사용
+    api_token = replicate_api_key or REPLICATE_API_TOKEN
+    replicate_api_available_local = bool(api_token)
+    
+    # API 키 사용 여부 로그 (키의 일부만 표시)
+    if api_token:
+        key_preview = api_token[:10] + "..." + api_token[-4:] if len(api_token) > 14 else "***"
+        print(f"[generate_image] 사용 중인 Replicate API 키: {key_preview}")
+    else:
+        print(f"[경고] Replicate API 키가 설정되지 않았습니다!")
+    
+    if replicate_api_available_local:
         try:
             print(f"[generate_image] Replicate API 사용 - 모드: {mode}, 파일: {os.path.basename(filename)}")
             headers = {
-                "Authorization": f"Token {REPLICATE_API_TOKEN}",
+                "Authorization": f"Token {api_token}",
                 "Content-Type": "application/json",
             }
             replicate_input = {
@@ -1071,37 +1098,122 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation") -> 
                 body = {"input": replicate_input}
 
             print(f"[generate_image] Replicate API 요청 전송 중...")
-            create_res = requests.post(request_url, headers=headers, json=body, timeout=30)
-            if create_res.status_code not in (200, 201):
-                print(f"[IMG] (Replicate) 생성 실패: {create_res.status_code} {create_res.text}")
+            print(f"[generate_image] 프롬프트: {base_prompt[:200]}...")
+            print(f"[generate_image] Negative 프롬프트: {negative_prompt[:200]}...")
+            print(f"[generate_image] 요청 URL: {request_url}")
+            print(f"[generate_image] 요청 본문: {json.dumps(body, indent=2, ensure_ascii=False)}")
+            
+            # Rate limiting: 분당 600개 요청 제한 준수 (최소 0.1초 간격)
+            global _last_replicate_request_time
+            with _replicate_request_lock:
+                current_time = time.time()
+                time_since_last = current_time - _last_replicate_request_time
+                if time_since_last < REPLICATE_MIN_REQUEST_INTERVAL:
+                    wait_time = REPLICATE_MIN_REQUEST_INTERVAL - time_since_last
+                    print(f"[Rate Limit] 요청 간격 조절: {wait_time:.2f}초 대기 중...")
+                    time.sleep(wait_time)
+                _last_replicate_request_time = time.time()
+            
+            # 429 에러 재시도를 위한 루프
+            max_retries = 3
+            create_res = None
+            for retry_attempt in range(max_retries):
+                try:
+                    create_res = requests.post(request_url, headers=headers, json=body, timeout=30)
+                    print(f"[generate_image] 응답 상태 코드: {create_res.status_code}")
+                    print(f"[generate_image] 응답 본문 (처음 500자): {create_res.text[:500]}")
+                    
+                    # 429 에러 (Rate Limit) 처리
+                    if create_res.status_code == 429:
+                        error_data = create_res.json() if create_res.text else {}
+                        error_detail = error_data.get("detail", "Request was throttled.")
+                        reset_time = error_data.get("reset_time", REPLICATE_RATE_LIMIT_RETRY_DELAY)
+                        
+                        if retry_attempt < max_retries - 1:
+                            wait_time = REPLICATE_RATE_LIMIT_RETRY_DELAY
+                            print(f"[Rate Limit] 429 에러 발생: {error_detail}")
+                            print(f"[Rate Limit] {wait_time}초 후 재시도 중... (시도 {retry_attempt + 1}/{max_retries})")
+                            time.sleep(wait_time)
+                            continue  # 재시도
+                        else:
+                            print(f"[Rate Limit] 429 에러: 최대 재시도 횟수 초과")
+                            raise Exception(f"Replicate API Rate Limit 초과: {error_detail}")
+                    
+                    # 200/201이 아니고 429도 아니면 루프 종료
+                    if create_res.status_code not in (200, 201, 429):
+                        break
+                        
+                except Exception as req_exc:
+                    if retry_attempt < max_retries - 1 and "429" in str(req_exc):
+                        wait_time = REPLICATE_RATE_LIMIT_RETRY_DELAY
+                        print(f"[Rate Limit] 예외 발생, {wait_time}초 후 재시도: {req_exc}")
+                        time.sleep(wait_time)
+                        continue
+                    print(f"[오류] Replicate API 요청 실패: {req_exc}")
+                    import traceback
+                    traceback.print_exc()
+                    raise  # 예외를 다시 발생시켜 fallback으로 넘어가도록 함
+            
+            if create_res is None or create_res.status_code not in (200, 201):
+                print(f"[IMG] (Replicate) 생성 실패: {create_res.status_code if create_res else 'None'} {create_res.text if create_res else 'No response'}")
+                # 402 에러 (월간 사용 한도 도달) 처리
+                if create_res and create_res.status_code == 402:
+                    error_data = create_res.json() if create_res.text else {}
+                    error_detail = error_data.get("detail", "월간 사용 한도에 도달했습니다.")
+                    print(f"[경고] Replicate API 월간 사용 한도 도달: {error_detail}")
+                    print(f"[경고] https://replicate.com/account/billing#limits 에서 한도를 확인하거나 증가시켜주세요.")
+                    print(f"[경고] 한도를 증가시킨 경우 몇 분 후 다시 시도해주세요.")
+                    raise Exception(f"Replicate API 월간 사용 한도 도달: {error_detail}")
+                # 500 에러나 다른 서버 에러인 경우 즉시 fallback으로
+                if create_res and create_res.status_code >= 500:
+                    print(f"[IMG] (Replicate) 서버 에러 ({create_res.status_code}), 즉시 fallback으로 전환")
+                    raise Exception(f"Replicate API 서버 에러: {create_res.status_code}")
             else:
-                prediction = create_res.json()
-                pred_id = prediction.get("id")
-                get_url = prediction.get("urls", {}).get("get")
-                if not get_url and pred_id:
-                    get_url = f"https://api.replicate.com/v1/predictions/{pred_id}"
-                print(f"[generate_image] 예측 ID: {pred_id}, 상태 확인 시작 (최대 180초 대기)")
-                final = None
-                poll_count = 0
-                for poll_count in range(180):
-                    if not get_url:
-                        print(f"[generate_image] get_url이 없어서 중단")
-                        break
-                    res = requests.get(get_url, headers=headers, timeout=10)
-                    if res.status_code != 200:
-                        print(f"[IMG] (Replicate) 상태 조회 실패: {res.status_code} {res.text}")
-                        break
-                    data = res.json()
-                    status = data.get("status")
-                    if poll_count % 10 == 0:  # 10초마다 로그 출력
-                        print(f"[generate_image] 상태 확인 중... ({poll_count}초 경과, 상태: {status})")
-                    if status in ("succeeded", "failed", "canceled"):
-                        final = data
-                        print(f"[generate_image] 최종 상태: {status} (총 {poll_count}초 소요)")
-                        break
-                    time.sleep(1)
-                if poll_count >= 179:
-                    print(f"[generate_image] 타임아웃: 180초 동안 완료되지 않음")
+                try:
+                    prediction = create_res.json()
+                    print(f"[generate_image] 예측 응답: {json.dumps(prediction, indent=2, ensure_ascii=False)[:500]}")
+                    pred_id = prediction.get("id")
+                    get_url = prediction.get("urls", {}).get("get")
+                    if not get_url and pred_id:
+                        get_url = f"https://api.replicate.com/v1/predictions/{pred_id}"
+                    print(f"[generate_image] 예측 ID: {pred_id}, get_url: {get_url}")
+                    print(f"[generate_image] 상태 확인 시작 (최대 180초 대기)")
+                    final = None
+                    poll_count = 0
+                    for poll_count in range(180):
+                        if not get_url:
+                            print(f"[generate_image] get_url이 없어서 중단")
+                            break
+                        try:
+                            res = requests.get(get_url, headers=headers, timeout=10)
+                            if res.status_code != 200:
+                                print(f"[IMG] (Replicate) 상태 조회 실패: {res.status_code} {res.text[:500]}")
+                                break
+                            data = res.json()
+                            status = data.get("status")
+                            if poll_count % 10 == 0:  # 10초마다 로그 출력
+                                print(f"[generate_image] 상태 확인 중... ({poll_count}초 경과, 상태: {status})")
+                            if status in ("succeeded", "failed", "canceled"):
+                                final = data
+                                print(f"[generate_image] 최종 상태: {status} (총 {poll_count}초 소요)")
+                                if status == "failed":
+                                    error_msg = data.get("error", "알 수 없는 오류")
+                                    print(f"[generate_image] 실패 원인: {error_msg}")
+                                break
+                            time.sleep(1)
+                        except Exception as poll_exc:
+                            print(f"[오류] 상태 조회 중 예외 발생: {poll_exc}")
+                            import traceback
+                            traceback.print_exc()
+                            break
+                    if poll_count >= 179:
+                        print(f"[generate_image] 타임아웃: 180초 동안 완료되지 않음")
+                except Exception as json_exc:
+                    print(f"[오류] 예측 응답 파싱 실패: {json_exc}")
+                    print(f"[오류] 응답 본문: {create_res.text[:1000]}")
+                    import traceback
+                    traceback.print_exc()
+                    final = None
                 if final and final.get("status") == "succeeded":
                     outputs = final.get("output")
                     image_url = None
@@ -1120,17 +1232,66 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation") -> 
                         image_b64 = outputs.get("image_base64")
                     if image_b64:
                         print(f"[generate_image] base64 이미지 저장 중...")
-                        save_image_bytes_as_png(base64.b64decode(image_b64), filename)
-                        print(f"[generate_image] 이미지 저장 완료: {filename}")
-                        return True
+                        try:
+                            image_bytes = base64.b64decode(image_b64)
+                            print(f"[generate_image] base64 디코딩 완료, 크기: {len(image_bytes)} bytes")
+                            if len(image_bytes) < 100:
+                                print(f"[경고] 이미지 데이터가 너무 작습니다: {len(image_bytes)} bytes")
+                            save_image_bytes_as_png(image_bytes, filename)
+                            # 저장된 파일 확인
+                            if os.path.exists(filename):
+                                file_size = os.path.getsize(filename)
+                                print(f"[generate_image] 이미지 저장 완료: {filename} (크기: {file_size} bytes)")
+                                # 이미지가 검은색인지 확인 (첫 몇 픽셀 확인)
+                                try:
+                                    with Image.open(filename) as test_img:
+                                        # 중앙 픽셀 색상 확인
+                                        center_x, center_y = test_img.width // 2, test_img.height // 2
+                                        pixel = test_img.getpixel((center_x, center_y))
+                                        print(f"[generate_image] 중앙 픽셀 색상: {pixel}")
+                                        if pixel == (0, 0, 0) or (isinstance(pixel, tuple) and len(pixel) == 4 and pixel[:3] == (0, 0, 0)):
+                                            print(f"[경고] 이미지가 검은색일 수 있습니다!")
+                                except Exception as img_check_exc:
+                                    print(f"[경고] 이미지 확인 실패: {img_check_exc}")
+                                return True
+                            else:
+                                print(f"[오류] 파일이 저장되지 않았습니다: {filename}")
+                        except Exception as b64_exc:
+                            print(f"[오류] base64 디코딩 실패: {b64_exc}")
+                            import traceback
+                            traceback.print_exc()
                     if image_url:
                         print(f"[generate_image] 이미지 URL에서 다운로드 중: {image_url}")
-                        resp = requests.get(image_url, timeout=60)
-                        resp.raise_for_status()
-                        save_image_bytes_as_png(resp.content, filename)
-                        print(f"[generate_image] 이미지 다운로드 및 저장 완료: {filename}")
-                        return True
+                        try:
+                            resp = requests.get(image_url, timeout=60)
+                            resp.raise_for_status()
+                            print(f"[generate_image] 이미지 다운로드 완료, 크기: {len(resp.content)} bytes")
+                            if len(resp.content) < 100:
+                                print(f"[경고] 다운로드된 이미지 데이터가 너무 작습니다: {len(resp.content)} bytes")
+                            save_image_bytes_as_png(resp.content, filename)
+                            # 저장된 파일 확인
+                            if os.path.exists(filename):
+                                file_size = os.path.getsize(filename)
+                                print(f"[generate_image] 이미지 다운로드 및 저장 완료: {filename} (크기: {file_size} bytes)")
+                                # 이미지가 검은색인지 확인
+                                try:
+                                    with Image.open(filename) as test_img:
+                                        center_x, center_y = test_img.width // 2, test_img.height // 2
+                                        pixel = test_img.getpixel((center_x, center_y))
+                                        print(f"[generate_image] 중앙 픽셀 색상: {pixel}")
+                                        if pixel == (0, 0, 0) or (isinstance(pixel, tuple) and len(pixel) == 4 and pixel[:3] == (0, 0, 0)):
+                                            print(f"[경고] 이미지가 검은색일 수 있습니다!")
+                                except Exception as img_check_exc:
+                                    print(f"[경고] 이미지 확인 실패: {img_check_exc}")
+                                return True
+                            else:
+                                print(f"[오류] 파일이 저장되지 않았습니다: {filename}")
+                        except Exception as download_exc:
+                            print(f"[오류] 이미지 다운로드 실패: {download_exc}")
+                            import traceback
+                            traceback.print_exc()
                     print("[IMG] (Replicate) 출력이 비어 있습니다.")
+                    print(f"[디버그] outputs 타입: {type(outputs)}, 값: {outputs}")
                 elif final:
                     print(f"[IMG] (Replicate) 예측 실패: {final.get('status')}, 에러: {final.get('error')}")
         except Exception as exc:
@@ -1138,37 +1299,44 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation") -> 
             import traceback
             traceback.print_exc()
 
-    if mode != "realistic" and stability_api_available:
-        try:
-            api_url = "https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image"
-            headers = {
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "Authorization": f"Bearer {STABILITY_API_KEY}",
-            }
-            payload = {
-                "text_prompts": [{"text": base_prompt, "weight": 1.0}, {"text": negative_prompt, "weight": -1.0}],
-                "cfg_scale": 7,
-                "height": 768,
-                "width": 1344,
-                "steps": 30,
-                "samples": 1,
-                "sampler": "K_DPMPP_2M",
-            }
-            response = requests.post(api_url, headers=headers, json=payload)
-            if response.status_code == 200:
-                data = response.json()
-                if data.get("artifacts"):
-                    image_data = base64.b64decode(data["artifacts"][0]["base64"])
-                    save_image_bytes_as_png(image_data, filename)
-                    return True
-            else:
-                print(f"[IMG] (Stability) 실패: {response.status_code} {response.text}")
-        except Exception as exc:
-            print(f"[IMG] (Stability) 예외: {exc}")
+    # Stability API는 사용하지 않음 (Replicate만 사용)
+    # if mode != "realistic" and stability_api_available:
+    #     ... (Stability API 코드 제거됨)
 
     # fallback: create black image
-    Image.new("RGB", (1920, 1080), color="black").save(filename)
+    try:
+        print(f"[경고] 이미지 생성 실패, 검은색 이미지 생성: {filename}")
+        black_img = Image.new("RGB", (1920, 1080), color="black")
+        black_img.save(filename, format="PNG")
+        
+        # 생성된 이미지 파일 검증
+        if os.path.exists(filename):
+            file_size = os.path.getsize(filename)
+            print(f"[검은색 이미지] 파일 생성됨: {filename} (크기: {file_size} bytes)")
+            if file_size < 100:
+                print(f"[경고] 검은색 이미지 파일이 너무 작습니다. 다시 생성 시도...")
+                black_img.save(filename, format="PNG")
+                file_size = os.path.getsize(filename)
+                print(f"[검은색 이미지] 재생성 완료: {filename} (크기: {file_size} bytes)")
+            
+            # PIL로 이미지 파일 유효성 검증
+            try:
+                with Image.open(filename) as test_img:
+                    test_img.verify()  # 이미지 파일 무결성 검증
+                print(f"[검은색 이미지] 이미지 파일 유효성 검증 완료")
+            except Exception as verify_exc:
+                print(f"[경고] 이미지 파일 유효성 검증 실패: {verify_exc}")
+                # 다시 생성
+                black_img = Image.new("RGB", (1920, 1080), color="black")
+                black_img.save(filename, format="PNG")
+                print(f"[검은색 이미지] 재생성 완료 (검증 실패 후)")
+        else:
+            print(f"[오류] 검은색 이미지 파일이 생성되지 않았습니다: {filename}")
+    except Exception as fallback_exc:
+        print(f"[오류] 검은색 이미지 생성 실패: {fallback_exc}")
+        import traceback
+        traceback.print_exc()
+    
     return False
 
 
@@ -1182,6 +1350,8 @@ def generate_assets(
     mode: str = "animation",
     original_script: Optional[str] = None,
     scene_offset: int = 0,
+    replicate_api_key: Optional[str] = None,
+    elevenlabs_api_key: Optional[str] = None,
 ):
     print(f"\n[generate_assets 시작] scene_offset={scene_offset}, 문장 개수={len(sentences)}, assets_folder={assets_folder}")
     print(f"  예상 scene_id 범위: {scene_offset + 1} ~ {scene_offset + len(sentences)}")
@@ -1198,7 +1368,7 @@ def generate_assets(
         if progress_cb:
             progress_cb(f"{scene_num}번 씬 TTS 생성 중...")
         print(f"[DEBUG] TTS 생성: scene_num={scene_num}, audio_file={audio_file}, text={text[:50]}...")
-        alignment = generate_tts_with_alignment(voice_id, text, audio_file)
+        alignment = generate_tts_with_alignment(voice_id, text, audio_file, elevenlabs_api_key=elevenlabs_api_key)
         if alignment is None:
             print(f"[경고] scene_num={scene_num}: TTS 생성 실패")
             if progress_cb:
@@ -1218,7 +1388,7 @@ def generate_assets(
             shutil.copy(img_path, image_file)
             image_generated = True
         else:
-            image_generated = generate_image(prompt, image_file, mode=mode)
+            image_generated = generate_image(prompt, image_file, mode=mode, replicate_api_key=replicate_api_key)
 
         semantic_segments = generate_semantic_segments(text)
 
@@ -1535,6 +1705,7 @@ def create_video(
     output_video_file: str,
     assets_folder: str,
     progress_cb=None,
+    include_subtitles=True,
 ):
     if progress_cb:
         progress_cb("영상 합성을 시작합니다.")
@@ -1583,12 +1754,61 @@ def create_video(
     for idx, scene in enumerate(scene_data_with_timestamps, 1):
         scene_id = scene.get('scene_id')
         image_path = scene.get("image_file")
-        if not image_path or not os.path.exists(image_path):
+        print(f"[이미지 확인] scene_{scene_id}: 원본 경로={image_path}")
+        
+        # 이미지 파일 존재 및 유효성 검증
+        image_valid = False
+        if image_path and os.path.exists(image_path):
+            image_size = os.path.getsize(image_path)
+            print(f"[이미지 확인] scene_{scene_id}: 이미지 파일 존재 ({image_size} bytes)")
+            
+            # 파일 크기 검증
+            if image_size < 100:
+                print(f"[경고] scene_{scene_id}: 이미지 파일이 너무 작습니다 ({image_size} bytes)")
+            else:
+                # PIL로 이미지 파일 유효성 검증
+                try:
+                    with Image.open(image_path) as test_img:
+                        test_img.verify()  # 이미지 파일 무결성 검증
+                    # verify() 후에는 파일을 다시 열어야 함
+                    with Image.open(image_path) as test_img:
+                        test_img.load()  # 이미지 로드
+                    print(f"[이미지 확인] scene_{scene_id}: 이미지 파일 유효성 검증 완료")
+                    image_valid = True
+                except Exception as verify_exc:
+                    print(f"[경고] scene_{scene_id}: 이미지 파일 유효성 검증 실패: {verify_exc}")
+        
+        # 이미지 파일이 없거나 유효하지 않으면 검은색 이미지 생성
+        if not image_valid:
+            print(f"[경고] scene_{scene_id}: 이미지 파일이 없거나 손상되어 검은색 이미지 생성")
             image_path = os.path.join(assets_folder, f"scene_{scene_id}_fallback.png")
-            Image.new("RGB", (1920, 1080), color="black").save(image_path)
+            try:
+                black_img = Image.new("RGB", (1920, 1080), color="black")
+                black_img.save(image_path, format="PNG")
+                # 생성된 이미지 검증
+                with Image.open(image_path) as test_img:
+                    test_img.verify()
+                print(f"[검은색 이미지] scene_{scene_id}: 검은색 이미지 생성 및 검증 완료")
+            except Exception as fallback_exc:
+                print(f"[오류] scene_{scene_id}: 검은색 이미지 생성 실패: {fallback_exc}")
+                import traceback
+                traceback.print_exc()
         
         audio_file = scene.get("audio_file")
         duration = scene.get("duration", 0)
+        
+        # 오디오 파일이 있으면 실제 duration 재확인
+        if audio_file and os.path.exists(audio_file):
+            try:
+                audio_info = MP3(audio_file)
+                actual_duration = audio_info.info.length
+                if abs(actual_duration - duration) > 0.1:  # 0.1초 이상 차이나면 경고
+                    print(f"[경고] scene_id={scene_id}: duration 불일치! 계산된 duration={duration:.2f}초, 실제 오디오 duration={actual_duration:.2f}초")
+                    duration = actual_duration  # 실제 duration 사용
+            except Exception as e:
+                print(f"[경고] scene_id={scene_id}: 오디오 duration 확인 실패: {e}")
+        
+        print(f"[create_video] scene_id={scene_id}: duration={duration:.2f}초, start_time={scene.get('start_time', 0):.2f}초, end_time={scene.get('end_time', 0):.2f}초")
         
         if not audio_file or not os.path.exists(audio_file):
             print(f"[경고] scene_id={scene_id}: 오디오 파일이 없거나 존재하지 않습니다. 무음 오디오 생성")
@@ -1605,64 +1825,54 @@ def create_video(
             scene_start = scene["start_time"] - segment_start
             scene_end = scene["end_time"] - segment_start
             
+            print(f"[자막 추출] scene_{scene_id}: 시간 범위 {scene_start:.2f}초 ~ {scene_end:.2f}초")
+            
             # 해당 씬의 자막만 추출 (SRT 형식)
-            extract_subtitles_for_scene(subtitle_file, scene_start, scene_end, scene_subtitle_srt)
+            extract_success = extract_subtitles_for_scene(subtitle_file, scene_start, scene_end, scene_subtitle_srt)
+            if extract_success and os.path.exists(scene_subtitle_srt):
+                srt_size = os.path.getsize(scene_subtitle_srt)
+                print(f"[자막 추출] scene_{scene_id}: SRT 파일 생성됨 ({srt_size} bytes)")
+                if srt_size > 0:
+                    # SRT를 ASS 형식으로 변환 (배경 박스가 끊어지지 않도록)
+                    ass_success = srt_to_ass(scene_subtitle_srt, scene_subtitle_ass)
+                    if ass_success and os.path.exists(scene_subtitle_ass):
+                        ass_size = os.path.getsize(scene_subtitle_ass)
+                        print(f"[자막 변환] scene_{scene_id}: ASS 파일 생성됨 ({ass_size} bytes)")
+                    else:
+                        print(f"[경고] scene_{scene_id}: ASS 파일 생성 실패")
+                else:
+                    print(f"[경고] scene_{scene_id}: SRT 파일이 비어있음")
+            else:
+                print(f"[경고] scene_{scene_id}: 자막 추출 실패 또는 파일 없음")
             
-            # SRT를 ASS 형식으로 변환 (배경 박스가 끊어지지 않도록)
-            if os.path.exists(scene_subtitle_srt) and os.path.getsize(scene_subtitle_srt) > 0:
-                srt_to_ass(scene_subtitle_srt, scene_subtitle_ass)
-            
-            # 비디오 스트림 생성 (랜덤 모션 효과 적용)
-            # 먼저 이미지를 1920x1080으로 스케일
-            scaled_stream = (
+            # 비디오 스트림 생성 (기본 스케일)
+            # 이미지를 먼저 1920x1080으로 스케일
+            base_stream = (
                 ffmpeg.input(image_path, loop=1, t=duration, framerate=VIDEO_FPS)
                 .filter("scale", 1920, 1080)
             )
             
-            # 랜덤으로 모션 효과 선택 (좌→우, 우→좌, 확대)
-            motion_type = random.choice(['pan_left_to_right', 'pan_right_to_left', 'zoom_in'])
+            # 자막 적용 (ASS 형식 사용 - 배경 박스가 끊어지지 않음)
+            # 자막을 먼저 적용하여 타임코드가 정확하게 유지되도록 함
+            if include_subtitles:
+                subtitle_kwargs = {}
+                if os.path.isdir(FONTS_FOLDER):
+                    subtitle_kwargs["fontsdir"] = os.path.abspath(FONTS_FOLDER)
+                # BackColour와 Outline을 명시적으로 지정하여 검정색 배경 박스가 확실히 표시되도록 함
+                # Outline 값이 배경 박스의 패딩 역할을 함
+                subtitle_kwargs["force_style"] = f"BackColour=&HFF000000,BorderStyle=3,Outline=10"
+                
+                # 씬별 ASS 자막 파일이 존재하는 경우에만 자막 적용
+                if os.path.exists(scene_subtitle_ass) and os.path.getsize(scene_subtitle_ass) > 0:
+                    video_with_subs = base_stream.filter("subtitles", scene_subtitle_ass, **subtitle_kwargs)
+                else:
+                    video_with_subs = base_stream  # 자막 없이 진행
+            else:
+                video_with_subs = base_stream  # 자막 포함 옵션이 꺼져있으면 자막 없이 진행
             
-            if motion_type == 'pan_left_to_right':
-                # 좌측에서 우측으로 이동 (crop 필터 사용)
-                # 이미지를 1.2배 확대한 후 좌→우로 이동
-                crop_width = 1920
-                crop_height = 1080
-                max_x = 2304 - crop_width  # 384
-                # FFmpeg 표현식: x 좌표를 0에서 max_x로 이동
-                x_expr = f"t*{max_x}/{duration}"
-                y_pos = int((1296 - crop_height) / 2)  # 108
-                video_stream = (
-                    scaled_stream
-                    .filter("scale", 2304, 1296)  # 1.2배 확대
-                    .filter("crop", crop_width, crop_height, x=x_expr, y=y_pos)
-                )
-            elif motion_type == 'pan_right_to_left':
-                # 우측에서 좌측으로 이동
-                crop_width = 1920
-                crop_height = 1080
-                max_x = 2304 - crop_width  # 384
-                # FFmpeg 표현식: x 좌표를 max_x에서 0으로 이동
-                x_expr = f"{max_x}-t*{max_x}/{duration}"
-                y_pos = int((1296 - crop_height) / 2)  # 108
-                video_stream = (
-                    scaled_stream
-                    .filter("scale", 2304, 1296)  # 1.2배 확대
-                    .filter("crop", crop_width, crop_height, x=x_expr, y=y_pos)
-                )
-            else:  # zoom_in
-                # 확대 효과 (zoompan 필터 사용)
-                # 1.0배에서 1.2배로 천천히 확대
-                total_frames = int(duration * VIDEO_FPS)
-                zoom_increment = 0.2 / total_frames  # 0.2를 전체 프레임 수로 나눔
-                video_stream = (
-                    scaled_stream
-                    .filter("zoompan", 
-                            z=f"if(lte(zoom,1.0),1.0,min(zoom+{zoom_increment:.6f},1.2))",
-                            d=total_frames,
-                            x="iw/2-(iw/zoom/2)",
-                            y="ih/2-(ih/zoom/2)",
-                            s="1920x1080")
-                )
+            # 모션 효과 없이 정적 이미지 사용
+            # duration을 명시적으로 제한
+            video_stream = video_with_subs.filter("trim", duration=duration).filter("setpts", "PTS-STARTPTS")
             
             # 오디오 스트림 생성
             if audio_file and os.path.exists(audio_file):
@@ -1670,28 +1880,15 @@ def create_video(
             else:
                 audio_stream = ffmpeg.input('anullsrc=channel_layout=mono:sample_rate=44100', f='lavfi', t=duration)
             
-            # 자막 적용 (ASS 형식 사용 - 배경 박스가 끊어지지 않음)
-            subtitle_kwargs = {}
-            if os.path.isdir(FONTS_FOLDER):
-                subtitle_kwargs["fontsdir"] = os.path.abspath(FONTS_FOLDER)
-            # BackColour와 Outline을 명시적으로 지정하여 검정색 배경 박스가 확실히 표시되도록 함
-            # Outline 값이 배경 박스의 패딩 역할을 함
-            subtitle_kwargs["force_style"] = f"BackColour=&HFF000000,BorderStyle=3,Outline=10"
-            
-            # 씬별 ASS 자막 파일이 존재하는 경우에만 자막 적용
-            if os.path.exists(scene_subtitle_ass) and os.path.getsize(scene_subtitle_ass) > 0:
-                video_with_subs = video_stream.filter("subtitles", scene_subtitle_ass, **subtitle_kwargs)
-            else:
-                video_with_subs = video_stream  # 자막 없이 진행
-            
-            # 개별 씬 비디오 생성
+            # 개별 씬 비디오 생성 (duration 명시적으로 제한)
             scene_output = ffmpeg.output(
-                video_with_subs,
+                video_stream,
                 audio_stream,
                 scene_video_file,
                 vcodec="libx264",
                 acodec="aac",
                 pix_fmt="yuv420p",
+                t=duration,  # duration 명시적으로 제한
                 **{
                     "preset": "ultrafast",  # 개별 씬은 빠르게 생성
                     "crf": "23",
@@ -1699,12 +1896,83 @@ def create_video(
                 }
             )
             try:
-                ffmpeg.run(scene_output, overwrite_output=True, quiet=True)
+                # 오류 디버깅을 위해 quiet=False로 설정
+                ffmpeg.run(scene_output, overwrite_output=True, quiet=False)
+                
+                # 생성된 비디오의 실제 duration 확인
+                if os.path.exists(scene_video_file):
+                    try:
+                        probe = ffmpeg.probe(scene_video_file)
+                        video_streams = [s for s in probe.get('streams', []) if s.get('codec_type') == 'video']
+                        if video_streams:
+                            actual_video_duration = float(video_streams[0].get('duration', 0))
+                            if abs(actual_video_duration - duration) > 0.5:  # 0.5초 이상 차이나면 경고
+                                print(f"[경고] scene_{scene_id}: 비디오 duration 불일치! 예상={duration:.2f}초, 실제={actual_video_duration:.2f}초")
+                                # duration이 너무 길면 재인코딩 (짧게 자르기)
+                                if actual_video_duration > duration + 0.5:
+                                    print(f"[수정] scene_{scene_id}: 비디오를 정확한 duration으로 재인코딩 중...")
+                                    temp_file = scene_video_file + ".tmp"
+                                    os.rename(scene_video_file, temp_file)
+                                    input_video = ffmpeg.input(temp_file)
+                                    corrected_output = ffmpeg.output(
+                                        input_video['v'].filter('trim', duration=duration),
+                                        input_video['a'].filter('atrim', duration=duration),
+                                        scene_video_file,
+                                        vcodec="libx264",
+                                        acodec="aac",
+                                        pix_fmt="yuv420p",
+                                        t=duration,
+                                        preset="ultrafast",
+                                        crf="23"
+                                    )
+                                    ffmpeg.run(corrected_output, overwrite_output=True, quiet=True)
+                                    os.remove(temp_file)
+                                    print(f"[수정 완료] scene_{scene_id}: duration 수정됨")
+                    except Exception as probe_exc:
+                        print(f"[경고] scene_{scene_id}: 비디오 duration 확인 실패: {probe_exc}")
+                        
             except ffmpeg.Error as ffmpeg_exc:
                 print(f"[FFmpeg 오류] scene_{scene_id} 비디오 생성 실패:")
                 if ffmpeg_exc.stderr:
-                    print(ffmpeg_exc.stderr.decode('utf-8'))
-                raise
+                    stderr_text = ffmpeg_exc.stderr.decode('utf-8', errors='ignore')
+                    print(f"[FFmpeg stderr] {stderr_text}")
+                if ffmpeg_exc.stdout:
+                    stdout_text = ffmpeg_exc.stdout.decode('utf-8', errors='ignore')
+                    print(f"[FFmpeg stdout] {stdout_text}")
+                # 오류 발생 시 기본 스트림으로 재시도
+                print(f"[재시도] scene_{scene_id} 기본 스트림으로 재시도 중...")
+                try:
+                    # 모션 효과 없이 기본 스트림만 사용
+                    simple_stream = (
+                        ffmpeg.input(image_path, loop=1, t=duration, framerate=VIDEO_FPS)
+                        .filter("scale", 1920, 1080)
+                    )
+                    if include_subtitles and os.path.exists(scene_subtitle_ass) and os.path.getsize(scene_subtitle_ass) > 0:
+                        # fallback 경로에서도 subtitle_kwargs 정의
+                        fallback_subtitle_kwargs = {}
+                        if os.path.isdir(FONTS_FOLDER):
+                            fallback_subtitle_kwargs["fontsdir"] = os.path.abspath(FONTS_FOLDER)
+                        fallback_subtitle_kwargs["force_style"] = f"BackColour=&HFF000000,BorderStyle=3,Outline=10"
+                        simple_with_subs = simple_stream.filter("subtitles", scene_subtitle_ass, **fallback_subtitle_kwargs)
+                    else:
+                        simple_with_subs = simple_stream
+                    simple_output = ffmpeg.output(
+                        simple_with_subs,
+                        audio_stream,
+                        scene_video_file,
+                        vcodec="libx264",
+                        acodec="aac",
+                        pix_fmt="yuv420p",
+                        t=duration,  # duration 명시적으로 제한
+                        preset="ultrafast",
+                        crf="23",
+                        threads="0"
+                    )
+                    ffmpeg.run(simple_output, overwrite_output=True, quiet=False)
+                    print(f"[성공] scene_{scene_id} 기본 스트림으로 생성 완료")
+                except Exception as retry_exc:
+                    print(f"[실패] scene_{scene_id} 재시도도 실패: {retry_exc}")
+                    raise ffmpeg_exc  # 원래 오류를 다시 발생
             
             if idx % 10 == 0 or idx == len(scene_data_with_timestamps):
                 if progress_cb:
@@ -1865,6 +2133,9 @@ def run_generation_job(
     existing_images=None,
     mode="animation",
     sentences_override=None,
+    include_subtitles=True,
+    replicate_api_key=None,
+    elevenlabs_api_key=None,
 ):
     assets_folder, subtitle_file, video_file = get_job_paths(job_id)
     
@@ -1944,6 +2215,8 @@ def run_generation_job(
                 mode=mode,
                 original_script=script_text,  # 전체 원본 스크립트 전달 (문맥 분석용)
                 scene_offset=sentence_offset,  # 전체 인덱스가 연속되도록 offset 전달
+                replicate_api_key=replicate_api_key,
+                elevenlabs_api_key=elevenlabs_api_key,
             )
             if not chunk_scene_data:
                 raise RuntimeError(f"청크 {chunk_idx} 자산 생성에 실패했습니다.")
@@ -1993,6 +2266,7 @@ def run_generation_job(
                 chunk_video_file,
                 chunk_folder,
                 progress_cb=lambda msg: progress(f"[청크 {chunk_idx}] {msg}"),
+                include_subtitles=include_subtitles,
             )
             if not chunk_success:
                 raise RuntimeError(f"청크 {chunk_idx} 영상 합성에 실패했습니다.")
@@ -2210,6 +2484,134 @@ def run_generation_job(
             import shutil
             shutil.copy2(chunk_video_files[0], video_file)
 
+        # 전체 SRT 파일 생성 (청크별 SRT 파일을 시간 조정하여 합치기)
+        if total_chunks > 1:
+            progress("전체 자막 파일 생성 중...")
+            try:
+                # SRT 시간 문자열을 초로 변환하는 헬퍼 함수
+                def srt_time_to_seconds(srt_time: str) -> float:
+                    """SRT 시간 형식 (HH:MM:SS,mmm)을 초로 변환"""
+                    time_part, ms_part = srt_time.split(',')
+                    h, m, s = map(int, time_part.split(':'))
+                    ms = int(ms_part)
+                    return h * 3600 + m * 60 + s + ms / 1000.0
+                
+                # 각 청크의 비디오 길이 계산 (시간 오프셋 계산용)
+                chunk_durations = []
+                for chunk_idx in range(1, total_chunks + 1):
+                    chunk_video_file = os.path.join(assets_folder, f"chunk_{chunk_idx}", f"chunk_{chunk_idx}_video.mp4")
+                    if os.path.exists(chunk_video_file):
+                        try:
+                            probe = ffmpeg.probe(chunk_video_file)
+                            video_streams = [s for s in probe.get('streams', []) if s.get('codec_type') == 'video']
+                            if video_streams:
+                                duration = float(video_streams[0].get('duration', 0))
+                                chunk_durations.append(duration)
+                                print(f"[SRT 합치기] 청크 {chunk_idx} 길이: {duration:.2f}초")
+                            else:
+                                chunk_durations.append(0.0)
+                        except Exception as e:
+                            print(f"[경고] 청크 {chunk_idx} 길이 확인 실패: {e}")
+                            chunk_durations.append(0.0)
+                    else:
+                        chunk_durations.append(0.0)
+                
+                # 각 청크의 누적 시간 오프셋 계산
+                chunk_offsets = [0.0]
+                for i in range(1, total_chunks):
+                    chunk_offsets.append(chunk_offsets[i-1] + chunk_durations[i-1])
+                
+                print(f"[SRT 합치기] 청크 오프셋: {chunk_offsets}")
+                
+                # 전체 SRT 파일 생성
+                subtitle_index = 1
+                with open(subtitle_file, "w", encoding="utf-8") as f:
+                    for chunk_idx in range(1, total_chunks + 1):
+                        chunk_subtitle_file = os.path.join(assets_folder, f"chunk_{chunk_idx}", f"chunk_{chunk_idx}_subtitles.srt")
+                        time_offset = chunk_offsets[chunk_idx - 1]
+                        
+                        if not os.path.exists(chunk_subtitle_file):
+                            print(f"[경고] 청크 {chunk_idx} SRT 파일이 없습니다: {chunk_subtitle_file}")
+                            continue
+                        
+                        print(f"[SRT 합치기] 청크 {chunk_idx} SRT 파일 읽는 중... (오프셋: {time_offset:.2f}초)")
+                        
+                        try:
+                            with open(chunk_subtitle_file, "r", encoding="utf-8") as chunk_f:
+                                lines = chunk_f.readlines()
+                            
+                            i = 0
+                            while i < len(lines):
+                                line = lines[i].strip()
+                                if not line:
+                                    i += 1
+                                    continue
+                                
+                                # 자막 인덱스 (무시하고 새로 할당)
+                                try:
+                                    int(line)
+                                except ValueError:
+                                    i += 1
+                                    continue
+                                
+                                # 시간 정보
+                                if i + 1 >= len(lines):
+                                    break
+                                time_line = lines[i + 1].strip()
+                                if '-->' not in time_line:
+                                    i += 1
+                                    continue
+                                
+                                start_time_str, end_time_str = time_line.split('-->')
+                                start_time = srt_time_to_seconds(start_time_str.strip()) + time_offset
+                                end_time = srt_time_to_seconds(end_time_str.strip()) + time_offset
+                                
+                                # 자막 텍스트 수집
+                                subtitle_text_lines = []
+                                i += 2
+                                while i < len(lines) and lines[i].strip():
+                                    subtitle_text_lines.append(lines[i].rstrip())
+                                    i += 1
+                                
+                                if subtitle_text_lines:
+                                    f.write(f"{subtitle_index}\n")
+                                    f.write(f"{seconds_to_srt_time(start_time)} --> {seconds_to_srt_time(end_time)}\n")
+                                    f.write("\n".join(subtitle_text_lines) + "\n")
+                                    f.write("\n")
+                                    subtitle_index += 1
+                                
+                                i += 1  # 빈 줄 건너뛰기
+                        except Exception as chunk_exc:
+                            print(f"[경고] 청크 {chunk_idx} SRT 파일 읽기 실패: {chunk_exc}")
+                            import traceback
+                            traceback.print_exc()
+                            continue
+                
+                if os.path.exists(subtitle_file):
+                    srt_size = os.path.getsize(subtitle_file)
+                    print(f"[완료] 전체 SRT 파일 생성됨: {subtitle_file} (크기: {srt_size} bytes, 총 {subtitle_index - 1}개 자막)")
+                else:
+                    print(f"[경고] SRT 파일이 생성되지 않았습니다: {subtitle_file}")
+            except Exception as srt_exc:
+                print(f"[경고] 전체 SRT 파일 생성 실패: {srt_exc}")
+                import traceback
+                traceback.print_exc()
+        elif total_chunks == 1:
+            # 청크가 하나면 해당 청크의 SRT 파일을 복사
+            progress("자막 파일 복사 중...")
+            try:
+                chunk_subtitle_file = os.path.join(assets_folder, "chunk_1", "chunk_1_subtitles.srt")
+                if os.path.exists(chunk_subtitle_file):
+                    import shutil
+                    shutil.copy2(chunk_subtitle_file, subtitle_file)
+                    print(f"[완료] SRT 파일 복사됨: {subtitle_file}")
+                else:
+                    print(f"[경고] 청크 1 SRT 파일이 없습니다: {chunk_subtitle_file}")
+            except Exception as srt_exc:
+                print(f"[경고] SRT 파일 복사 실패: {srt_exc}")
+                import traceback
+                traceback.print_exc()
+        
         # 파일이 실제로 존재하는지 확인하고, 존재할 때만 video_filename 설정
         # video_file은 get_job_paths에서 이미 올바른 경로로 설정되어 있어야 함
         # (STATIC_FOLDER/final_video_{job_id}.mp4)
@@ -2260,6 +2662,10 @@ def start_job():
     char_limit_raw = str(payload.get("char_limit") or "").strip()
     voice_id = (payload.get("voice_id") or "").strip()
     mode = (payload.get("mode") or "animation").strip().lower()
+    include_subtitles = payload.get("include_subtitles", True)  # 기본값은 True (자막 포함)
+    # API 키 (사용자가 입력한 경우 사용, 없으면 기본값 사용)
+    replicate_api_key = payload.get("replicate_api_key") or None
+    elevenlabs_api_key = payload.get("elevenlabs_api_key") or None
 
     try:
         char_limit = int(char_limit_raw) if char_limit_raw else 50
@@ -2311,7 +2717,7 @@ def start_job():
 
     thread = threading.Thread(
         target=run_generation_job,
-        args=(job_id, script_text, char_limit, voice_id, prompts_override, existing_images, mode, sentences_override),
+        args=(job_id, script_text, char_limit, voice_id, prompts_override, existing_images, mode, sentences_override, include_subtitles, replicate_api_key, elevenlabs_api_key),
         daemon=True,
     )
     thread.start()
@@ -2622,6 +3028,9 @@ def api_generate_images_direct():
     prompts = data.get("prompts") or []
     mode = (data.get("mode") or "animation").strip().lower()
     test_mode = data.get("test_mode", False)
+    # API 키 (사용자가 입력한 경우 사용, 없으면 기본값 사용)
+    replicate_api_key = data.get("replicate_api_key") or None
+    elevenlabs_api_key = data.get("elevenlabs_api_key") or None
     
     if not script_text or not sentences or not prompts:
         return jsonify({"error": "대본, 문장, 프롬프트가 모두 필요합니다."}), 400
@@ -2696,7 +3105,7 @@ def api_generate_images_direct():
                                     job_data["progress"].append(f"{idx}번 이미지 기본 이미지 생성 (테스트 모드)")
                     else:
                         # 이미지 생성 실행
-                        success = generate_image(prompt, image_filename, mode=mode)
+                        success = generate_image(prompt, image_filename, mode=mode, replicate_api_key=replicate_api_key)
                         
                         # 생성 결과 확인
                         if not success or not os.path.exists(image_filename):
@@ -2815,6 +3224,72 @@ def api_regenerate_image():
     rel_path = os.path.relpath(abs_path, STATIC_FOLDER)
     image_url = url_for("static", filename=rel_path.replace(os.sep, "/")) + f"?v={int(time.time())}"
     return jsonify({"job_id": job_id, "scene_index": scene_index, "image_url": image_url})
+
+
+@app.route("/check_replicate_api")
+def check_replicate_api():
+    """Replicate API 서버 상태 확인"""
+    if not REPLICATE_API_TOKEN:
+        return jsonify({"status": "error", "message": "REPLICATE_API_TOKEN이 설정되지 않았습니다."}), 500
+    
+    try:
+        headers = {
+            "Authorization": f"Token {REPLICATE_API_TOKEN}",
+            "Content-Type": "application/json",
+        }
+        
+        # 1. 모델 정보 조회로 API 연결 테스트
+        test_url = "https://api.replicate.com/v1/models/leonardoai/lucid-origin"
+        print(f"[API 상태 확인] 모델 정보 조회: {test_url}")
+        response = requests.get(test_url, headers=headers, timeout=10)
+        
+        result = {
+            "model_check": {
+                "status_code": response.status_code,
+                "status": "ok" if response.status_code == 200 else "error",
+                "message": "API 연결 정상" if response.status_code == 200 else f"API 오류: {response.status_code}"
+            }
+        }
+        
+        # 2. 간단한 이미지 생성 요청 테스트
+        if response.status_code == 200:
+            print(f"[API 상태 확인] 이미지 생성 요청 테스트...")
+            request_url = "https://api.replicate.com/v1/models/leonardoai/lucid-origin/predictions"
+            body = {
+                "input": {
+                    "prompt": "a simple red circle on white background",
+                    "negative_prompt": "text, watermark",
+                    "aspect_ratio": "16:9",
+                    "guidance_scale": 3.5,
+                    "num_inference_steps": 28,
+                    "image_format": "png"
+                }
+            }
+            create_res = requests.post(request_url, headers=headers, json=body, timeout=30)
+            result["prediction_check"] = {
+                "status_code": create_res.status_code,
+                "status": "ok" if create_res.status_code in (200, 201) else "error",
+                "message": "이미지 생성 요청 성공" if create_res.status_code in (200, 201) else f"이미지 생성 요청 실패: {create_res.status_code}"
+            }
+            
+            if create_res.status_code >= 500:
+                result["prediction_check"]["message"] = f"⚠️ Replicate API 서버 에러 ({create_res.status_code}). Cloudflare의 Internal Server Error로 인해 서비스가 일시적으로 중단되었을 수 있습니다."
+        else:
+            result["prediction_check"] = {
+                "status_code": None,
+                "status": "skipped",
+                "message": "모델 정보 조회 실패로 인해 이미지 생성 요청 테스트를 건너뜁니다."
+            }
+        
+        return jsonify(result)
+    except Exception as e:
+        print(f"[API 상태 확인] 오류: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "status": "error",
+            "message": f"API 상태 확인 중 오류 발생: {str(e)}"
+        }), 500
 
 
 @app.route("/preview_voice")
@@ -3000,6 +3475,40 @@ def download_images(job_id):
         import traceback
         traceback.print_exc()
         return jsonify({"error": f"이미지 다운로드 실패: {str(e)}"}), 500
+
+
+@app.route("/download_subtitle/<job_id>")
+def download_subtitle(job_id):
+    """생성된 SRT 자막 파일 다운로드"""
+    try:
+        # job_id로 subtitle_file 경로 가져오기
+        _, subtitle_file, _ = get_job_paths(job_id)
+        
+        # SRT 파일이 존재하는지 확인
+        if not os.path.exists(subtitle_file):
+            return jsonify({"error": "자막 파일을 찾을 수 없습니다."}), 404
+        
+        # 파일 크기 확인
+        file_size = os.path.getsize(subtitle_file)
+        if file_size == 0:
+            return jsonify({"error": "자막 파일이 비어있습니다."}), 404
+        
+        print(f"[SRT 다운로드] 파일: {subtitle_file} (크기: {file_size} bytes)")
+        
+        # SRT 파일 다운로드
+        srt_filename = f"subtitles_{job_id}.srt"
+        return send_file(
+            subtitle_file,
+            mimetype='text/plain; charset=utf-8',
+            as_attachment=True,
+            download_name=srt_filename
+        )
+    
+    except Exception as e:
+        print(f"[다운로드 오류] SRT 파일 다운로드 실패: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"자막 다운로드 실패: {str(e)}"}), 500
 
 
 if __name__ == "__main__":
