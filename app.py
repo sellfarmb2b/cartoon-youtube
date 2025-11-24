@@ -1847,10 +1847,36 @@ def create_video(
             
             # 비디오 스트림 생성 (기본 스케일)
             # 이미지를 먼저 1920x1080으로 스케일
-            base_stream = (
-                ffmpeg.input(image_path, loop=1, t=duration, framerate=VIDEO_FPS)
-                .filter("scale", 1920, 1080)
-            )
+            # 이미지 형식을 명시적으로 지정하여 안정적인 입력 보장
+            try:
+                # 이미지 파일이 실제로 존재하고 읽을 수 있는지 확인
+                if not os.path.exists(image_path):
+                    raise FileNotFoundError(f"이미지 파일이 존재하지 않습니다: {image_path}")
+                
+                # PIL로 이미지 크기 확인
+                with Image.open(image_path) as img:
+                    img_width, img_height = img.size
+                    print(f"[이미지 확인] scene_{scene_id}: 이미지 크기 {img_width}x{img_height}")
+                
+                # FFmpeg 입력: PNG 형식 명시적으로 지정
+                base_stream = (
+                    ffmpeg.input(image_path, format='image2', loop=1, t=duration, framerate=VIDEO_FPS)
+                    .filter("scale", 1920, 1080)
+                )
+            except Exception as img_exc:
+                print(f"[오류] scene_{scene_id}: 이미지 로드 실패: {img_exc}")
+                import traceback
+                traceback.print_exc()
+                # 이미지 로드 실패 시 검은색 이미지로 대체
+                fallback_image = os.path.join(assets_folder, f"scene_{scene_id}_fallback.png")
+                if not os.path.exists(fallback_image):
+                    black_img = Image.new("RGB", (1920, 1080), color="black")
+                    black_img.save(fallback_image, format="PNG")
+                image_path = fallback_image
+                base_stream = (
+                    ffmpeg.input(image_path, format='image2', loop=1, t=duration, framerate=VIDEO_FPS)
+                    .filter("scale", 1920, 1080)
+                )
             
             # 자막 적용 (ASS 형식 사용 - 배경 박스가 끊어지지 않음)
             # 자막을 먼저 적용하여 타임코드가 정확하게 유지되도록 함
@@ -1943,8 +1969,9 @@ def create_video(
                 print(f"[재시도] scene_{scene_id} 기본 스트림으로 재시도 중...")
                 try:
                     # 모션 효과 없이 기본 스트림만 사용
+                    # 이미지 형식을 명시적으로 지정
                     simple_stream = (
-                        ffmpeg.input(image_path, loop=1, t=duration, framerate=VIDEO_FPS)
+                        ffmpeg.input(image_path, format='image2', loop=1, t=duration, framerate=VIDEO_FPS)
                         .filter("scale", 1920, 1080)
                     )
                     if include_subtitles and os.path.exists(scene_subtitle_ass) and os.path.getsize(scene_subtitle_ass) > 0:
