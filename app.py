@@ -1091,10 +1091,12 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                 request_url = f"https://api.replicate.com/v1/models/{model_owner}/{model_name}/predictions"
                 body = {"input": replicate_input}
             else:
-                replicate_input.update({"guidance_scale": 3.5, "num_inference_steps": 28, "image_format": "png"})
-                request_url = (
-                    "https://api.replicate.com/v1/models/leonardoai/lucid-origin/predictions"
-                )
+                # prunaai/hidream-l1-fast 모델 사용 (HiDream-I1-Fast: 16 inference steps)
+                replicate_input.update({"num_inference_steps": 16, "image_format": "png"})
+                # guidance_scale은 hidream 모델에서 지원하지 않을 수 있으므로 제거
+                model_owner = "prunaai"
+                model_name = "hidream-l1-fast"
+                request_url = f"https://api.replicate.com/v1/models/{model_owner}/{model_name}/predictions"
                 body = {"input": replicate_input}
 
             print(f"[generate_image] Replicate API 요청 전송 중...")
