@@ -111,6 +111,24 @@
             <button type="button" id="generateImagesBtn" disabled>이미지 생성</button>
             <button type="button" id="generateVideoBtn" disabled>영상 생성</button>
         </div>
+        
+        <div style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" id="includeSubtitlesCheckbox" checked style="width: 18px; height: 18px; cursor: pointer;">
+            <label for="includeSubtitlesCheckbox" style="cursor: pointer; color: #374151; font-size: 14px;">자막 포함</label>
+        </div>
+
+        <details style="margin-top: 20px; border: 1px solid #d1d5db; border-radius: 8px; padding: 12px; background: #f9fafb;">
+            <summary style="cursor: pointer; font-weight: 600; color: #1f2937; user-select: none;">API 키 설정 (선택사항)</summary>
+            <div style="margin-top: 16px;">
+                <label for="replicateApiKey" style="display: block; margin-bottom: 6px; font-weight: 600; color: #1f2937; font-size: 14px;">Replicate 이미지 생성 API 키</label>
+                <input type="password" id="replicateApiKey" placeholder="r8_..." style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; font-size: 14px; margin-bottom: 12px;">
+                <p style="color: #6b7280; font-size: 12px; margin: -8px 0 12px;">입력하지 않으면 기본 API 키가 사용됩니다.</p>
+                
+                <label for="elevenlabsApiKey" style="display: block; margin-bottom: 6px; font-weight: 600; color: #1f2937; font-size: 14px;">ElevenLabs TTS API 키</label>
+                <input type="password" id="elevenlabsApiKey" placeholder="sk-..." style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; font-size: 14px;">
+                <p style="color: #6b7280; font-size: 12px; margin: 4px 0 0;">입력하지 않으면 기본 API 키가 사용됩니다.</p>
+            </div>
+        </details>
 
         <div id="statusMessage" class="status-msg info"></div>
     </div>
@@ -777,6 +795,10 @@
 
                 try {
                     // 프롬프트 생성 단계를 건너뛰고 바로 이미지 생성
+                    // API 키 읽기
+                    const replicateApiKey = document.getElementById('replicateApiKey')?.value.trim() || null;
+                    const elevenlabsApiKey = document.getElementById('elevenlabsApiKey')?.value.trim() || null;
+                    
                     const response = await fetch('/generate_images_direct', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -785,7 +807,9 @@
                             sentences: sentences,
                             prompts: userPrompts,
                             mode: currentMode,
-                            test_mode: isTestMode
+                            test_mode: isTestMode,
+                            replicate_api_key: replicateApiKey,
+                            elevenlabs_api_key: elevenlabsApiKey
                         })
                     });
                     if (!response.ok) {
@@ -1185,11 +1209,21 @@
                     clearInterval(pollingInterval);
                 }
 
+                const includeSubtitlesCheckbox = document.getElementById('includeSubtitlesCheckbox');
+                const includeSubtitles = includeSubtitlesCheckbox ? includeSubtitlesCheckbox.checked : true;
+                
+                // API 키 읽기
+                const replicateApiKey = document.getElementById('replicateApiKey')?.value.trim() || null;
+                const elevenlabsApiKey = document.getElementById('elevenlabsApiKey')?.value.trim() || null;
+                
                 const payload = {
                     job_id: currentJobId,
                     char_limit: charLimitInput.value,
                     voice_id: voiceSelect.value,
-                    mode: currentMode
+                    mode: currentMode,
+                    include_subtitles: includeSubtitles,
+                    replicate_api_key: replicateApiKey,
+                    elevenlabs_api_key: elevenlabsApiKey
                 };
 
                 try {
@@ -1258,6 +1292,9 @@
                                             </a>
                                             <button type="button" onclick="window.location.href='/download_images/${jobId}'" style="background:#10b981;">
                                                 일괄 사진 다운로드
+                                            </button>
+                                            <button type="button" onclick="window.location.href='/download_subtitle/${jobId}'" style="background:#3b82f6;">
+                                                자막(SRT) 다운로드
                                             </button>
                                         </div>
                                     </div>
