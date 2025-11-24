@@ -2015,6 +2015,25 @@ def create_video(
                     print(f"[실패] scene_{scene_id} 재시도도 실패: {retry_exc}")
                     raise ffmpeg_exc  # 원래 오류를 다시 발생
             
+            # 각 씬 처리 후 반드시 리스트에 포함되었는지 확인 (첫 번째 씬 누락 방지)
+            if scene_video_file not in scene_video_files:
+                if os.path.exists(scene_video_file):
+                    scene_video_files.append(scene_video_file)
+                    print(f"[DEBUG] scene_{scene_id} 비디오 파일을 리스트에 추가 (처리 후 확인): {os.path.basename(scene_video_file)}")
+                else:
+                    # 파일이 없으면 즉시 무음 비디오 생성
+                    print(f"[경고] scene_{scene_id} 비디오 파일이 없어 즉시 무음 비디오 생성")
+                    try:
+                        silent_video = ffmpeg.input('color=c=black:s=1920x1080:d=' + str(duration), f='lavfi')
+                        silent_audio = ffmpeg.input('anullsrc=channel_layout=mono:sample_rate=44100', f='lavfi', t=duration)
+                        fallback_output = ffmpeg.output(silent_video, silent_audio, scene_video_file, vcodec="libx264", acodec="aac", pix_fmt="yuv420p", preset="ultrafast", t=duration)
+                        ffmpeg.run(fallback_output, overwrite_output=True, quiet=True)
+                        if os.path.exists(scene_video_file):
+                            scene_video_files.append(scene_video_file)
+                            print(f"[DEBUG] scene_{scene_id} 무음 비디오 생성 및 리스트 추가 완료")
+                    except Exception as immediate_fallback_exc:
+                        print(f"[오류] scene_{scene_id} 즉시 무음 비디오 생성 실패: {immediate_fallback_exc}")
+            
             if idx % 10 == 0 or idx == len(scene_data_with_timestamps):
                 if progress_cb:
                     progress_cb(f"씬 비디오 생성 중... ({idx}/{len(scene_data_with_timestamps)})")
