@@ -2037,17 +2037,57 @@ def create_video(
             except:
                 pass
     
-    # 전체 씬 비디오 생성 완료 후 확인
-    print(f"[create_video] 전체 씬 비디오 생성 완료. 총 {len(scene_video_files)}개 파일 예상")
-    existing_scene_files = [f for f in scene_video_files if os.path.exists(f)]
-    existing_count = len(existing_scene_files)
-    print(f"[create_video] 실제 존재하는 씬 비디오 파일: {existing_count}/{len(scene_video_files)}개")
-    if existing_count < len(scene_video_files):
-        missing_files = [f for f in scene_video_files if not os.path.exists(f)]
-        print(f"[경고] 누락된 씬 비디오 파일 ({len(missing_files)}개):")
-        for missing_file in missing_files:
-            print(f"  - {os.path.basename(missing_file)}")
-        print(f"[경고] 일부 씬 비디오 파일이 생성되지 않았습니다. ({existing_count}/{len(scene_video_files)})")
+    # 전체 씬 비디오 생성 완료 후 확인 및 누락된 씬 보완
+    print(f"[create_video] 전체 씬 비디오 생성 완료. 총 {len(scene_data_with_timestamps)}개 씬 예상, 현재 리스트에 {len(scene_video_files)}개 파일")
+    
+    # scene_data_with_timestamps의 모든 씬에 대해 비디오 파일이 존재하는지 확인
+    expected_scene_ids = {scene.get('scene_id') for scene in scene_data_with_timestamps}
+    existing_scene_ids = set()
+    scene_file_map = {}  # scene_id -> file_path 매핑
+    
+    for scene_file in scene_video_files:
+        if os.path.exists(scene_file):
+            import re
+            basename = os.path.basename(scene_file)
+            match = re.search(r'scene_(\d+)_video\.mp4', basename)
+            if match:
+                scene_id = int(match.group(1))
+                existing_scene_ids.add(scene_id)
+                scene_file_map[scene_id] = scene_file
+    
+    missing_scene_ids = expected_scene_ids - existing_scene_ids
+    if missing_scene_ids:
+        print(f"[경고] 누락된 씬 비디오 파일 ({len(missing_scene_ids)}개): {sorted(missing_scene_ids)}")
+        # 누락된 씬에 대해 무음 비디오 생성
+        for missing_scene_id in sorted(missing_scene_ids):
+            # 해당 씬의 정보 찾기
+            missing_scene = None
+            for scene in scene_data_with_timestamps:
+                if scene.get('scene_id') == missing_scene_id:
+                    missing_scene = scene
+                    break
+            
+            if missing_scene:
+                duration = missing_scene.get('duration', 1.0)
+                missing_video_file = os.path.join(temp_scene_folder, f"scene_{missing_scene_id}_video.mp4")
+                print(f"[보완] scene_{missing_scene_id} 무음 비디오 생성 중... (duration: {duration:.2f}초)")
+                try:
+                    silent_video = ffmpeg.input('color=c=black:s=1920x1080:d=' + str(duration), f='lavfi')
+                    silent_audio = ffmpeg.input('anullsrc=channel_layout=mono:sample_rate=44100', f='lavfi', t=duration)
+                    fallback_output = ffmpeg.output(silent_video, silent_audio, missing_video_file, vcodec="libx264", acodec="aac", pix_fmt="yuv420p", preset="ultrafast", t=duration)
+                    ffmpeg.run(fallback_output, overwrite_output=True, quiet=True)
+                    if os.path.exists(missing_video_file):
+                        scene_video_files.append(missing_video_file)
+                        scene_file_map[missing_scene_id] = missing_video_file
+                        print(f"[보완 완료] scene_{missing_scene_id} 무음 비디오 생성됨: {os.path.basename(missing_video_file)}")
+                    else:
+                        print(f"[오류] scene_{missing_scene_id} 무음 비디오 생성 실패")
+                except Exception as fallback_exc:
+                    print(f"[오류] scene_{missing_scene_id} 무음 비디오 생성 중 예외 발생: {fallback_exc}")
+    
+    # 최종 확인
+    final_existing_count = sum(1 for f in scene_video_files if os.path.exists(f))
+    print(f"[create_video] 최종 확인: {final_existing_count}/{len(scene_data_with_timestamps)}개 씬 비디오 파일 존재")
     
     # FFmpeg concat demuxer를 사용하여 모든 씬 비디오 합치기 (메모리 효율적)
     try:
@@ -2068,28 +2108,64 @@ def create_video(
                 return int(match.group(1))
             return 0  # 매칭 실패 시 0 반환
         
-        scene_video_files_sorted = sorted(scene_video_files, key=extract_scene_id)
-        print(f"[DEBUG] scene_video_files 정렬 완료: {len(scene_video_files_sorted)}개 파일")
-        for i, scene_file in enumerate(scene_video_files_sorted, 1):
-            scene_id = extract_scene_id(scene_file)
-            print(f"[DEBUG] 정렬된 리스트[{i-1}]: scene_{scene_id} - {os.path.basename(scene_file)}")
-        
-        # concat 파일 리스트 생성
+        # scene_data_with_timestamps의 순서대로 concat_list.txt 생성 (중요: 모든 씬이 포함되도록)
         concat_list_file = os.path.join(temp_scene_folder, "concat_list.txt")
         file_count = 0
         concat_file_contents = []  # 디버깅용
+        
+        print(f"[DEBUG] scene_data_with_timestamps 순서대로 concat_list.txt 생성 중... (총 {len(scene_data_with_timestamps)}개 씬)")
+        
         with open(concat_list_file, "w", encoding="utf-8") as f:
-            for idx, scene_file in enumerate(scene_video_files_sorted, 1):
-                if os.path.exists(scene_file):
+            for idx, scene in enumerate(scene_data_with_timestamps, 1):
+                scene_id = scene.get('scene_id')
+                # 해당 scene_id의 비디오 파일 찾기
+                scene_video_file = scene_file_map.get(scene_id)
+                
+                if not scene_video_file:
+                    # scene_video_files에서 찾기
+                    for scene_file in scene_video_files:
+                        file_scene_id = extract_scene_id(scene_file)
+                        if file_scene_id == scene_id:
+                            scene_video_file = scene_file
+                            scene_file_map[scene_id] = scene_file
+                            break
+                
+                # 여전히 없으면 경로로 직접 생성
+                if not scene_video_file:
+                    scene_video_file = os.path.join(temp_scene_folder, f"scene_{scene_id}_video.mp4")
+                
+                if os.path.exists(scene_video_file):
                     # 절대 경로로 변환 (FFmpeg concat demuxer는 상대 경로에 문제가 있을 수 있음)
-                    abs_path = os.path.abspath(scene_file)
+                    abs_path = os.path.abspath(scene_video_file)
                     # 경로에 작은따옴표가 있으면 이스케이프 처리
                     escaped_path = abs_path.replace("'", "'\\''")
                     f.write(f"file '{escaped_path}'\n")
                     file_count += 1
-                    concat_file_contents.append(f"  [{idx}] {os.path.basename(scene_file)}")
+                    file_size = os.path.getsize(scene_video_file)
+                    concat_file_contents.append(f"  [{idx}] scene_{scene_id}_video.mp4 (크기: {file_size} bytes)")
+                    print(f"[DEBUG] concat_list[{idx}]: scene_{scene_id} 추가됨")
                 else:
-                    print(f"[경고] 씬 비디오 파일이 존재하지 않아 concat_list에서 제외: {scene_file}")
+                    print(f"[경고] scene_{scene_id} 비디오 파일이 존재하지 않아 concat_list에서 제외: {scene_video_file}")
+                    # 무음 비디오 생성 시도
+                    duration = scene.get('duration', 1.0)
+                    print(f"[보완] scene_{scene_id} 무음 비디오 즉시 생성 중... (duration: {duration:.2f}초)")
+                    try:
+                        silent_video = ffmpeg.input('color=c=black:s=1920x1080:d=' + str(duration), f='lavfi')
+                        silent_audio = ffmpeg.input('anullsrc=channel_layout=mono:sample_rate=44100', f='lavfi', t=duration)
+                        fallback_output = ffmpeg.output(silent_video, silent_audio, scene_video_file, vcodec="libx264", acodec="aac", pix_fmt="yuv420p", preset="ultrafast", t=duration)
+                        ffmpeg.run(fallback_output, overwrite_output=True, quiet=True)
+                        if os.path.exists(scene_video_file):
+                            abs_path = os.path.abspath(scene_video_file)
+                            escaped_path = abs_path.replace("'", "'\\''")
+                            f.write(f"file '{escaped_path}'\n")
+                            file_count += 1
+                            file_size = os.path.getsize(scene_video_file)
+                            concat_file_contents.append(f"  [{idx}] scene_{scene_id}_video.mp4 (무음, 크기: {file_size} bytes)")
+                            print(f"[보완 완료] scene_{scene_id} 무음 비디오 생성 및 추가됨")
+                        else:
+                            print(f"[오류] scene_{scene_id} 무음 비디오 생성 실패")
+                    except Exception as immediate_fallback_exc:
+                        print(f"[오류] scene_{scene_id} 무음 비디오 즉시 생성 중 예외 발생: {immediate_fallback_exc}")
         
         if file_count == 0:
             raise RuntimeError("합칠 씬 비디오 파일이 없습니다.")
