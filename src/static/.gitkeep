@@ -1,0 +1,4 @@
+# Keep the static directory in version control so that packaging scripts
+# (e.g., GitHub Actions + PyInstaller) can bundle it even though the
+# directory normally only contains generated runtime assets.
+
