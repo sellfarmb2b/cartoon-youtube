@@ -12,6 +12,8 @@ import zipfile
 import random
 import socket
 import platform
+import logging
+from datetime import datetime
 from uuid import uuid4
 from io import BytesIO
 from itertools import islice
@@ -49,6 +51,31 @@ from utils import get_ffmpeg_path, get_ffprobe_path, resource_path
 
 config_manager = ConfigManager()
 
+# 로그 파일 설정 (Windows 환경에서 디버깅용)
+LOG_DIR = os.path.join(os.path.expanduser("~"), "YouTubeMaker_logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+LOG_FILE = os.path.join(LOG_DIR, f"youtubemaker_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+
+# 로깅 설정
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_FILE, encoding='utf-8'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
+
+def log_debug(message: str):
+    """디버그 로그 출력 (파일과 콘솔 모두)"""
+    logger.debug(message)
+    print(f"[DEBUG] {message}")
+
+def log_error(message: str, exc_info=None):
+    """에러 로그 출력 (파일과 콘솔 모두)"""
+    logger.error(message, exc_info=exc_info)
+    print(f"[ERROR] {message}")
 
 def get_default_download_folder() -> str:
     """OS별 기본 다운로드 폴더 경로 반환"""
@@ -3513,22 +3540,36 @@ def api_generate_images_direct():
             image_results = []
             image_files = {}
             
-            print(f"[이미지 생성 시작] 총 {total}개 이미지 생성 예정 (테스트 모드: {test_mode})")
+            log_debug(f"[이미지 생성 시작] 총 {total}개 이미지 생성 예정 (테스트 모드: {test_mode})")
+            log_debug(f"[환경 정보] OS: {platform.system()}, Python: {sys.version}")
+            log_debug(f"[경로 정보] assets_folder: {assets_folder}")
+            log_debug(f"[경로 정보] STATIC_FOLDER: {STATIC_FOLDER}")
+            log_debug(f"[경로 정보] ASSETS_BASE_FOLDER: {ASSETS_BASE_FOLDER}")
+            log_debug(f"[API 키] replicate_api_key 존재: {bool(replicate_api_key)}")
+            
+            # Windows 경로 확인
+            if platform.system().lower() == "windows":
+                log_debug(f"[Windows 경로] assets_folder 존재: {os.path.exists(assets_folder)}")
+                log_debug(f"[Windows 경로] assets_folder 쓰기 가능: {os.access(assets_folder, os.W_OK)}")
             
             for idx, (sentence, prompt) in enumerate(zip(sentences, prompts), start=1):
                 try:
                     # 진행도 업데이트 (시작)
-                    progress_pct = int((idx / total) * 100)
+                    progress_pct = int(((idx - 1) / total) * 100)
                     with jobs_lock:
                         job_data = jobs.get(job_id)
                         if job_data is not None:
                             job_data["stage_progress"] = progress_pct
                             job_data["current_stage"] = f"이미지 생성 중... ({idx}/{total})"
                             job_data["progress"].append(f"{idx}번 이미지 생성 시작...")
+                            job_data["status"] = "running"  # 상태를 명시적으로 running으로 설정
                     
-                    print(f"[이미지 생성] {idx}/{total} 시작 - 프롬프트: {prompt[:50]}...")
+                    log_debug(f"[이미지 생성] {idx}/{total} 시작 - 프롬프트: {prompt[:50]}...")
                     
+                    # Windows 경로 처리 개선
                     image_filename = os.path.join(assets_folder, f"scene_{idx}_image.png")
+                    image_filename = os.path.normpath(image_filename)  # 경로 정규화
+                    log_debug(f"[경로] image_filename: {image_filename}")
                     
                     # 테스트 모드일 때 photo 폴더의 이미지 사용
                     if test_mode:
@@ -3553,19 +3594,32 @@ def api_generate_images_direct():
                                     job_data["progress"].append(f"{idx}번 이미지 기본 이미지 생성 (테스트 모드)")
                     else:
                         # 이미지 생성 실행
-                        success = generate_image(prompt, image_filename, mode=mode, replicate_api_key=replicate_api_key)
+                        log_debug(f"[이미지 생성] {idx}번 이미지 생성 함수 호출 시작")
+                        try:
+                            success = generate_image(prompt, image_filename, mode=mode, replicate_api_key=replicate_api_key)
+                            log_debug(f"[이미지 생성] {idx}번 generate_image 반환값: {success}")
+                        except Exception as gen_exc:
+                            log_error(f"[이미지 생성] {idx}번 generate_image 예외 발생", exc_info=gen_exc)
+                            success = False
                         
                         # 생성 결과 확인
-                        if not success or not os.path.exists(image_filename):
-                            print(f"[경고] {idx}번 이미지 생성 실패 또는 파일 없음, 기본 이미지 생성")
-                            Image.new("RGB", (1920, 1080), color="black").save(image_filename)
+                        file_exists = os.path.exists(image_filename)
+                        log_debug(f"[이미지 생성] {idx}번 파일 존재 여부: {file_exists}, 경로: {image_filename}")
+                        
+                        if not success or not file_exists:
+                            log_error(f"[경고] {idx}번 이미지 생성 실패 또는 파일 없음 (success={success}, exists={file_exists}), 기본 이미지 생성")
+                            try:
+                                Image.new("RGB", (1920, 1080), color="black").save(image_filename)
+                                log_debug(f"[이미지 생성] {idx}번 기본 이미지 생성 완료")
+                            except Exception as save_exc:
+                                log_error(f"[이미지 생성] {idx}번 기본 이미지 저장 실패", exc_info=save_exc)
                             with jobs_lock:
                                 job_data = jobs.get(job_id)
                                 if job_data is not None:
                                     job_data["progress"].append(f"{idx}번 이미지 생성 실패 (기본 이미지 사용)")
                         else:
                             file_size = os.path.getsize(image_filename)
-                            print(f"[이미지 생성] {idx}/{total} 완료 - 파일 크기: {file_size} bytes")
+                            log_debug(f"[이미지 생성] {idx}/{total} 완료 - 파일 크기: {file_size} bytes")
                             # 진행도 업데이트 (완료)
                             progress_pct = int((idx / total) * 100)
                             with jobs_lock:
@@ -4003,6 +4057,51 @@ def download_subtitle(job_id):
         import traceback
         traceback.print_exc()
         return jsonify({"error": f"자막 다운로드 실패: {str(e)}"}), 500
+
+
+@app.route("/api/debug/info", methods=["GET"])
+def api_debug_info():
+    """디버깅 정보 반환"""
+    try:
+        info = {
+            "platform": platform.system(),
+            "platform_version": platform.version(),
+            "python_version": sys.version,
+            "log_file": LOG_FILE,
+            "log_dir": LOG_DIR,
+            "static_folder": STATIC_FOLDER,
+            "assets_base_folder": ASSETS_BASE_FOLDER,
+            "static_folder_exists": os.path.exists(STATIC_FOLDER),
+            "static_folder_writable": os.access(STATIC_FOLDER, os.W_OK) if os.path.exists(STATIC_FOLDER) else False,
+            "replicate_api_available": bool(REPLICATE_API_TOKEN),
+            "elevenlabs_api_available": bool(ELEVENLABS_API_KEY),
+            "openai_api_available": bool(OPENAI_API_KEY),
+            "ffmpeg_path": FFMPEG_BINARY,
+            "ffmpeg_exists": os.path.exists(FFMPEG_BINARY) if FFMPEG_BINARY else False,
+        }
+        return jsonify(info)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/debug/log", methods=["GET"])
+def api_debug_log():
+    """최근 로그 파일 내용 반환"""
+    try:
+        if os.path.exists(LOG_FILE):
+            with open(LOG_FILE, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+                # 최근 100줄만 반환
+                recent_lines = lines[-100:] if len(lines) > 100 else lines
+                return jsonify({
+                    "log_file": LOG_FILE,
+                    "total_lines": len(lines),
+                    "recent_lines": recent_lines
+                })
+        else:
+            return jsonify({"error": "로그 파일이 없습니다.", "log_file": LOG_FILE}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/download_video/<job_id>")
