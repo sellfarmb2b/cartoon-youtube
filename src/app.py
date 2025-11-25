@@ -1273,11 +1273,11 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                             # retry_after 값이 있으면 사용, 없으면 기본값 사용
                             retry_after = error_data.get("retry_after")
                             if retry_after:
-                            wait_time = int(retry_after) + 1  # retry_after에 1초 추가하여 안전하게 대기
+                                wait_time = int(retry_after) + 1  # retry_after에 1초 추가하여 안전하게 대기
                             else:
-                            wait_time = REPLICATE_RATE_LIMIT_RETRY_DELAY
-                            
-                            if retry_attempt < max_retries - 1:
+                                wait_time = REPLICATE_RATE_LIMIT_RETRY_DELAY
+                        
+                        if retry_attempt < max_retries - 1:
                             print(f"[Rate Limit] 429 에러 발생: {error_detail}")
                             print(f"[Rate Limit] {wait_time}초 후 재시도 중... (시도 {retry_attempt + 1}/{max_retries})")
                             print(f"[Rate Limit] 참고: 크레딧이 $5 미만이면 분당 6개 요청으로 제한됩니다.")
