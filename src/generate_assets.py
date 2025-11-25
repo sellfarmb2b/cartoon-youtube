@@ -18,7 +18,8 @@ from elevenlabs import VoiceSettings
 from mutagen.mp3 import MP3
 from mutagen.mp3 import HeaderNotFoundError  # MP3 파일 오류 감지
 import ffmpeg  # FFmpeg Python 라이브러리
-from dotenv import load_dotenv
+
+from config_manager import ConfigManager
 
 # --- 1단계: 대본 분할 함수 ---
 
@@ -41,20 +42,11 @@ def split_script_into_paragraphs(full_script_text):
     
     return final_paragraphs
 
-# --- 2단계: 환경 변수 로드 및 API 키 설정 ---
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-dotenv_candidates = [
-    os.path.join(BASE_DIR, ".env.local"),
-    os.path.join(BASE_DIR, ".env"),
-]
-for dotenv_path in dotenv_candidates:
-    if os.path.exists(dotenv_path):
-        load_dotenv(dotenv_path, override=False)
-load_dotenv(override=False)
-
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+# --- 2단계: 설정 로드 및 API 키 설정 ---
+config = ConfigManager()
+ELEVENLABS_API_KEY = config.get("elevenlabs_api_key") or os.getenv("ELEVENLABS_API_KEY")
 STABILITY_API_KEY = os.getenv("STABILITY_API_KEY")
-REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN")
+REPLICATE_API_TOKEN = config.get("replicate_api_key") or os.getenv("REPLICATE_API_TOKEN")
 
 # --- 3. API 클라이언트 초기화 (한 번만) ---
 print("API 클라이언트 초기화 중...")

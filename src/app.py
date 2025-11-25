@@ -10,6 +10,7 @@ import threading
 import shutil
 import zipfile
 import random
+import socket
 from uuid import uuid4
 from io import BytesIO
 from itertools import islice
@@ -18,6 +19,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 import ffmpeg
+import webview
 from flask import (
     Flask,
     render_template,
@@ -31,38 +33,55 @@ from flask import (
 )
 from mutagen.mp3 import MP3, HeaderNotFoundError
 from PIL import Image, ImageOps
-from dotenv import load_dotenv
+
+from config_manager import ConfigManager
+from utils import get_ffmpeg_path, get_ffprobe_path, resource_path
 
 
-# =============================================================================
-# 환경 변수 및 경로 설정
-# =============================================================================
+config_manager = ConfigManager()
 
-# 실행 파일 위치 기준으로 경로 설정
-if getattr(sys, 'frozen', False):
-    # PyInstaller로 빌드된 경우: 실행 파일이 있는 디렉토리
-    EXECUTABLE_DIR = os.path.dirname(sys.executable)
-else:
-    # 개발 환경: 스크립트가 있는 디렉토리
-    EXECUTABLE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# .env(.local) 파일 로드
-dotenv_candidates = [
-    os.path.join(EXECUTABLE_DIR, ".env.local"),
-    os.path.join(EXECUTABLE_DIR, ".env"),
-]
-for dotenv_path in dotenv_candidates:
-    if dotenv_path and os.path.exists(dotenv_path):
-        load_dotenv(dotenv_path, override=False)
-# 마지막으로 시스템 환경 변수도 로드 시도 (이미 설정된 값은 유지)
-load_dotenv(override=False)
+def reload_api_keys() -> None:
+    """Load API keys from the persistent config store."""
+    global ELEVENLABS_API_KEY, REPLICATE_API_TOKEN, OPENAI_API_KEY
+    settings = config_manager.get_all()
+    ELEVENLABS_API_KEY = (
+        settings.get("elevenlabs_api_key")
+        or os.environ.get("ELEVENLABS_API_KEY", "")
+    ).strip()
+    REPLICATE_API_TOKEN = (
+        settings.get("replicate_api_key")
+        or os.environ.get("REPLICATE_API_TOKEN", "")
+    ).strip()
+    OPENAI_API_KEY = (
+        settings.get("openai_api_key")
+        or os.environ.get("OPENAI_API_KEY", "")
+    ).strip()
 
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
-STABILITY_API_KEY = os.getenv("STABILITY_API_KEY")
-REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-STATIC_FOLDER = os.path.join(EXECUTABLE_DIR, "static")
+reload_api_keys()
+
+
+def refresh_service_flags() -> None:
+    """Update cached booleans for API availability."""
+    global replicate_api_available, openai_available
+    replicate_api_available = bool(REPLICATE_API_TOKEN)
+    openai_available = bool(OPENAI_API_KEY)
+
+
+refresh_service_flags()
+
+# -----------------------------------------------------------------------------
+# 경로 설정
+# -----------------------------------------------------------------------------
+PROJECT_ROOT = resource_path("")
+SRC_DIR = resource_path("src")
+if not os.path.isdir(SRC_DIR):
+    # 개발 환경에서 src 디렉터리를 기준으로 설정
+    SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+
+STATIC_FOLDER = os.path.join(SRC_DIR, "static")
+TEMPLATE_FOLDER = os.path.join(SRC_DIR, "templates")
 ASSETS_BASE_FOLDER = os.path.join(STATIC_FOLDER, "generated_assets")
 FINAL_VIDEO_BASE_NAME = "final_video"
 SUBTITLE_BASE_NAME = "subtitles"
@@ -72,6 +91,15 @@ SUBTITLE_FONT_NAME = "GmarketSansTTFMedium"
 os.makedirs(STATIC_FOLDER, exist_ok=True)
 os.makedirs(ASSETS_BASE_FOLDER, exist_ok=True)
 os.makedirs(FONTS_FOLDER, exist_ok=True)
+
+FFMPEG_BINARY = get_ffmpeg_path()
+os.environ["FFMPEG_BINARY"] = FFMPEG_BINARY
+ffmpeg_dir = os.path.dirname(FFMPEG_BINARY)
+os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ.get("PATH", "")
+ffprobe_path = get_ffprobe_path(FFMPEG_BINARY)
+if ffprobe_path:
+    os.environ["FFPROBE_BINARY"] = ffprobe_path
+
 
 VIDEO_FPS = 25
 SEGMENT_MAX_DURATION_SECONDS = 600
@@ -83,6 +111,10 @@ OPENAI_PROMPT_WORKERS = 4  # 병렬 워커 수 증가 (2 → 4)
 # 대본 청크 분할 설정 (5분 분량, 약 50-100문장)
 SCRIPT_CHUNK_MAX_SENTENCES = 100  # 한 청크당 최대 문장 수 증가 (80 → 100)
 SCRIPT_CHUNK_TARGET_MINUTES = 5  # 목표 분량 (분)
+# TTS 병렬 처리 및 재시도 설정
+TTS_MAX_CONCURRENT_REQUESTS = int(os.getenv("TTS_MAX_CONCURRENT_REQUESTS", "2"))
+TTS_MAX_RETRIES = int(os.getenv("TTS_MAX_RETRIES", "3"))
+TTS_RETRY_BASE_DELAY = int(os.getenv("TTS_RETRY_BASE_DELAY", "5"))
 
 # Replicate API Rate Limiting 설정
 # 문서: https://replicate.com/docs/topics/predictions/rate-limits
@@ -93,6 +125,7 @@ REPLICATE_MIN_REQUEST_INTERVAL = 0.1  # 최소 요청 간격 (초) - 크레딧 $
 REPLICATE_RATE_LIMIT_RETRY_DELAY = 30  # 429 에러 발생 시 재시도 대기 시간 (초)
 _last_replicate_request_time = 0  # 마지막 Replicate API 요청 시간
 _replicate_request_lock = threading.Lock()  # 요청 간격 제어를 위한 락
+_tts_request_semaphore = threading.BoundedSemaphore(max(1, TTS_MAX_CONCURRENT_REQUESTS))
 
 
 REALISTIC_STYLE_WRAPPER = (
@@ -110,19 +143,7 @@ KOREAN_CHAR_PATTERN = json.loads(
 )  # used in ensure_english_text
 
 
-# PyInstaller 환경 감지 및 리소스 경로 설정
-if getattr(sys, 'frozen', False):
-    # PyInstaller로 빌드된 경우
-    base_path = sys._MEIPASS
-    template_folder = os.path.join(base_path, 'templates')
-    static_folder = os.path.join(base_path, 'static')
-else:
-    # 개발 환경
-    base_path = os.path.dirname(os.path.abspath(__file__))
-    template_folder = os.path.join(base_path, 'templates')
-    static_folder = os.path.join(base_path, 'static')
-
-app = Flask(__name__, template_folder=template_folder, static_folder=static_folder)
+app = Flask(__name__, template_folder=TEMPLATE_FOLDER, static_folder=STATIC_FOLDER)
 
 
 # =============================================================================
@@ -972,6 +993,10 @@ def generate_visual_prompts(sentences: List[str], mode: str = "animation", progr
 
 
 def generate_tts_with_alignment(voice_id: str, text: str, audio_filename: str, elevenlabs_api_key: Optional[str] = None):
+    text = (text or "").strip()
+    if not text:
+        print("[TTS] 입력 문장이 비어 있어 TTS를 건너뜁니다.")
+        return None
     if not is_voice_allowed(voice_id):
         voice_id = get_default_voice_id()
     # 사용자가 입력한 API 키를 우선 사용, 없으면 기본값 사용
@@ -985,35 +1010,74 @@ def generate_tts_with_alignment(voice_id: str, text: str, audio_filename: str, e
         "text": text,
         "model_id": "eleven_turbo_v2_5",  # 더 빠르고 고품질 모델로 업그레이드
         "voice_settings": {
-            "stability": 0.75,  # 안정성 증가 (0.5-1.0, 높을수록 일관성)
-            "similarity_boost": 0.85,  # 유사도 증가 (0.0-1.0, 높을수록 원본 목소리에 가까움)
+            "stability": 0.92,  # 높일수록 피치 변동을 줄이고 일관성을 높임
+            "similarity_boost": 0.7,  # 너무 높으면 표현이 과도해질 수 있어 완화
             "style": 0.0,
-            "use_speaker_boost": True,  # 스피커 부스트 활성화
+            "use_speaker_boost": False,  # 피치 상승을 막기 위해 부스트 비활성화
         },
         "output_format": "mp3_44100_256",  # 비트레이트 증가 (128 -> 256)로 음질 개선
+        "optimize_streaming_latency": 4,
     }
-    try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=120)
-        if resp.status_code != 200:
-            print(f"[TTS] 실패: {resp.status_code} {resp.text}")
-            return None
-        data = resp.json()
-        audio_b64 = data.get("audio") or data.get("audio_base64")
-        alignment = data.get("alignment")
-        if not audio_b64:
-            return None
-        audio_bytes = base64.b64decode(audio_b64)
-        with open(audio_filename, "wb") as f:
-            f.write(audio_bytes)
-        return alignment
-    except Exception as exc:
-        print(f"[TTS] API 호출 실패: {exc}")
-        return None
-
-
-replicate_api_available = bool(REPLICATE_API_TOKEN)
-# stability_api_available = bool(STABILITY_API_KEY)  # Stability API 사용 안 함
-openai_available = bool(OPENAI_API_KEY)
+    last_error = None
+    for attempt in range(1, TTS_MAX_RETRIES + 1):
+        wait_seconds = TTS_RETRY_BASE_DELAY * attempt
+        try:
+            with _tts_request_semaphore:
+                resp = requests.post(url, headers=headers, json=payload, timeout=120)
+        except Exception as exc:
+            last_error = str(exc)
+            print(f"[TTS] API 호출 실패 (시도 {attempt}/{TTS_MAX_RETRIES}): {exc}")
+            resp = None
+        if resp and resp.status_code == 200:
+            try:
+                data = resp.json()
+            except ValueError as json_exc:
+                last_error = f"JSON 파싱 실패: {json_exc}"
+                print(f"[TTS] 응답 파싱 실패: {json_exc}")
+                resp = None
+            else:
+                audio_b64 = data.get("audio") or data.get("audio_base64")
+                alignment = data.get("alignment")
+                if not audio_b64:
+                    last_error = "오디오 데이터가 비어 있습니다."
+                    print(f"[TTS] 경고: 오디오 데이터가 비어 있음 (시도 {attempt})")
+                else:
+                    try:
+                        audio_bytes = base64.b64decode(audio_b64)
+                        with open(audio_filename, "wb") as f:
+                            f.write(audio_bytes)
+                        if os.path.getsize(audio_filename) == 0:
+                            last_error = "생성된 오디오 파일 크기가 0입니다."
+                            print(f"[TTS] 경고: 생성된 오디오 파일이 비어 있음 (시도 {attempt})")
+                        else:
+                            return alignment
+                    except Exception as file_exc:
+                        last_error = f"오디오 파일 저장 실패: {file_exc}"
+                        print(f"[TTS] 오디오 저장 실패: {file_exc}")
+        else:
+            if resp is not None:
+                error_detail = ""
+                try:
+                    error_json = resp.json()
+                    error_detail = error_json.get("detail") or error_json.get("error", resp.text)
+                except Exception:
+                    error_detail = resp.text
+                print(f"[TTS] 실패 (시도 {attempt}/{TTS_MAX_RETRIES}): {resp.status_code} {error_detail}")
+                if resp.status_code == 429:
+                    retry_after = 0
+                    try:
+                        retry_after = int(error_json.get("retry_after", 0) if 'error_json' in locals() else 0)
+                    except Exception:
+                        retry_after = 0
+                    wait_seconds = max(wait_seconds, retry_after + 1)
+                elif resp.status_code >= 500:
+                    wait_seconds = max(wait_seconds, TTS_RETRY_BASE_DELAY * attempt)
+                last_error = error_detail or str(resp.status_code)
+        if attempt < TTS_MAX_RETRIES:
+            print(f"[TTS] {wait_seconds}초 후 재시도합니다...")
+            time.sleep(wait_seconds)
+    print(f"[TTS] 모든 재시도 실패: {last_error}")
+    return None
 
 
 def save_image_bytes_as_png(content: bytes, filename: str, target_size=(1280, 768)):
@@ -2337,13 +2401,13 @@ def run_generation_job(
     # API 키 확인 및 환경 변수 fallback
     if not replicate_api_key or (isinstance(replicate_api_key, str) and not replicate_api_key.strip()):
         replicate_api_key = REPLICATE_API_TOKEN
-        print(f"[API 키] Replicate API 키: 사용자 입력 없음, 환경 변수 사용")
+        print(f"[API 키] Replicate API 키: 사용자 입력 없음, 저장된 설정 사용")
     else:
         print(f"[API 키] Replicate API 키: 사용자 입력 사용")
     
     if not elevenlabs_api_key or (isinstance(elevenlabs_api_key, str) and not elevenlabs_api_key.strip()):
         elevenlabs_api_key = ELEVENLABS_API_KEY
-        print(f"[API 키] ElevenLabs API 키: 사용자 입력 없음, 환경 변수 사용")
+        print(f"[API 키] ElevenLabs API 키: 사용자 입력 없음, 저장된 설정 사용")
     else:
         print(f"[API 키] ElevenLabs API 키: 사용자 입력 사용")
     
@@ -2874,6 +2938,26 @@ def index():
     return render_home()
 
 
+@app.route("/api/settings", methods=["GET", "POST"])
+def api_settings():
+    if request.method == "GET":
+        return jsonify(config_manager.get_all())
+
+    data = request.get_json(silent=True) or {}
+    config_manager.update(
+        {
+            "replicate_api_key": (data.get("replicate_api_key") or "").strip(),
+            "elevenlabs_api_key": (data.get("elevenlabs_api_key") or "").strip(),
+            "openai_api_key": (data.get("openai_api_key") or "").strip(),
+        }
+    )
+    reload_api_keys()
+    refresh_service_flags()
+    global _cached_voice_list
+    _cached_voice_list = None
+    return jsonify({"status": "ok"})
+
+
 @app.route("/start_job", methods=["POST"])
 def start_job():
     payload = request.get_json(silent=True) or {}
@@ -3304,7 +3388,7 @@ def api_generate_images_direct():
                     
                     # 테스트 모드일 때 photo 폴더의 이미지 사용
                     if test_mode:
-                        photo_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "photo")
+                        photo_folder = resource_path("photo")
                         # scene 번호에 맞는 이미지 찾기 (순환 사용)
                         photo_image_path = os.path.join(photo_folder, f"scene_{((idx - 1) % 167) + 1}_image.png")
                         if os.path.exists(photo_image_path):
@@ -3731,59 +3815,30 @@ def download_subtitle(job_id):
         return jsonify({"error": f"자막 다운로드 실패: {str(e)}"}), 500
 
 
+def find_available_port(start: int = 5001, end: int = 5010) -> int:
+    for port in range(start, end + 1):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(0.1)
+            if sock.connect_ex(("127.0.0.1", port)) != 0:
+                return port
+    return start
+
+
+def run_flask_server(port: int) -> None:
+    debug_mode = not getattr(sys, "frozen", False)
+    app.run(host="127.0.0.1", port=port, debug=debug_mode, use_reloader=False)
+
+
 if __name__ == "__main__":
-    import webbrowser
-    from threading import Timer
-    
-    # PyInstaller로 빌드된 경우 감지
-    is_bundled = getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
-    
-    # 포트 찾기 (5001부터 시도, 사용 중이면 다음 포트 사용)
-    port = 5001
-    import socket
-    for p in range(5001, 5010):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(0.1)
-        result = sock.connect_ex(('127.0.0.1', p))
-        sock.close()
-        if result != 0:  # 포트가 비어있음 (연결 실패 = 사용 가능)
-            port = p
-            break
-    # 포트를 찾지 못한 경우 기본값 사용
-    if port == 5001:
-        # 5001이 사용 중인지 다시 확인
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(0.1)
-        if sock.connect_ex(('127.0.0.1', 5001)) == 0:
-            # 5001이 사용 중이면 5002 사용
-            port = 5002
-        sock.close()
-    
-    def open_browser():
-        """브라우저를 자동으로 엽니다."""
-        url = f"http://127.0.0.1:{port}"
-        try:
-            webbrowser.open(url)
-        except Exception as e:
-            print(f"브라우저 열기 실패: {e}")
-            print(f"수동으로 다음 주소를 열어주세요: {url}")
-    
-    # 1초 후 브라우저 열기
-    Timer(1.0, open_browser).start()
-    
-    print(f"\n{'='*60}")
-    print(f"유튜브 영상 생성기 서버 시작")
-    print(f"주소: http://127.0.0.1:{port}")
-    print(f"{'='*60}\n")
-    
-    # 디버그 모드는 개발 환경에서만
-    debug_mode = not is_bundled
-    
-    try:
-        app.run(host='127.0.0.1', port=port, debug=debug_mode, use_reloader=False)
-    except KeyboardInterrupt:
-        print("\n서버를 종료합니다...")
-    except Exception as e:
-        print(f"\n서버 시작 오류: {e}")
-        if is_bundled:
-            input("\n아무 키나 눌러 종료하세요...")
+    selected_port = find_available_port()
+    flask_thread = threading.Thread(target=run_flask_server, args=(selected_port,), daemon=True)
+    flask_thread.start()
+
+    window_url = f"http://127.0.0.1:{selected_port}"
+    print(f"\n{'=' * 60}")
+    print("유튜브 영상 생성기 서버 시작")
+    print(f"주소: {window_url}")
+    print(f"{'=' * 60}\n")
+
+    webview.create_window("YouTube Maker", window_url, width=1280, height=800, resizable=True)
+    webview.start()

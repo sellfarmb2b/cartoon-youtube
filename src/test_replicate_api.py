@@ -3,11 +3,11 @@
 import os
 import requests
 import json
-from dotenv import load_dotenv
 
-# .env 파일 로드
-load_dotenv()
-REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN")
+from config_manager import ConfigManager
+
+config = ConfigManager()
+REPLICATE_API_TOKEN = config.get("replicate_api_key") or os.getenv("REPLICATE_API_TOKEN")
 
 if not REPLICATE_API_TOKEN:
     print("❌ REPLICATE_API_TOKEN이 설정되지 않았습니다.")
