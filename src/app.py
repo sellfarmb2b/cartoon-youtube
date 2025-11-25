@@ -2999,61 +2999,86 @@ def api_settings():
 @app.route("/api/select_download_folder", methods=["POST"])
 def select_download_folder():
     """폴더 선택 다이얼로그를 열고 선택한 폴더 경로 반환"""
-    if not TKINTER_AVAILABLE:
-        return jsonify({"error": "폴더 선택 기능을 사용할 수 없습니다."}), 500
-    
     try:
         # 현재 설정된 경로 또는 기본 다운로드 폴더를 초기 경로로 사용
         current_path = config_manager.get("download_folder_path", "").strip()
         if not current_path or not os.path.isdir(current_path):
             current_path = get_default_download_folder()
         
-        # tkinter는 메인 스레드에서만 작동하므로 별도 스레드에서 실행
-        selected_folder = [None]
-        error_message = [None]
-        dialog_complete = threading.Event()
+        # webview의 create_file_dialog 사용 시도
+        selected_folder = None
+        error_message = None
         
-        def select_folder():
-            try:
-                # 루트 윈도우 생성 (숨김)
-                root = tk.Tk()
-                root.withdraw()  # 메인 윈도우 숨기기
-                root.attributes('-topmost', True)  # 다른 창 위에 표시
-                root.lift()  # 창을 맨 위로
-                root.focus_force()  # 포커스 강제 설정
+        try:
+            # webview의 create_file_dialog는 메인 스레드에서만 작동
+            # 하지만 Flask가 별도 스레드에서 실행되므로 직접 호출 불가
+            # 대신 JavaScript API를 통해 처리하거나, tkinter 사용
+            
+            if TKINTER_AVAILABLE:
+                # tkinter를 사용한 폴더 선택
+                selected_folder = [None]
+                error_message = [None]
+                dialog_complete = threading.Event()
                 
-                # 폴더 선택 다이얼로그 열기
-                folder = filedialog.askdirectory(
-                    title="다운로드 폴더 선택",
-                    initialdir=current_path if current_path else None,
-                    parent=root
-                )
+                def select_folder():
+                    try:
+                        # 루트 윈도우 생성 (숨김)
+                        root = tk.Tk()
+                        root.withdraw()  # 메인 윈도우 숨기기
+                        root.attributes('-topmost', True)  # 다른 창 위에 표시
+                        
+                        # macOS에서 focus_force가 문제를 일으킬 수 있으므로 제거
+                        try:
+                            root.lift()
+                        except:
+                            pass
+                        
+                        # 폴더 선택 다이얼로그 열기
+                        folder = filedialog.askdirectory(
+                            title="다운로드 폴더 선택",
+                            initialdir=current_path if current_path else None,
+                            parent=root
+                        )
+                        
+                        selected_folder[0] = folder if folder else None
+                        root.quit()  # destroy 대신 quit 사용
+                        root.destroy()
+                    except Exception as e:
+                        error_message[0] = str(e)
+                        import traceback
+                        traceback.print_exc()
+                        selected_folder[0] = None
+                    finally:
+                        dialog_complete.set()
                 
-                selected_folder[0] = folder if folder else None
-                root.destroy()
-            except Exception as e:
-                error_message[0] = str(e)
-                selected_folder[0] = None
-            finally:
-                dialog_complete.set()
+                # GUI 스레드에서 실행
+                thread = threading.Thread(target=select_folder, daemon=False)
+                thread.start()
+                
+                # 다이얼로그가 완료될 때까지 대기 (최대 60초)
+                if not dialog_complete.wait(timeout=60):
+                    return jsonify({"error": "폴더 선택 시간이 초과되었습니다."}), 500
+                
+                thread.join(timeout=5)  # 스레드 종료 대기
+                
+                if error_message[0]:
+                    print(f"[폴더 선택 오류] {error_message[0]}")
+                    return jsonify({"error": f"폴더 선택 중 오류: {error_message[0]}"}), 500
+                
+                selected_folder = selected_folder[0]
+            else:
+                return jsonify({"error": "폴더 선택 기능을 사용할 수 없습니다. (tkinter 없음)"}), 500
+                
+        except Exception as e:
+            error_message = str(e)
+            print(f"[폴더 선택 오류] {e}")
+            import traceback
+            traceback.print_exc()
         
-        # GUI 스레드에서 실행
-        thread = threading.Thread(target=select_folder, daemon=False)
-        thread.start()
-        
-        # 다이얼로그가 완료될 때까지 대기 (최대 60초)
-        if not dialog_complete.wait(timeout=60):
-            return jsonify({"error": "폴더 선택 시간이 초과되었습니다."}), 500
-        
-        thread.join(timeout=5)  # 스레드 종료 대기
-        
-        if error_message[0]:
-            return jsonify({"error": f"폴더 선택 중 오류: {error_message[0]}"}), 500
-        
-        if selected_folder[0]:
+        if selected_folder:
             # 선택한 폴더 경로 저장
-            config_manager.set("download_folder_path", selected_folder[0])
-            return jsonify({"folder_path": selected_folder[0]})
+            config_manager.set("download_folder_path", selected_folder)
+            return jsonify({"folder_path": selected_folder})
         else:
             return jsonify({"error": "폴더가 선택되지 않았습니다."}), 400
             

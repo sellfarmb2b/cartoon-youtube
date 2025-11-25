@@ -1538,6 +1538,48 @@
                     selectFolderBtn.textContent = '선택 중...';
                     
                     try {
+                        // 먼저 File System Access API 시도 (최신 브라우저/웹뷰)
+                        if (window.showDirectoryPicker) {
+                            try {
+                                const dirHandle = await window.showDirectoryPicker();
+                                const folderPath = await dirHandle.getDirectoryHandle ? dirHandle.name : null;
+                                
+                                // File System Access API는 실제 경로를 직접 제공하지 않으므로
+                                // 서버 API를 통해 처리
+                                const response = await fetch('/api/select_download_folder', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ use_native: true })
+                                });
+                                
+                                if (response.ok) {
+                                    const data = await response.json();
+                                    if (data.folder_path && settingsDownloadFolderInput) {
+                                        settingsDownloadFolderInput.value = data.folder_path;
+                                        settingsState.download_folder_path = data.folder_path;
+                                        setStatus('폴더가 선택되었습니다.', 'success');
+                                    }
+                                } else {
+                                    throw new Error('서버에서 폴더 경로를 가져오지 못했습니다.');
+                                }
+                            } catch (dirError) {
+                                // File System Access API 실패 시 서버 API 사용
+                                console.log('[폴더 선택] File System Access API 실패, 서버 API 사용:', dirError);
+                                await selectFolderViaServer();
+                            }
+                        } else {
+                            // File System Access API가 없으면 서버 API 사용
+                            await selectFolderViaServer();
+                        }
+                    } catch (error) {
+                        console.error('[폴더 선택] 오류:', error);
+                        setStatus(error.message || '폴더 선택 중 오류가 발생했습니다. 경로를 직접 입력해주세요.', 'error');
+                    } finally {
+                        selectFolderBtn.disabled = false;
+                        selectFolderBtn.textContent = originalText;
+                    }
+                    
+                    async function selectFolderViaServer() {
                         const response = await fetch('/api/select_download_folder', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' }
@@ -1554,12 +1596,6 @@
                             settingsState.download_folder_path = data.folder_path;
                             setStatus('폴더가 선택되었습니다.', 'success');
                         }
-                    } catch (error) {
-                        console.error('[폴더 선택] 오류:', error);
-                        setStatus(error.message || '폴더 선택 중 오류가 발생했습니다.', 'error');
-                    } finally {
-                        selectFolderBtn.disabled = false;
-                        selectFolderBtn.textContent = originalText;
                     }
                 });
             }
