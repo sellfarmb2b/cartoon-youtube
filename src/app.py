@@ -1260,7 +1260,7 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                     # 429 에러 재시도를 위한 루프
                     max_retries = 3
                     create_res = None
-                    for retry_attempt in range(max_retries):
+                for retry_attempt in range(max_retries):
                     try:
                     create_res = requests.post(request_url, headers=headers, json=body, timeout=30)
                     print(f"[generate_image] 응답 상태 코드: {create_res.status_code}")
