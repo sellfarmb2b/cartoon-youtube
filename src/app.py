@@ -1455,7 +1455,7 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                         print(f"[디버그] outputs 타입: {type(outputs)}, 값: {outputs}")
                         elif final:
                         print(f"[IMG] (Replicate) 예측 실패: {final.get('status')}, 에러: {final.get('error')}")
-        except Exception as exc:
+            except Exception as exc:
             log_error(f"[IMG] (Replicate) 예외 발생: {exc}", exc_info=exc)
             print(f"[IMG] (Replicate) 예외 발생: {exc}")
             import traceback
