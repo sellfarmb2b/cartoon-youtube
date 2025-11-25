@@ -1278,8 +1278,8 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                 log_debug(f"[generate_image] 요청 본문: {json.dumps(body, indent=2, ensure_ascii=False)}")
                 
                 # Rate limiting: 분당 600개 요청 제한 준수 (최소 0.1초 간격)
-            global _last_replicate_request_time
-            with _replicate_request_lock:
+                global _last_replicate_request_time
+                with _replicate_request_lock:
                 current_time = time.time()
                 time_since_last = current_time - _last_replicate_request_time
                 if time_since_last < REPLICATE_MIN_REQUEST_INTERVAL:
@@ -1287,60 +1287,60 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                     print(f"[Rate Limit] 요청 간격 조절: {wait_time:.2f}초 대기 중...")
                     time.sleep(wait_time)
                 _last_replicate_request_time = time.time()
-            
-            # 429 에러 재시도를 위한 루프
-            max_retries = 3
-            create_res = None
-            for retry_attempt in range(max_retries):
-                try:
-                    create_res = requests.post(request_url, headers=headers, json=body, timeout=30)
-                    print(f"[generate_image] 응답 상태 코드: {create_res.status_code}")
-                    print(f"[generate_image] 응답 본문 (처음 500자): {create_res.text[:500]}")
-                    
-                    # 429 에러 (Rate Limit) 처리
-                    if create_res.status_code == 429:
-                        error_data = create_res.json() if create_res.text else {}
-                        error_detail = error_data.get("detail", "Request was throttled.")
-                        # retry_after 값이 있으면 사용, 없으면 기본값 사용
-                        retry_after = error_data.get("retry_after")
-                        if retry_after:
-                            wait_time = int(retry_after) + 1  # retry_after에 1초 추가하여 안전하게 대기
-                        else:
+                
+                # 429 에러 재시도를 위한 루프
+                max_retries = 3
+                create_res = None
+                for retry_attempt in range(max_retries):
+                    try:
+                        create_res = requests.post(request_url, headers=headers, json=body, timeout=30)
+                        print(f"[generate_image] 응답 상태 코드: {create_res.status_code}")
+                        print(f"[generate_image] 응답 본문 (처음 500자): {create_res.text[:500]}")
+                        
+                        # 429 에러 (Rate Limit) 처리
+                        if create_res.status_code == 429:
+                            error_data = create_res.json() if create_res.text else {}
+                            error_detail = error_data.get("detail", "Request was throttled.")
+                            # retry_after 값이 있으면 사용, 없으면 기본값 사용
+                            retry_after = error_data.get("retry_after")
+                            if retry_after:
+                                wait_time = int(retry_after) + 1  # retry_after에 1초 추가하여 안전하게 대기
+                            else:
+                                wait_time = REPLICATE_RATE_LIMIT_RETRY_DELAY
+                            
+                            if retry_attempt < max_retries - 1:
+                                print(f"[Rate Limit] 429 에러 발생: {error_detail}")
+                                print(f"[Rate Limit] {wait_time}초 후 재시도 중... (시도 {retry_attempt + 1}/{max_retries})")
+                                print(f"[Rate Limit] 참고: 크레딧이 $5 미만이면 분당 6개 요청으로 제한됩니다.")
+                                print(f"[Rate Limit] https://replicate.com/account/billing 에서 크레딧을 충전하세요.")
+                                time.sleep(wait_time)
+                                continue  # 재시도
+                            else:
+                                print(f"[Rate Limit] 429 에러: 최대 재시도 횟수 초과")
+                                print(f"[Rate Limit] 해결 방법:")
+                                print(f"[Rate Limit] 1. https://replicate.com/account/billing 에서 크레딧을 충전하세요 ($5 이상 권장)")
+                                print(f"[Rate Limit] 2. 또는 잠시 후 다시 시도하세요 (Rate Limit이 리셋될 때까지 대기)")
+                                raise Exception(f"Replicate API Rate Limit 초과: {error_detail}")
+                        
+                        # 200/201이 아니고 429도 아니면 루프 종료
+                        if create_res.status_code not in (200, 201, 429):
+                            break
+                            
+                    except Exception as req_exc:
+                        if retry_attempt < max_retries - 1 and "429" in str(req_exc):
                             wait_time = REPLICATE_RATE_LIMIT_RETRY_DELAY
-                        
-                        if retry_attempt < max_retries - 1:
-                            print(f"[Rate Limit] 429 에러 발생: {error_detail}")
-                            print(f"[Rate Limit] {wait_time}초 후 재시도 중... (시도 {retry_attempt + 1}/{max_retries})")
-                            print(f"[Rate Limit] 참고: 크레딧이 $5 미만이면 분당 6개 요청으로 제한됩니다.")
-                            print(f"[Rate Limit] https://replicate.com/account/billing 에서 크레딧을 충전하세요.")
+                            print(f"[Rate Limit] 예외 발생, {wait_time}초 후 재시도: {req_exc}")
                             time.sleep(wait_time)
-                            continue  # 재시도
-                        else:
-                            print(f"[Rate Limit] 429 에러: 최대 재시도 횟수 초과")
-                            print(f"[Rate Limit] 해결 방법:")
-                            print(f"[Rate Limit] 1. https://replicate.com/account/billing 에서 크레딧을 충전하세요 ($5 이상 권장)")
-                            print(f"[Rate Limit] 2. 또는 잠시 후 다시 시도하세요 (Rate Limit이 리셋될 때까지 대기)")
-                            raise Exception(f"Replicate API Rate Limit 초과: {error_detail}")
-                    
-                    # 200/201이 아니고 429도 아니면 루프 종료
-                    if create_res.status_code not in (200, 201, 429):
-                        break
-                        
-                except Exception as req_exc:
-                    if retry_attempt < max_retries - 1 and "429" in str(req_exc):
-                        wait_time = REPLICATE_RATE_LIMIT_RETRY_DELAY
-                        print(f"[Rate Limit] 예외 발생, {wait_time}초 후 재시도: {req_exc}")
-                        time.sleep(wait_time)
-                        continue
-                    print("=" * 80)
-                    print("=== [DEBUG] 오류: Replicate API 요청 실패 ===")
-                    print(f"=== [DEBUG] 예외 내용: {req_exc} ===")
-                    import traceback
-                    traceback.print_exc()
-                    print("=" * 80)
-                    raise  # 예외를 다시 발생시켜 fallback으로 넘어가도록 함
-            
-            if create_res is None or create_res.status_code not in (200, 201):
+                            continue
+                        print("=" * 80)
+                        print("=== [DEBUG] 오류: Replicate API 요청 실패 ===")
+                        print(f"=== [DEBUG] 예외 내용: {req_exc} ===")
+                        import traceback
+                        traceback.print_exc()
+                        print("=" * 80)
+                        raise  # 예외를 다시 발생시켜 fallback으로 넘어가도록 함
+                
+                if create_res is None or create_res.status_code not in (200, 201):
                 print(f"[IMG] (Replicate) 생성 실패: {create_res.status_code if create_res else 'None'} {create_res.text if create_res else 'No response'}")
                 # 402 에러 (월간 사용 한도 도달) 처리
                 if create_res and create_res.status_code == 402:
