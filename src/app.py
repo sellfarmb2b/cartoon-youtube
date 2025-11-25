@@ -3697,15 +3697,26 @@ def static_files(filename):
     if filename.endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm')):
         print(f"[다운로드] 비디오 파일 다운로드: {filename} (경로: {file_path})")
         try:
-            # send_file을 사용하여 명시적으로 다운로드 설정
+            # 다운로드 폴더 경로 확인 및 파일 복사
+            download_folder_path = config_manager.get("download_folder_path", "").strip()
+            if download_folder_path and os.path.isdir(download_folder_path):
+                try:
+                    dest_path = os.path.join(download_folder_path, os.path.basename(filename))
+                    shutil.copy2(file_path, dest_path)
+                    print(f"[다운로드] 파일이 다운로드 폴더로 복사됨: {dest_path}")
+                except Exception as copy_error:
+                    print(f"[경고] 다운로드 폴더로 복사 실패: {copy_error}")
+            
+            # send_file을 사용하여 명시적으로 다운로드 설정 (재생 방지)
             response = send_file(
                 file_path,
-                mimetype='video/mp4',
+                mimetype='application/octet-stream',  # video/mp4 대신 octet-stream 사용하여 재생 방지
                 as_attachment=True,
                 download_name=os.path.basename(filename)
             )
             # Content-Disposition 헤더 명시적으로 설정
             response.headers['Content-Disposition'] = f'attachment; filename="{os.path.basename(filename)}"'
+            response.headers['Content-Type'] = 'application/octet-stream'
             return response
         except Exception as e:
             print(f"[다운로드 오류] 파일 전송 실패: {e}")
@@ -3768,12 +3779,28 @@ def download_images(job_id):
         
         # ZIP 파일 다운로드
         zip_filename = f"images_{job_id}.zip"
-        return send_file(
+        
+        # 다운로드 폴더 경로 확인 및 파일 복사
+        download_folder_path = config_manager.get("download_folder_path", "").strip()
+        if download_folder_path and os.path.isdir(download_folder_path):
+            try:
+                # 임시 파일로 ZIP 저장
+                temp_zip_path = os.path.join(download_folder_path, zip_filename)
+                with open(temp_zip_path, 'wb') as f:
+                    f.write(zip_buffer.getvalue())
+                zip_buffer.seek(0)  # 버퍼를 다시 처음으로
+                print(f"[다운로드] ZIP 파일이 다운로드 폴더로 복사됨: {temp_zip_path}")
+            except Exception as copy_error:
+                print(f"[경고] 다운로드 폴더로 복사 실패: {copy_error}")
+        
+        response = send_file(
             zip_buffer,
             mimetype='application/zip',
             as_attachment=True,
             download_name=zip_filename
         )
+        response.headers['Content-Disposition'] = f'attachment; filename="{zip_filename}"'
+        return response
     
     except Exception as e:
         print(f"[다운로드 오류] 이미지 ZIP 생성 실패: {e}")
@@ -3802,12 +3829,25 @@ def download_subtitle(job_id):
         
         # SRT 파일 다운로드
         srt_filename = f"subtitles_{job_id}.srt"
-        return send_file(
+        
+        # 다운로드 폴더 경로 확인 및 파일 복사
+        download_folder_path = config_manager.get("download_folder_path", "").strip()
+        if download_folder_path and os.path.isdir(download_folder_path):
+            try:
+                dest_path = os.path.join(download_folder_path, srt_filename)
+                shutil.copy2(subtitle_file, dest_path)
+                print(f"[다운로드] SRT 파일이 다운로드 폴더로 복사됨: {dest_path}")
+            except Exception as copy_error:
+                print(f"[경고] 다운로드 폴더로 복사 실패: {copy_error}")
+        
+        response = send_file(
             subtitle_file,
             mimetype='text/plain; charset=utf-8',
             as_attachment=True,
             download_name=srt_filename
         )
+        response.headers['Content-Disposition'] = f'attachment; filename="{srt_filename}"'
+        return response
     
     except Exception as e:
         print(f"[다운로드 오류] SRT 파일 다운로드 실패: {e}")
@@ -3828,12 +3868,28 @@ def download_video(job_id):
             return jsonify({"error": "영상 파일이 비어 있습니다."}), 404
 
         download_name = os.path.basename(video_file)
-        return send_file(
+        
+        # 다운로드 폴더 경로 확인 및 파일 복사
+        download_folder_path = config_manager.get("download_folder_path", "").strip()
+        if download_folder_path and os.path.isdir(download_folder_path):
+            try:
+                dest_path = os.path.join(download_folder_path, download_name)
+                shutil.copy2(video_file, dest_path)
+                print(f"[다운로드] 파일이 다운로드 폴더로 복사됨: {dest_path}")
+            except Exception as copy_error:
+                print(f"[경고] 다운로드 폴더로 복사 실패: {copy_error}")
+        
+        # 다운로드만 되도록 명시적으로 설정
+        response = send_file(
             video_file,
-            mimetype="video/mp4",
+            mimetype="application/octet-stream",  # video/mp4 대신 octet-stream 사용하여 재생 방지
             as_attachment=True,
             download_name=download_name,
         )
+        # Content-Disposition 헤더 명시적으로 설정 (재생 방지)
+        response.headers['Content-Disposition'] = f'attachment; filename="{download_name}"'
+        response.headers['Content-Type'] = 'application/octet-stream'
+        return response
     except Exception as e:
         print(f"[다운로드 오류] 비디오 파일 다운로드 실패: {e}")
         import traceback
