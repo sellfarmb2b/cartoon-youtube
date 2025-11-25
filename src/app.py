@@ -2949,6 +2949,7 @@ def api_settings():
             "replicate_api_key": (data.get("replicate_api_key") or "").strip(),
             "elevenlabs_api_key": (data.get("elevenlabs_api_key") or "").strip(),
             "openai_api_key": (data.get("openai_api_key") or "").strip(),
+            "download_folder_path": (data.get("download_folder_path") or "").strip(),
         }
     )
     reload_api_keys()

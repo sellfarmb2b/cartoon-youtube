@@ -20,6 +20,7 @@ class ConfigManager:
             "replicate_api_key": "",
             "elevenlabs_api_key": "",
             "openai_api_key": "",
+            "download_folder_path": "",
         }
 
         self.config_dir = user_data_dir(self.app_name, self.app_author)

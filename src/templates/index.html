@@ -175,7 +175,7 @@
 <div id="settingsModal" class="settings-modal">
     <div class="settings-modal-content">
         <div class="settings-modal-header">
-            <h2>API 키 설정</h2>
+            <h2>설정</h2>
             <button type="button" class="settings-close" id="closeSettingsBtn" aria-label="닫기">&times;</button>
         </div>
         <p class="settings-helper">입력한 키는 로컬 Application Support/AppData 폴더에 저장되며, 서버로 전송되지 않습니다.</p>
@@ -188,6 +188,9 @@
         <label for="settingsOpenaiKey">OpenAI 프롬프트 생성 API 키</label>
         <input type="password" id="settingsOpenaiKey" placeholder="sk-..." autocomplete="off">
         <p class="settings-helper">OpenAI 키는 대본 기반 프롬프트 자동 생성에 사용됩니다.</p>
+        <label for="settingsDownloadFolder">다운로드 폴더 경로 (선택사항)</label>
+        <input type="text" id="settingsDownloadFolder" placeholder="예: /Users/username/Downloads 또는 C:\Users\username\Downloads" autocomplete="off">
+        <p class="settings-helper">다운로드 폴더 경로를 지정하면 생성된 파일이 해당 폴더로 복사됩니다. 비워두면 브라우저 기본 다운로드 폴더를 사용합니다.</p>
         <div class="settings-actions">
             <button type="button" id="cancelSettingsBtn" style="background:#e5e7eb; color:#111827;">취소</button>
             <button type="button" id="saveSettingsBtn">저장</button>
@@ -290,10 +293,12 @@
             const settingsReplicateInput = document.getElementById('settingsReplicateKey');
             const settingsElevenlabsInput = document.getElementById('settingsElevenlabsKey');
             const settingsOpenaiInput = document.getElementById('settingsOpenaiKey');
+            const settingsDownloadFolderInput = document.getElementById('settingsDownloadFolder');
             let settingsState = {
                 replicate_api_key: '',
                 elevenlabs_api_key: '',
-                openai_api_key: ''
+                openai_api_key: '',
+                download_folder_path: ''
             };
 
             function populateSettingsForm() {
@@ -301,6 +306,9 @@
                 settingsReplicateInput.value = settingsState.replicate_api_key || '';
                 settingsElevenlabsInput.value = settingsState.elevenlabs_api_key || '';
                 settingsOpenaiInput.value = settingsState.openai_api_key || '';
+                if (settingsDownloadFolderInput) {
+                    settingsDownloadFolderInput.value = settingsState.download_folder_path || '';
+                }
             }
 
             function openSettingsModal() {
@@ -324,7 +332,8 @@
                     settingsState = {
                         replicate_api_key: data.replicate_api_key || '',
                         elevenlabs_api_key: data.elevenlabs_api_key || '',
-                        openai_api_key: data.openai_api_key || ''
+                        openai_api_key: data.openai_api_key || '',
+                        download_folder_path: data.download_folder_path || ''
                     };
                     populateSettingsForm();
                 } catch (error) {
@@ -337,7 +346,8 @@
                 const payload = {
                     replicate_api_key: settingsReplicateInput.value.trim(),
                     elevenlabs_api_key: settingsElevenlabsInput.value.trim(),
-                    openai_api_key: settingsOpenaiInput.value.trim()
+                    openai_api_key: settingsOpenaiInput.value.trim(),
+                    download_folder_path: settingsDownloadFolderInput ? settingsDownloadFolderInput.value.trim() : ''
                 };
                 saveSettingsBtn.disabled = true;
                 saveSettingsBtn.textContent = '저장 중...';
