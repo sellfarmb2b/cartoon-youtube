@@ -1341,20 +1341,20 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                         raise  # 예외를 다시 발생시켜 fallback으로 넘어가도록 함
                 
                 if create_res is None or create_res.status_code not in (200, 201):
-                print(f"[IMG] (Replicate) 생성 실패: {create_res.status_code if create_res else 'None'} {create_res.text if create_res else 'No response'}")
-                # 402 에러 (월간 사용 한도 도달) 처리
-                if create_res and create_res.status_code == 402:
-                    error_data = create_res.json() if create_res.text else {}
-                    error_detail = error_data.get("detail", "월간 사용 한도에 도달했습니다.")
-                    print(f"[경고] Replicate API 월간 사용 한도 도달: {error_detail}")
-                    print(f"[경고] https://replicate.com/account/billing#limits 에서 한도를 확인하거나 증가시켜주세요.")
-                    print(f"[경고] 한도를 증가시킨 경우 몇 분 후 다시 시도해주세요.")
-                    raise Exception(f"Replicate API 월간 사용 한도 도달: {error_detail}")
-                # 500 에러나 다른 서버 에러인 경우 즉시 fallback으로
-                if create_res and create_res.status_code >= 500:
-                    print(f"[IMG] (Replicate) 서버 에러 ({create_res.status_code}), 즉시 fallback으로 전환")
-                    raise Exception(f"Replicate API 서버 에러: {create_res.status_code}")
-            else:
+                    print(f"[IMG] (Replicate) 생성 실패: {create_res.status_code if create_res else 'None'} {create_res.text if create_res else 'No response'}")
+                    # 402 에러 (월간 사용 한도 도달) 처리
+                    if create_res and create_res.status_code == 402:
+                        error_data = create_res.json() if create_res.text else {}
+                        error_detail = error_data.get("detail", "월간 사용 한도에 도달했습니다.")
+                        print(f"[경고] Replicate API 월간 사용 한도 도달: {error_detail}")
+                        print(f"[경고] https://replicate.com/account/billing#limits 에서 한도를 확인하거나 증가시켜주세요.")
+                        print(f"[경고] 한도를 증가시킨 경우 몇 분 후 다시 시도해주세요.")
+                        raise Exception(f"Replicate API 월간 사용 한도 도달: {error_detail}")
+                    # 500 에러나 다른 서버 에러인 경우 즉시 fallback으로
+                    if create_res and create_res.status_code >= 500:
+                        print(f"[IMG] (Replicate) 서버 에러 ({create_res.status_code}), 즉시 fallback으로 전환")
+                        raise Exception(f"Replicate API 서버 에러: {create_res.status_code}")
+                else:
                 try:
                     prediction = create_res.json()
                     print(f"[generate_image] 예측 응답: {json.dumps(prediction, indent=2, ensure_ascii=False)[:500]}")
