@@ -1333,7 +1333,7 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                         poll_count = 0
                         max_polls = 180
                         for poll_count in range(max_polls):
-                        if not get_url:
+                            if not get_url:
                                 print(f"[generate_image] get_url이 없어서 중단")
                                 break
                         try:
