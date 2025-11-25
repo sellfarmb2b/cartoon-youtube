@@ -1286,7 +1286,8 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                     print(f"[generate_image] 상태 확인 시작 (최대 180초 대기)")
                     final = None
                     poll_count = 0
-                    for poll_count in range(180):
+                    max_polls = 180
+                    for poll_count in range(max_polls):
                         if not get_url:
                             print(f"[generate_image] get_url이 없어서 중단")
                             break
@@ -1297,7 +1298,8 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                                 break
                             data = res.json()
                             status = data.get("status")
-                            if poll_count % 10 == 0:  # 10초마다 로그 출력
+                            # 5초마다 로그 출력 (더 자주)
+                            if poll_count % 5 == 0:
                                 print(f"[generate_image] 상태 확인 중... ({poll_count}초 경과, 상태: {status})")
                             if status in ("succeeded", "failed", "canceled"):
                                 final = data
@@ -1307,13 +1309,21 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                                     print(f"[generate_image] 실패 원인: {error_msg}")
                                 break
                             time.sleep(1)
+                        except requests.exceptions.Timeout:
+                            print(f"[경고] 상태 조회 타임아웃 ({poll_count}초 경과), 계속 시도...")
+                            time.sleep(1)
+                            continue
                         except Exception as poll_exc:
                             print(f"[오류] 상태 조회 중 예외 발생: {poll_exc}")
                             import traceback
                             traceback.print_exc()
+                            # 네트워크 오류는 재시도
+                            if poll_count < max_polls - 1:
+                                time.sleep(2)
+                                continue
                             break
-                    if poll_count >= 179:
-                        print(f"[generate_image] 타임아웃: 180초 동안 완료되지 않음")
+                    if poll_count >= max_polls - 1:
+                        print(f"[generate_image] 타임아웃: {max_polls}초 동안 완료되지 않음")
                 except Exception as json_exc:
                     print(f"[오류] 예측 응답 파싱 실패: {json_exc}")
                     print(f"[오류] 응답 본문: {create_res.text[:1000]}")
@@ -3550,16 +3560,22 @@ def api_generate_images_direct():
                         else:
                             file_size = os.path.getsize(image_filename)
                             print(f"[이미지 생성] {idx}/{total} 완료 - 파일 크기: {file_size} bytes")
+                            # 진행도 업데이트 (완료)
+                            progress_pct = int((idx / total) * 100)
                             with jobs_lock:
                                 job_data = jobs.get(job_id)
                                 if job_data is not None:
+                                    job_data["stage_progress"] = progress_pct
                                     job_data["progress"].append(f"{idx}번 이미지 생성 완료 ({file_size} bytes)")
                     
+                    # Windows 경로 처리 개선
                     abs_path = os.path.abspath(image_filename)
                     image_files[idx] = abs_path
                     rel_path = os.path.relpath(abs_path, STATIC_FOLDER)
+                    # Windows 경로 구분자를 /로 변환
+                    rel_path = rel_path.replace(os.sep, "/")
                     # url_for 대신 직접 경로 구성 (백그라운드 스레드에서 안전)
-                    image_url = "/static/" + rel_path.replace(os.sep, "/")
+                    image_url = "/static/" + rel_path
                     image_results.append({"index": idx, "sentence": sentence, "prompt": prompt, "image_url": image_url})
                     
                 except Exception as img_exc:
