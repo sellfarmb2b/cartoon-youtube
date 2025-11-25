@@ -1307,33 +1307,33 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                         raise  # 예외를 다시 발생시켜 fallback으로 넘어가도록 함
                         
                     if create_res is None or create_res.status_code not in (200, 201):
-                    print(f"[IMG] (Replicate) 생성 실패: {create_res.status_code if create_res else 'None'} {create_res.text if create_res else 'No response'}")
-                    # 402 에러 (월간 사용 한도 도달) 처리
-                    if create_res and create_res.status_code == 402:
-                    error_data = create_res.json() if create_res.text else {}
-                    error_detail = error_data.get("detail", "월간 사용 한도에 도달했습니다.")
-                    print(f"[경고] Replicate API 월간 사용 한도 도달: {error_detail}")
-                    print(f"[경고] https://replicate.com/account/billing#limits 에서 한도를 확인하거나 증가시켜주세요.")
-                    print(f"[경고] 한도를 증가시킨 경우 몇 분 후 다시 시도해주세요.")
-                    raise Exception(f"Replicate API 월간 사용 한도 도달: {error_detail}")
-                    # 500 에러나 다른 서버 에러인 경우 즉시 fallback으로
-                    if create_res and create_res.status_code >= 500:
-                    print(f"[IMG] (Replicate) 서버 에러 ({create_res.status_code}), 즉시 fallback으로 전환")
-                    raise Exception(f"Replicate API 서버 에러: {create_res.status_code}")
-                    else:
-                    try:
-                    prediction = create_res.json()
-                    print(f"[generate_image] 예측 응답: {json.dumps(prediction, indent=2, ensure_ascii=False)[:500]}")
-                    pred_id = prediction.get("id")
-                    get_url = prediction.get("urls", {}).get("get")
-                    if not get_url and pred_id:
+                        print(f"[IMG] (Replicate) 생성 실패: {create_res.status_code if create_res else 'None'} {create_res.text if create_res else 'No response'}")
+                        # 402 에러 (월간 사용 한도 도달) 처리
+                        if create_res and create_res.status_code == 402:
+                        error_data = create_res.json() if create_res.text else {}
+                        error_detail = error_data.get("detail", "월간 사용 한도에 도달했습니다.")
+                        print(f"[경고] Replicate API 월간 사용 한도 도달: {error_detail}")
+                        print(f"[경고] https://replicate.com/account/billing#limits 에서 한도를 확인하거나 증가시켜주세요.")
+                        print(f"[경고] 한도를 증가시킨 경우 몇 분 후 다시 시도해주세요.")
+                        raise Exception(f"Replicate API 월간 사용 한도 도달: {error_detail}")
+                        # 500 에러나 다른 서버 에러인 경우 즉시 fallback으로
+                        if create_res and create_res.status_code >= 500:
+                        print(f"[IMG] (Replicate) 서버 에러 ({create_res.status_code}), 즉시 fallback으로 전환")
+                        raise Exception(f"Replicate API 서버 에러: {create_res.status_code}")
+                        else:
+                        try:
+                        prediction = create_res.json()
+                        print(f"[generate_image] 예측 응답: {json.dumps(prediction, indent=2, ensure_ascii=False)[:500]}")
+                        pred_id = prediction.get("id")
+                        get_url = prediction.get("urls", {}).get("get")
+                        if not get_url and pred_id:
                         get_url = f"https://api.replicate.com/v1/predictions/{pred_id}"
-                    print(f"[generate_image] 예측 ID: {pred_id}, get_url: {get_url}")
-                    print(f"[generate_image] 상태 확인 시작 (최대 180초 대기)")
-                    final = None
-                    poll_count = 0
-                    max_polls = 180
-                    for poll_count in range(max_polls):
+                        print(f"[generate_image] 예측 ID: {pred_id}, get_url: {get_url}")
+                        print(f"[generate_image] 상태 확인 시작 (최대 180초 대기)")
+                        final = None
+                        poll_count = 0
+                        max_polls = 180
+                        for poll_count in range(max_polls):
                         if not get_url:
                             print(f"[generate_image] get_url이 없어서 중단")
                             break
@@ -1368,31 +1368,31 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                                 time.sleep(2)
                                 continue
                             break
-                    if poll_count >= max_polls - 1:
+                        if poll_count >= max_polls - 1:
                         print(f"[generate_image] 타임아웃: {max_polls}초 동안 완료되지 않음")
-                    except Exception as json_exc:
-                    print(f"[오류] 예측 응답 파싱 실패: {json_exc}")
-                    print(f"[오류] 응답 본문: {create_res.text[:1000]}")
-                    import traceback
-                    traceback.print_exc()
-                    final = None
-                    if final and final.get("status") == "succeeded":
-                    outputs = final.get("output")
-                    image_url = None
-                    image_b64 = None
-                    if isinstance(outputs, str):
+                        except Exception as json_exc:
+                        print(f"[오류] 예측 응답 파싱 실패: {json_exc}")
+                        print(f"[오류] 응답 본문: {create_res.text[:1000]}")
+                        import traceback
+                        traceback.print_exc()
+                        final = None
+                        if final and final.get("status") == "succeeded":
+                        outputs = final.get("output")
+                        image_url = None
+                        image_b64 = None
+                        if isinstance(outputs, str):
                         image_url = outputs
-                    elif isinstance(outputs, list) and outputs:
+                        elif isinstance(outputs, list) and outputs:
                         first = outputs[0]
                         if isinstance(first, str):
                             image_url = first
                         elif isinstance(first, dict):
                             image_url = first.get("url") or first.get("image")
                             image_b64 = first.get("image_base64") or first.get("b64_json")
-                    elif isinstance(outputs, dict):
+                        elif isinstance(outputs, dict):
                         image_url = outputs.get("url") or outputs.get("image")
                         image_b64 = outputs.get("image_base64")
-                    if image_b64:
+                        if image_b64:
                         print(f"[generate_image] base64 이미지 저장 중...")
                         try:
                             image_bytes = base64.b64decode(image_b64)
@@ -1422,7 +1422,7 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                             print(f"[오류] base64 디코딩 실패: {b64_exc}")
                             import traceback
                             traceback.print_exc()
-                    if image_url:
+                        if image_url:
                         print(f"[generate_image] 이미지 URL에서 다운로드 중: {image_url}")
                         try:
                             resp = requests.get(image_url, timeout=60)
@@ -1452,10 +1452,10 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                             print(f"[오류] 이미지 다운로드 실패: {download_exc}")
                             import traceback
                             traceback.print_exc()
-                    print("[IMG] (Replicate) 출력이 비어 있습니다.")
-                    print(f"[디버그] outputs 타입: {type(outputs)}, 값: {outputs}")
-                    elif final:
-                    print(f"[IMG] (Replicate) 예측 실패: {final.get('status')}, 에러: {final.get('error')}")
+                        print("[IMG] (Replicate) 출력이 비어 있습니다.")
+                        print(f"[디버그] outputs 타입: {type(outputs)}, 값: {outputs}")
+                        elif final:
+                        print(f"[IMG] (Replicate) 예측 실패: {final.get('status')}, 에러: {final.get('error')}")
         except Exception as exc:
             log_error(f"[IMG] (Replicate) 예외 발생: {exc}", exc_info=exc)
             print(f"[IMG] (Replicate) 예외 발생: {exc}")
