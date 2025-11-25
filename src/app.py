@@ -11,6 +11,7 @@ import shutil
 import zipfile
 import random
 import socket
+import platform
 from uuid import uuid4
 from io import BytesIO
 from itertools import islice
@@ -34,11 +35,40 @@ from flask import (
 from mutagen.mp3 import MP3, HeaderNotFoundError
 from PIL import Image, ImageOps
 
+# tkinter는 GUI 스레드에서만 사용 가능하므로 조건부 import
+try:
+    import tkinter as tk
+    from tkinter import filedialog
+    TKINTER_AVAILABLE = True
+except ImportError:
+    TKINTER_AVAILABLE = False
+
 from config_manager import ConfigManager
 from utils import get_ffmpeg_path, get_ffprobe_path, resource_path
 
 
 config_manager = ConfigManager()
+
+
+def get_default_download_folder() -> str:
+    """OS별 기본 다운로드 폴더 경로 반환"""
+    system = platform.system().lower()
+    home = os.path.expanduser("~")
+    
+    if system == "windows":
+        # Windows: C:\Users\username\Downloads
+        downloads = os.path.join(home, "Downloads")
+    elif system == "darwin":
+        # macOS: ~/Downloads
+        downloads = os.path.join(home, "Downloads")
+    else:
+        # Linux: ~/Downloads
+        downloads = os.path.join(home, "Downloads")
+    
+    # 폴더가 존재하면 반환, 없으면 빈 문자열
+    if os.path.isdir(downloads):
+        return downloads
+    return ""
 
 
 def reload_api_keys() -> None:
@@ -2941,7 +2971,14 @@ def index():
 @app.route("/api/settings", methods=["GET", "POST"])
 def api_settings():
     if request.method == "GET":
-        return jsonify(config_manager.get_all())
+        settings = config_manager.get_all()
+        # 다운로드 폴더 경로가 없으면 기본 다운로드 폴더로 설정
+        if not settings.get("download_folder_path"):
+            default_folder = get_default_download_folder()
+            if default_folder:
+                settings["download_folder_path"] = default_folder
+                config_manager.set("download_folder_path", default_folder)
+        return jsonify(settings)
 
     data = request.get_json(silent=True) or {}
     config_manager.update(
@@ -2957,6 +2994,74 @@ def api_settings():
     global _cached_voice_list
     _cached_voice_list = None
     return jsonify({"status": "ok"})
+
+
+@app.route("/api/select_download_folder", methods=["POST"])
+def select_download_folder():
+    """폴더 선택 다이얼로그를 열고 선택한 폴더 경로 반환"""
+    if not TKINTER_AVAILABLE:
+        return jsonify({"error": "폴더 선택 기능을 사용할 수 없습니다."}), 500
+    
+    try:
+        # 현재 설정된 경로 또는 기본 다운로드 폴더를 초기 경로로 사용
+        current_path = config_manager.get("download_folder_path", "").strip()
+        if not current_path or not os.path.isdir(current_path):
+            current_path = get_default_download_folder()
+        
+        # tkinter는 메인 스레드에서만 작동하므로 별도 스레드에서 실행
+        selected_folder = [None]
+        error_message = [None]
+        dialog_complete = threading.Event()
+        
+        def select_folder():
+            try:
+                # 루트 윈도우 생성 (숨김)
+                root = tk.Tk()
+                root.withdraw()  # 메인 윈도우 숨기기
+                root.attributes('-topmost', True)  # 다른 창 위에 표시
+                root.lift()  # 창을 맨 위로
+                root.focus_force()  # 포커스 강제 설정
+                
+                # 폴더 선택 다이얼로그 열기
+                folder = filedialog.askdirectory(
+                    title="다운로드 폴더 선택",
+                    initialdir=current_path if current_path else None,
+                    parent=root
+                )
+                
+                selected_folder[0] = folder if folder else None
+                root.destroy()
+            except Exception as e:
+                error_message[0] = str(e)
+                selected_folder[0] = None
+            finally:
+                dialog_complete.set()
+        
+        # GUI 스레드에서 실행
+        thread = threading.Thread(target=select_folder, daemon=False)
+        thread.start()
+        
+        # 다이얼로그가 완료될 때까지 대기 (최대 60초)
+        if not dialog_complete.wait(timeout=60):
+            return jsonify({"error": "폴더 선택 시간이 초과되었습니다."}), 500
+        
+        thread.join(timeout=5)  # 스레드 종료 대기
+        
+        if error_message[0]:
+            return jsonify({"error": f"폴더 선택 중 오류: {error_message[0]}"}), 500
+        
+        if selected_folder[0]:
+            # 선택한 폴더 경로 저장
+            config_manager.set("download_folder_path", selected_folder[0])
+            return jsonify({"folder_path": selected_folder[0]})
+        else:
+            return jsonify({"error": "폴더가 선택되지 않았습니다."}), 400
+            
+    except Exception as e:
+        print(f"[폴더 선택 오류] {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"폴더 선택 실패: {str(e)}"}), 500
 
 
 @app.route("/start_job", methods=["POST"])

@@ -189,8 +189,11 @@
         <input type="password" id="settingsOpenaiKey" placeholder="sk-..." autocomplete="off">
         <p class="settings-helper">OpenAI 키는 대본 기반 프롬프트 자동 생성에 사용됩니다.</p>
         <label for="settingsDownloadFolder">다운로드 폴더 경로 (선택사항)</label>
-        <input type="text" id="settingsDownloadFolder" placeholder="예: /Users/username/Downloads 또는 C:\Users\username\Downloads" autocomplete="off">
-        <p class="settings-helper">다운로드 폴더 경로를 지정하면 생성된 파일이 해당 폴더로 복사됩니다. 비워두면 브라우저 기본 다운로드 폴더를 사용합니다.</p>
+        <div style="display:flex; gap:8px; align-items:center;">
+            <input type="text" id="settingsDownloadFolder" placeholder="예: /Users/username/Downloads 또는 C:\Users\username\Downloads" autocomplete="off" style="flex:1;">
+            <button type="button" id="selectFolderBtn" style="background:#6366f1; padding:10px 16px; white-space:nowrap;">폴더 선택</button>
+        </div>
+        <p class="settings-helper">다운로드 폴더 경로를 지정하면 생성된 파일이 해당 폴더로 복사됩니다. 폴더 선택 버튼을 클릭하여 직접 선택하거나, 경로를 입력할 수 있습니다.</p>
         <div class="settings-actions">
             <button type="button" id="cancelSettingsBtn" style="background:#e5e7eb; color:#111827;">취소</button>
             <button type="button" id="saveSettingsBtn">저장</button>
@@ -294,6 +297,7 @@
             const settingsElevenlabsInput = document.getElementById('settingsElevenlabsKey');
             const settingsOpenaiInput = document.getElementById('settingsOpenaiKey');
             const settingsDownloadFolderInput = document.getElementById('settingsDownloadFolder');
+            const selectFolderBtn = document.getElementById('selectFolderBtn');
             let settingsState = {
                 replicate_api_key: '',
                 elevenlabs_api_key: '',
@@ -1524,6 +1528,42 @@
                     saveSettings();
                 });
             }
+            
+            // 폴더 선택 버튼 이벤트
+            if (selectFolderBtn) {
+                selectFolderBtn.addEventListener('click', async () => {
+                    if (!selectFolderBtn) return;
+                    const originalText = selectFolderBtn.textContent;
+                    selectFolderBtn.disabled = true;
+                    selectFolderBtn.textContent = '선택 중...';
+                    
+                    try {
+                        const response = await fetch('/api/select_download_folder', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                        
+                        if (!response.ok) {
+                            const errorData = await response.json().catch(() => ({}));
+                            throw new Error(errorData.error || '폴더 선택에 실패했습니다.');
+                        }
+                        
+                        const data = await response.json();
+                        if (data.folder_path && settingsDownloadFolderInput) {
+                            settingsDownloadFolderInput.value = data.folder_path;
+                            settingsState.download_folder_path = data.folder_path;
+                            setStatus('폴더가 선택되었습니다.', 'success');
+                        }
+                    } catch (error) {
+                        console.error('[폴더 선택] 오류:', error);
+                        setStatus(error.message || '폴더 선택 중 오류가 발생했습니다.', 'error');
+                    } finally {
+                        selectFolderBtn.disabled = false;
+                        selectFolderBtn.textContent = originalText;
+                    }
+                });
+            }
+            
             document.addEventListener('keydown', (event) => {
                 if (event.key === 'Escape' && settingsModal && settingsModal.classList.contains('active')) {
                     closeSettingsModal();
