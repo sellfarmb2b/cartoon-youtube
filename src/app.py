@@ -2580,9 +2580,9 @@ def run_generation_job(
             update_job(job_id, message=message)
 
         try:
-        update_job(job_id, status="running")
-        print("=== [DEBUG] 작업 준비 중 ===")
-        progress("작업을 준비 중입니다.")
+            update_job(job_id, status="running")
+            print("=== [DEBUG] 작업 준비 중 ===")
+            progress("작업을 준비 중입니다.")
         # sentences_override가 있으면 사용 (이미 파싱된 한국어 문장만 포함)
         if sentences_override:
             sentences = sentences_override
