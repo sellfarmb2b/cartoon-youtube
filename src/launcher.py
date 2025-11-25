@@ -15,7 +15,7 @@ from packaging import version
 from utils import resource_path
 
 
-REMOTE_VERSION_URL = "https://raw.githubusercontent.com/sellfarmb2b/cartoon-youtube/main/src/version.json"
+REMOTE_VERSION_URL = "https://raw.githubusercontent.com/sellfarmb2b/cartoon-youtube/refs/heads/main/src/version.json"
 RELEASE_DOWNLOAD_URL = (
     "https://github.com/sellfarmb2b/cartoon-youtube/releases/download/v{version}/{filename}"
 )
