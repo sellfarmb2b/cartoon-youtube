@@ -1327,7 +1327,7 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                         pred_id = prediction.get("id")
                         get_url = prediction.get("urls", {}).get("get")
                         if not get_url and pred_id:
-                        get_url = f"https://api.replicate.com/v1/predictions/{pred_id}"
+                            get_url = f"https://api.replicate.com/v1/predictions/{pred_id}"
                         print(f"[generate_image] 예측 ID: {pred_id}, get_url: {get_url}")
                         print(f"[generate_image] 상태 확인 시작 (최대 180초 대기)")
                         final = None
