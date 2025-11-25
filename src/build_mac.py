@@ -51,7 +51,7 @@ def build_mac():
         "pyinstaller",
         "--name=Launcher",
         "--onefile",
-        "--noconsole",
+        # --noconsole 제거 (터미널 창이 보여야 진행 상황을 알 수 있음)
         "--add-data=src/version.json:src",
         "src/launcher.py"
     ]
