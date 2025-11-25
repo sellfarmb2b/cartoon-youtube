@@ -1335,39 +1335,39 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                         max_polls = 180
                         for poll_count in range(max_polls):
                         if not get_url:
-                            print(f"[generate_image] get_url이 없어서 중단")
-                            break
+                                print(f"[generate_image] get_url이 없어서 중단")
+                                break
                         try:
-                            res = requests.get(get_url, headers=headers, timeout=10)
-                            if res.status_code != 200:
+                                res = requests.get(get_url, headers=headers, timeout=10)
+                                if res.status_code != 200:
                                 print(f"[IMG] (Replicate) 상태 조회 실패: {res.status_code} {res.text[:500]}")
                                 break
-                            data = res.json()
-                            status = data.get("status")
-                            # 5초마다 로그 출력 (더 자주)
-                            if poll_count % 5 == 0:
+                                data = res.json()
+                                status = data.get("status")
+                                # 5초마다 로그 출력 (더 자주)
+                                if poll_count % 5 == 0:
                                 print(f"[generate_image] 상태 확인 중... ({poll_count}초 경과, 상태: {status})")
-                            if status in ("succeeded", "failed", "canceled"):
+                                if status in ("succeeded", "failed", "canceled"):
                                 final = data
                                 print(f"[generate_image] 최종 상태: {status} (총 {poll_count}초 소요)")
                                 if status == "failed":
                                     error_msg = data.get("error", "알 수 없는 오류")
                                     print(f"[generate_image] 실패 원인: {error_msg}")
                                 break
-                            time.sleep(1)
+                                time.sleep(1)
                         except requests.exceptions.Timeout:
-                            print(f"[경고] 상태 조회 타임아웃 ({poll_count}초 경과), 계속 시도...")
-                            time.sleep(1)
-                            continue
+                                print(f"[경고] 상태 조회 타임아웃 ({poll_count}초 경과), 계속 시도...")
+                                time.sleep(1)
+                                continue
                         except Exception as poll_exc:
-                            print(f"[오류] 상태 조회 중 예외 발생: {poll_exc}")
-                            import traceback
-                            traceback.print_exc()
-                            # 네트워크 오류는 재시도
-                            if poll_count < max_polls - 1:
+                                print(f"[오류] 상태 조회 중 예외 발생: {poll_exc}")
+                                import traceback
+                                traceback.print_exc()
+                                # 네트워크 오류는 재시도
+                                if poll_count < max_polls - 1:
                                 time.sleep(2)
                                 continue
-                            break
+                                break
                         if poll_count >= max_polls - 1:
                         print(f"[generate_image] 타임아웃: {max_polls}초 동안 완료되지 않음")
                         except Exception as json_exc:
@@ -1385,23 +1385,23 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                         elif isinstance(outputs, list) and outputs:
                         first = outputs[0]
                         if isinstance(first, str):
-                            image_url = first
+                                image_url = first
                         elif isinstance(first, dict):
-                            image_url = first.get("url") or first.get("image")
-                            image_b64 = first.get("image_base64") or first.get("b64_json")
+                                image_url = first.get("url") or first.get("image")
+                                image_b64 = first.get("image_base64") or first.get("b64_json")
                         elif isinstance(outputs, dict):
                         image_url = outputs.get("url") or outputs.get("image")
                         image_b64 = outputs.get("image_base64")
                         if image_b64:
                         print(f"[generate_image] base64 이미지 저장 중...")
                         try:
-                            image_bytes = base64.b64decode(image_b64)
-                            print(f"[generate_image] base64 디코딩 완료, 크기: {len(image_bytes)} bytes")
-                            if len(image_bytes) < 100:
+                                image_bytes = base64.b64decode(image_b64)
+                                print(f"[generate_image] base64 디코딩 완료, 크기: {len(image_bytes)} bytes")
+                                if len(image_bytes) < 100:
                                 print(f"[경고] 이미지 데이터가 너무 작습니다: {len(image_bytes)} bytes")
-                            save_image_bytes_as_png(image_bytes, filename)
-                            # 저장된 파일 확인
-                            if os.path.exists(filename):
+                                save_image_bytes_as_png(image_bytes, filename)
+                                # 저장된 파일 확인
+                                if os.path.exists(filename):
                                 file_size = os.path.getsize(filename)
                                 print(f"[generate_image] 이미지 저장 완료: {filename} (크기: {file_size} bytes)")
                                 # 이미지가 검은색인지 확인 (첫 몇 픽셀 확인)
@@ -1416,23 +1416,23 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                                 except Exception as img_check_exc:
                                     print(f"[경고] 이미지 확인 실패: {img_check_exc}")
                                 return True
-                            else:
+                                else:
                                 print(f"[오류] 파일이 저장되지 않았습니다: {filename}")
                         except Exception as b64_exc:
-                            print(f"[오류] base64 디코딩 실패: {b64_exc}")
-                            import traceback
-                            traceback.print_exc()
+                                print(f"[오류] base64 디코딩 실패: {b64_exc}")
+                                import traceback
+                                traceback.print_exc()
                         if image_url:
                         print(f"[generate_image] 이미지 URL에서 다운로드 중: {image_url}")
                         try:
-                            resp = requests.get(image_url, timeout=60)
-                            resp.raise_for_status()
-                            print(f"[generate_image] 이미지 다운로드 완료, 크기: {len(resp.content)} bytes")
-                            if len(resp.content) < 100:
+                                resp = requests.get(image_url, timeout=60)
+                                resp.raise_for_status()
+                                print(f"[generate_image] 이미지 다운로드 완료, 크기: {len(resp.content)} bytes")
+                                if len(resp.content) < 100:
                                 print(f"[경고] 다운로드된 이미지 데이터가 너무 작습니다: {len(resp.content)} bytes")
-                            save_image_bytes_as_png(resp.content, filename)
-                            # 저장된 파일 확인
-                            if os.path.exists(filename):
+                                save_image_bytes_as_png(resp.content, filename)
+                                # 저장된 파일 확인
+                                if os.path.exists(filename):
                                 file_size = os.path.getsize(filename)
                                 print(f"[generate_image] 이미지 다운로드 및 저장 완료: {filename} (크기: {file_size} bytes)")
                                 # 이미지가 검은색인지 확인
@@ -1446,12 +1446,12 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                                 except Exception as img_check_exc:
                                     print(f"[경고] 이미지 확인 실패: {img_check_exc}")
                                 return True
-                            else:
+                                else:
                                 print(f"[오류] 파일이 저장되지 않았습니다: {filename}")
                         except Exception as download_exc:
-                            print(f"[오류] 이미지 다운로드 실패: {download_exc}")
-                            import traceback
-                            traceback.print_exc()
+                                print(f"[오류] 이미지 다운로드 실패: {download_exc}")
+                                import traceback
+                                traceback.print_exc()
                         print("[IMG] (Replicate) 출력이 비어 있습니다.")
                         print(f"[디버그] outputs 타입: {type(outputs)}, 값: {outputs}")
                         elif final:
