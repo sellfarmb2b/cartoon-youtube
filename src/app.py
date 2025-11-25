@@ -1185,23 +1185,23 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
     
     try:
         mode = (mode or "animation").lower()
-    fallback_context = "scene description"
-    if prompt_text:
-        base_prompt = enforce_prompt_by_mode(prompt_text, fallback_context=fallback_context, mode=mode)
-    else:
-        default_prompt = (
-            "A mysterious scene involving a historic landmark attracting curiosity"
-            if mode == "realistic"
-            else "stickman presenting data in a colorful studio"
-        )
-        base_prompt = enforce_prompt_by_mode(default_prompt, fallback_context="default context", mode=mode)
+        fallback_context = "scene description"
+        if prompt_text:
+            base_prompt = enforce_prompt_by_mode(prompt_text, fallback_context=fallback_context, mode=mode)
+        else:
+            default_prompt = (
+                "A mysterious scene involving a historic landmark attracting curiosity"
+                if mode == "realistic"
+                else "stickman presenting data in a colorful studio"
+            )
+            base_prompt = enforce_prompt_by_mode(default_prompt, fallback_context="default context", mode=mode)
 
-    if mode == "realistic":
-        negative_prompt = REALISTIC_NEGATIVE_PROMPT
-    else:
-        negative_prompt = (
-            "realistic human, detailed human skin, photograph, 3d render, blank white background, line-art only, text, watermark"
-        )
+        if mode == "realistic":
+            negative_prompt = REALISTIC_NEGATIVE_PROMPT
+        else:
+            negative_prompt = (
+                "realistic human, detailed human skin, photograph, 3d render, blank white background, line-art only, text, watermark"
+            )
 
         # 사용자가 입력한 API 키를 우선 사용, 없으면 기본값 사용
         api_token = replicate_api_key or REPLICATE_API_TOKEN
