@@ -1069,78 +1069,78 @@ def generate_tts_with_alignment(voice_id: str, text: str, audio_filename: str, e
         if not api_key:
             print("[TTS] ElevenLabs API 키가 설정되지 않았습니다.")
             return None
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/with-timestamps"
-    headers = {"xi-api-key": api_key, "Accept": "application/json"}
-    payload = {
-        "text": text,
-        "model_id": "eleven_turbo_v2_5",  # 더 빠르고 고품질 모델로 업그레이드
-        "voice_settings": {
-            "stability": 0.92,  # 높일수록 피치 변동을 줄이고 일관성을 높임
-            "similarity_boost": 0.7,  # 너무 높으면 표현이 과도해질 수 있어 완화
-            "style": 0.0,
-            "use_speaker_boost": False,  # 피치 상승을 막기 위해 부스트 비활성화
-        },
-        "output_format": "mp3_44100_256",  # 비트레이트 증가 (128 -> 256)로 음질 개선
-        "optimize_streaming_latency": 4,
-    }
-    last_error = None
-    for attempt in range(1, TTS_MAX_RETRIES + 1):
-        wait_seconds = TTS_RETRY_BASE_DELAY * attempt
-        try:
-            with _tts_request_semaphore:
-                resp = requests.post(url, headers=headers, json=payload, timeout=120)
-        except Exception as exc:
-            last_error = str(exc)
-            print(f"[TTS] API 호출 실패 (시도 {attempt}/{TTS_MAX_RETRIES}): {exc}")
-            resp = None
-        if resp and resp.status_code == 200:
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/with-timestamps"
+        headers = {"xi-api-key": api_key, "Accept": "application/json"}
+        payload = {
+            "text": text,
+            "model_id": "eleven_turbo_v2_5",  # 더 빠르고 고품질 모델로 업그레이드
+            "voice_settings": {
+                "stability": 0.92,  # 높일수록 피치 변동을 줄이고 일관성을 높임
+                "similarity_boost": 0.7,  # 너무 높으면 표현이 과도해질 수 있어 완화
+                "style": 0.0,
+                "use_speaker_boost": False,  # 피치 상승을 막기 위해 부스트 비활성화
+            },
+            "output_format": "mp3_44100_256",  # 비트레이트 증가 (128 -> 256)로 음질 개선
+            "optimize_streaming_latency": 4,
+        }
+        last_error = None
+        for attempt in range(1, TTS_MAX_RETRIES + 1):
+            wait_seconds = TTS_RETRY_BASE_DELAY * attempt
             try:
-                data = resp.json()
-            except ValueError as json_exc:
-                last_error = f"JSON 파싱 실패: {json_exc}"
-                print(f"[TTS] 응답 파싱 실패: {json_exc}")
+                with _tts_request_semaphore:
+                    resp = requests.post(url, headers=headers, json=payload, timeout=120)
+            except Exception as exc:
+                last_error = str(exc)
+                print(f"[TTS] API 호출 실패 (시도 {attempt}/{TTS_MAX_RETRIES}): {exc}")
                 resp = None
-            else:
-                audio_b64 = data.get("audio") or data.get("audio_base64")
-                alignment = data.get("alignment")
-                if not audio_b64:
-                    last_error = "오디오 데이터가 비어 있습니다."
-                    print(f"[TTS] 경고: 오디오 데이터가 비어 있음 (시도 {attempt})")
-                else:
-                    try:
-                        audio_bytes = base64.b64decode(audio_b64)
-                        with open(audio_filename, "wb") as f:
-                            f.write(audio_bytes)
-                        if os.path.getsize(audio_filename) == 0:
-                            last_error = "생성된 오디오 파일 크기가 0입니다."
-                            print(f"[TTS] 경고: 생성된 오디오 파일이 비어 있음 (시도 {attempt})")
-                        else:
-                            return alignment
-                    except Exception as file_exc:
-                        last_error = f"오디오 파일 저장 실패: {file_exc}"
-                        print(f"[TTS] 오디오 저장 실패: {file_exc}")
-        else:
-            if resp is not None:
-                error_detail = ""
+            if resp and resp.status_code == 200:
                 try:
-                    error_json = resp.json()
-                    error_detail = error_json.get("detail") or error_json.get("error", resp.text)
-                except Exception:
-                    error_detail = resp.text
-                print(f"[TTS] 실패 (시도 {attempt}/{TTS_MAX_RETRIES}): {resp.status_code} {error_detail}")
-                if resp.status_code == 429:
-                    retry_after = 0
+                    data = resp.json()
+                except ValueError as json_exc:
+                    last_error = f"JSON 파싱 실패: {json_exc}"
+                    print(f"[TTS] 응답 파싱 실패: {json_exc}")
+                    resp = None
+                else:
+                    audio_b64 = data.get("audio") or data.get("audio_base64")
+                    alignment = data.get("alignment")
+                    if not audio_b64:
+                        last_error = "오디오 데이터가 비어 있습니다."
+                        print(f"[TTS] 경고: 오디오 데이터가 비어 있음 (시도 {attempt})")
+                    else:
+                        try:
+                            audio_bytes = base64.b64decode(audio_b64)
+                            with open(audio_filename, "wb") as f:
+                                f.write(audio_bytes)
+                            if os.path.getsize(audio_filename) == 0:
+                                last_error = "생성된 오디오 파일 크기가 0입니다."
+                                print(f"[TTS] 경고: 생성된 오디오 파일이 비어 있음 (시도 {attempt})")
+                            else:
+                                return alignment
+                        except Exception as file_exc:
+                            last_error = f"오디오 파일 저장 실패: {file_exc}"
+                            print(f"[TTS] 오디오 저장 실패: {file_exc}")
+            else:
+                if resp is not None:
+                    error_detail = ""
                     try:
-                        retry_after = int(error_json.get("retry_after", 0) if 'error_json' in locals() else 0)
+                        error_json = resp.json()
+                        error_detail = error_json.get("detail") or error_json.get("error", resp.text)
                     except Exception:
+                        error_detail = resp.text
+                    print(f"[TTS] 실패 (시도 {attempt}/{TTS_MAX_RETRIES}): {resp.status_code} {error_detail}")
+                    if resp.status_code == 429:
                         retry_after = 0
-                    wait_seconds = max(wait_seconds, retry_after + 1)
-                elif resp.status_code >= 500:
-                    wait_seconds = max(wait_seconds, TTS_RETRY_BASE_DELAY * attempt)
-                last_error = error_detail or str(resp.status_code)
-        if attempt < TTS_MAX_RETRIES:
-            print(f"[TTS] {wait_seconds}초 후 재시도합니다...")
-            time.sleep(wait_seconds)
+                        try:
+                            retry_after = int(error_json.get("retry_after", 0) if 'error_json' in locals() else 0)
+                        except Exception:
+                            retry_after = 0
+                        wait_seconds = max(wait_seconds, retry_after + 1)
+                    elif resp.status_code >= 500:
+                        wait_seconds = max(wait_seconds, TTS_RETRY_BASE_DELAY * attempt)
+                    last_error = error_detail or str(resp.status_code)
+            if attempt < TTS_MAX_RETRIES:
+                print(f"[TTS] {wait_seconds}초 후 재시도합니다...")
+                time.sleep(wait_seconds)
         print(f"[TTS] 모든 재시도 실패: {last_error}")
         return None
     except Exception as tts_exc:
