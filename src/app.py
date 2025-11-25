@@ -1355,7 +1355,7 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                         print(f"[IMG] (Replicate) 서버 에러 ({create_res.status_code}), 즉시 fallback으로 전환")
                         raise Exception(f"Replicate API 서버 에러: {create_res.status_code}")
                 else:
-                try:
+                    try:
                     prediction = create_res.json()
                     print(f"[generate_image] 예측 응답: {json.dumps(prediction, indent=2, ensure_ascii=False)[:500]}")
                     pred_id = prediction.get("id")
