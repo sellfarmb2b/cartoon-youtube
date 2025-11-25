@@ -1232,39 +1232,39 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                 print(f"=== [DEBUG] 파일 전체 경로: {os.path.abspath(filename)} ===")
                 print(f"=== [DEBUG] 파일 디렉토리 존재 여부: {os.path.exists(os.path.dirname(filename))} ===")
                 print(f"=== [DEBUG] 파일 디렉토리 쓰기 가능 여부: {os.access(os.path.dirname(filename), os.W_OK) if os.path.exists(os.path.dirname(filename)) else False} ===")
-            headers = {
-                "Authorization": f"Token {api_token}",
-                "Content-Type": "application/json",
-            }
-            replicate_input = {
-                "prompt": base_prompt,
-                "negative_prompt": negative_prompt,
-                "aspect_ratio": "16:9",
-            }
-            if mode == "realistic":
-                # flux-schnell 모델 파라미터 (docs/cog-flux-main 참고)
-                # - num_inference_steps: 최대 4, 기본값 4 (SchnellPredictor 참고)
-                # - guidance_scale: 지원하지 않음 (제거)
-                # - scheduler: 지원하지 않음 (제거)
-                replicate_input.update(
-                    {
-                        "num_inference_steps": 4,  # flux-schnell은 최대 4까지만 지원
-                        "output_format": "png",
-                    }
-                )
-                model_owner = "black-forest-labs"
-                model_name = "flux-schnell"
-                # flux-schnell은 최신 버전을 사용하므로 version_id 없이 직접 predictions 엔드포인트 사용
-                request_url = f"https://api.replicate.com/v1/models/{model_owner}/{model_name}/predictions"
-                body = {"input": replicate_input}
-            else:
-                # prunaai/hidream-l1-fast 모델 사용 (HiDream-I1-Fast: 16 inference steps)
-                replicate_input.update({"num_inference_steps": 16, "image_format": "png"})
-                # guidance_scale은 hidream 모델에서 지원하지 않을 수 있으므로 제거
-                model_owner = "prunaai"
-                model_name = "hidream-l1-fast"
-                request_url = f"https://api.replicate.com/v1/models/{model_owner}/{model_name}/predictions"
-                body = {"input": replicate_input}
+                headers = {
+                    "Authorization": f"Token {api_token}",
+                    "Content-Type": "application/json",
+                }
+                replicate_input = {
+                    "prompt": base_prompt,
+                    "negative_prompt": negative_prompt,
+                    "aspect_ratio": "16:9",
+                }
+                if mode == "realistic":
+                    # flux-schnell 모델 파라미터 (docs/cog-flux-main 참고)
+                    # - num_inference_steps: 최대 4, 기본값 4 (SchnellPredictor 참고)
+                    # - guidance_scale: 지원하지 않음 (제거)
+                    # - scheduler: 지원하지 않음 (제거)
+                    replicate_input.update(
+                        {
+                            "num_inference_steps": 4,  # flux-schnell은 최대 4까지만 지원
+                            "output_format": "png",
+                        }
+                    )
+                    model_owner = "black-forest-labs"
+                    model_name = "flux-schnell"
+                    # flux-schnell은 최신 버전을 사용하므로 version_id 없이 직접 predictions 엔드포인트 사용
+                    request_url = f"https://api.replicate.com/v1/models/{model_owner}/{model_name}/predictions"
+                    body = {"input": replicate_input}
+                else:
+                    # prunaai/hidream-l1-fast 모델 사용 (HiDream-I1-Fast: 16 inference steps)
+                    replicate_input.update({"num_inference_steps": 16, "image_format": "png"})
+                    # guidance_scale은 hidream 모델에서 지원하지 않을 수 있으므로 제거
+                    model_owner = "prunaai"
+                    model_name = "hidream-l1-fast"
+                    request_url = f"https://api.replicate.com/v1/models/{model_owner}/{model_name}/predictions"
+                    body = {"input": replicate_input}
 
                 print("=== [DEBUG] Replicate API 요청 전송 중 ===")
                 print(f"=== [DEBUG] 프롬프트: {base_prompt[:200]}... ===")
@@ -1276,8 +1276,8 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                 log_debug(f"[generate_image] Negative 프롬프트: {negative_prompt[:200]}...")
                 log_debug(f"[generate_image] 요청 URL: {request_url}")
                 log_debug(f"[generate_image] 요청 본문: {json.dumps(body, indent=2, ensure_ascii=False)}")
-            
-            # Rate limiting: 분당 600개 요청 제한 준수 (최소 0.1초 간격)
+                
+                # Rate limiting: 분당 600개 요청 제한 준수 (최소 0.1초 간격)
             global _last_replicate_request_time
             with _replicate_request_lock:
                 current_time = time.time()
