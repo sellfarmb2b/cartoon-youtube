@@ -1356,7 +1356,7 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                         raise Exception(f"Replicate API 서버 에러: {create_res.status_code}")
                 else:
                     try:
-                    prediction = create_res.json()
+                        prediction = create_res.json()
                     print(f"[generate_image] 예측 응답: {json.dumps(prediction, indent=2, ensure_ascii=False)[:500]}")
                     pred_id = prediction.get("id")
                     get_url = prediction.get("urls", {}).get("get")
@@ -1404,7 +1404,7 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                             break
                     if poll_count >= max_polls - 1:
                         print(f"[generate_image] 타임아웃: {max_polls}초 동안 완료되지 않음")
-                except Exception as json_exc:
+                    except Exception as json_exc:
                     print(f"[오류] 예측 응답 파싱 실패: {json_exc}")
                     print(f"[오류] 응답 본문: {create_res.text[:1000]}")
                     import traceback
@@ -1511,35 +1511,35 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
         log_error(f"[경고] 이미지 생성 실패, 검은색 이미지 생성 시도: {filename}")
         try:
             print(f"[경고] 이미지 생성 실패, 검은색 이미지 생성: {filename}")
-        log_debug(f"[fallback] 검은색 이미지 생성 시작 - 경로: {os.path.abspath(filename)}")
-        log_debug(f"[fallback] 디렉토리 존재 여부: {os.path.exists(os.path.dirname(filename))}")
-        black_img = Image.new("RGB", (1920, 1080), color="black")
-        black_img.save(filename, format="PNG")
-        log_debug(f"[fallback] 검은색 이미지 저장 완료")
-        
-        # 생성된 이미지 파일 검증
-        if os.path.exists(filename):
-            file_size = os.path.getsize(filename)
-            print(f"[검은색 이미지] 파일 생성됨: {filename} (크기: {file_size} bytes)")
-            if file_size < 100:
-                print(f"[경고] 검은색 이미지 파일이 너무 작습니다. 다시 생성 시도...")
-                black_img.save(filename, format="PNG")
-                file_size = os.path.getsize(filename)
-                print(f"[검은색 이미지] 재생성 완료: {filename} (크기: {file_size} bytes)")
+            log_debug(f"[fallback] 검은색 이미지 생성 시작 - 경로: {os.path.abspath(filename)}")
+            log_debug(f"[fallback] 디렉토리 존재 여부: {os.path.exists(os.path.dirname(filename))}")
+            black_img = Image.new("RGB", (1920, 1080), color="black")
+            black_img.save(filename, format="PNG")
+            log_debug(f"[fallback] 검은색 이미지 저장 완료")
             
-            # PIL로 이미지 파일 유효성 검증
-            try:
-                with Image.open(filename) as test_img:
-                    test_img.verify()  # 이미지 파일 무결성 검증
-                print(f"[검은색 이미지] 이미지 파일 유효성 검증 완료")
-            except Exception as verify_exc:
-                print(f"[경고] 이미지 파일 유효성 검증 실패: {verify_exc}")
-                # 다시 생성
-                black_img = Image.new("RGB", (1920, 1080), color="black")
-                black_img.save(filename, format="PNG")
-                print(f"[검은색 이미지] 재생성 완료 (검증 실패 후)")
-        else:
-            print(f"[오류] 검은색 이미지 파일이 생성되지 않았습니다: {filename}")
+            # 생성된 이미지 파일 검증
+            if os.path.exists(filename):
+                file_size = os.path.getsize(filename)
+                print(f"[검은색 이미지] 파일 생성됨: {filename} (크기: {file_size} bytes)")
+                if file_size < 100:
+                    print(f"[경고] 검은색 이미지 파일이 너무 작습니다. 다시 생성 시도...")
+                    black_img.save(filename, format="PNG")
+                    file_size = os.path.getsize(filename)
+                    print(f"[검은색 이미지] 재생성 완료: {filename} (크기: {file_size} bytes)")
+                
+                # PIL로 이미지 파일 유효성 검증
+                try:
+                    with Image.open(filename) as test_img:
+                        test_img.verify()  # 이미지 파일 무결성 검증
+                    print(f"[검은색 이미지] 이미지 파일 유효성 검증 완료")
+                except Exception as verify_exc:
+                    print(f"[경고] 이미지 파일 유효성 검증 실패: {verify_exc}")
+                    # 다시 생성
+                    black_img = Image.new("RGB", (1920, 1080), color="black")
+                    black_img.save(filename, format="PNG")
+                    print(f"[검은색 이미지] 재생성 완료 (검증 실패 후)")
+            else:
+                print(f"[오류] 검은색 이미지 파일이 생성되지 않았습니다: {filename}")
         except Exception as fallback_exc:
             print("=" * 80)
             print("=== [DEBUG] 오류: 검은색 이미지 생성 실패 ===")
@@ -2547,8 +2547,8 @@ def run_generation_job(
     print("=" * 80)
     try:
         assets_folder, subtitle_file, video_file = get_job_paths(job_id)
-    
-    # API 키 확인 및 환경 변수 fallback
+        
+        # API 키 확인 및 환경 변수 fallback
     if not replicate_api_key or (isinstance(replicate_api_key, str) and not replicate_api_key.strip()):
         replicate_api_key = REPLICATE_API_TOKEN
         print(f"[API 키] Replicate API 키: 사용자 입력 없음, 저장된 설정 사용")
