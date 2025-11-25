@@ -1036,9 +1036,20 @@
                                     // 이미지 파일 경로를 URL로 변환
                                     Object.keys(job.image_files).forEach(idx => {
                                         const absPath = job.image_files[idx];
-                                        // 절대 경로에서 static/ 이후 부분 추출
-                                        const relPath = absPath.replace(/^.*?static\//, 'static/');
-                                        imageItems[parseInt(idx)] = '/' + relPath.replace(/\\/g, '/');
+                                        // Windows 경로 구분자를 먼저 슬래시로 변환
+                                        let normalizedPath = absPath.replace(/\\/g, '/');
+                                        // 절대 경로에서 static/ 또는 generated_assets/ 이후 부분 추출
+                                        let relPath = normalizedPath;
+                                        if (normalizedPath.includes('/static/')) {
+                                            relPath = normalizedPath.split('/static/')[1];
+                                        } else if (normalizedPath.includes('static/')) {
+                                            relPath = normalizedPath.split('static/')[1];
+                                        } else if (normalizedPath.includes('/generated_assets/')) {
+                                            relPath = 'generated_assets/' + normalizedPath.split('/generated_assets/')[1];
+                                        } else if (normalizedPath.includes('generated_assets/')) {
+                                            relPath = 'generated_assets/' + normalizedPath.split('generated_assets/')[1];
+                                        }
+                                        imageItems[parseInt(idx)] = '/static/' + relPath;
                                     });
                                 }
                                 
@@ -1315,14 +1326,18 @@
                                     // 이미지 파일 경로를 URL로 변환
                                     Object.keys(job.image_files).forEach(idx => {
                                         const absPath = job.image_files[idx];
-                                        // 절대 경로에서 static/ 이후 부분 추출
-                                        let relPath = absPath;
-                                        if (absPath.includes('/static/')) {
-                                            relPath = absPath.split('/static/')[1];
-                                        } else if (absPath.includes('static/')) {
-                                            relPath = absPath.split('static/')[1];
-                                        } else if (absPath.includes('generated_assets/')) {
-                                            relPath = 'generated_assets/' + absPath.split('generated_assets/')[1];
+                                        // Windows 경로 구분자를 먼저 슬래시로 변환
+                                        let normalizedPath = absPath.replace(/\\/g, '/');
+                                        // 절대 경로에서 static/ 또는 generated_assets/ 이후 부분 추출
+                                        let relPath = normalizedPath;
+                                        if (normalizedPath.includes('/static/')) {
+                                            relPath = normalizedPath.split('/static/')[1];
+                                        } else if (normalizedPath.includes('static/')) {
+                                            relPath = normalizedPath.split('static/')[1];
+                                        } else if (normalizedPath.includes('/generated_assets/')) {
+                                            relPath = 'generated_assets/' + normalizedPath.split('/generated_assets/')[1];
+                                        } else if (normalizedPath.includes('generated_assets/')) {
+                                            relPath = 'generated_assets/' + normalizedPath.split('generated_assets/')[1];
                                         }
                                         imageItems[parseInt(idx)] = '/static/' + relPath;
                                     });
