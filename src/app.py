@@ -1295,12 +1295,12 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                         if create_res.status_code not in (200, 201, 429):
                             break
                             
-                            except Exception as req_exc:
+                    except Exception as req_exc:
                         if retry_attempt < max_retries - 1 and "429" in str(req_exc):
-                        wait_time = REPLICATE_RATE_LIMIT_RETRY_DELAY
-                        print(f"[Rate Limit] 예외 발생, {wait_time}초 후 재시도: {req_exc}")
-                        time.sleep(wait_time)
-                        continue
+                            wait_time = REPLICATE_RATE_LIMIT_RETRY_DELAY
+                            print(f"[Rate Limit] 예외 발생, {wait_time}초 후 재시도: {req_exc}")
+                            time.sleep(wait_time)
+                            continue
                         print(f"[오류] Replicate API 요청 실패: {req_exc}")
                         import traceback
                         traceback.print_exc()
