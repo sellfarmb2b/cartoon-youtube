@@ -1159,57 +1159,56 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
     log_debug(f"[generate_image] prompt_text 길이: {len(prompt_text) if prompt_text else 0}")
     log_debug(f"[generate_image] replicate_api_key 전달 여부: {bool(replicate_api_key)}")
     
-    try:
-        mode = (mode or "animation").lower()
-        fallback_context = "scene description"
-        if prompt_text:
-            base_prompt = enforce_prompt_by_mode(prompt_text, fallback_context=fallback_context, mode=mode)
-        else:
-            default_prompt = (
-                "A mysterious scene involving a historic landmark attracting curiosity"
-                if mode == "realistic"
-                else "stickman presenting data in a colorful studio"
-            )
-            base_prompt = enforce_prompt_by_mode(default_prompt, fallback_context="default context", mode=mode)
+    mode = (mode or "animation").lower()
+    fallback_context = "scene description"
+    if prompt_text:
+        base_prompt = enforce_prompt_by_mode(prompt_text, fallback_context=fallback_context, mode=mode)
+    else:
+        default_prompt = (
+            "A mysterious scene involving a historic landmark attracting curiosity"
+            if mode == "realistic"
+            else "stickman presenting data in a colorful studio"
+        )
+        base_prompt = enforce_prompt_by_mode(default_prompt, fallback_context="default context", mode=mode)
 
-        if mode == "realistic":
-            negative_prompt = REALISTIC_NEGATIVE_PROMPT
-        else:
-            negative_prompt = (
-                "realistic human, detailed human skin, photograph, 3d render, blank white background, line-art only, text, watermark"
-            )
+    if mode == "realistic":
+        negative_prompt = REALISTIC_NEGATIVE_PROMPT
+    else:
+        negative_prompt = (
+            "realistic human, detailed human skin, photograph, 3d render, blank white background, line-art only, text, watermark"
+        )
 
-        # 사용자가 입력한 API 키를 우선 사용, 없으면 기본값 사용
-        api_token = replicate_api_key or REPLICATE_API_TOKEN
-        replicate_api_available_local = bool(api_token)
-        
-        # API 키 사용 여부 로그 (키의 일부만 표시)
-        if api_token:
-            key_preview = api_token[:10] + "..." + api_token[-4:] if len(api_token) > 14 else "***"
-            log_debug(f"[generate_image] 사용 중인 Replicate API 키: {key_preview}")
-            log_debug(f"[generate_image] API 키 길이: {len(api_token)}")
-        else:
-            log_error(f"[경고] Replicate API 키가 설정되지 않았습니다!")
-            log_error(f"[경고] replicate_api_key 파라미터: {replicate_api_key}")
-            log_error(f"[경고] REPLICATE_API_TOKEN 전역 변수: {REPLICATE_API_TOKEN[:10] if REPLICATE_API_TOKEN else 'None'}...")
-            print(f"[경고] Replicate API 키가 설정되지 않았습니다!")
-        
-        if replicate_api_available_local:
-            try:
-                log_debug(f"[generate_image] Replicate API 사용 시작 - 모드: {mode}, 파일: {os.path.basename(filename)}")
-                log_debug(f"[generate_image] 파일 전체 경로: {os.path.abspath(filename)}")
-                log_debug(f"[generate_image] 파일 디렉토리 존재 여부: {os.path.exists(os.path.dirname(filename))}")
-                log_debug(f"[generate_image] 파일 디렉토리 쓰기 가능 여부: {os.access(os.path.dirname(filename), os.W_OK) if os.path.exists(os.path.dirname(filename)) else False}")
-                print(f"[generate_image] Replicate API 사용 - 모드: {mode}, 파일: {os.path.basename(filename)}")
-                headers = {
+    # 사용자가 입력한 API 키를 우선 사용, 없으면 기본값 사용
+    api_token = replicate_api_key or REPLICATE_API_TOKEN
+    replicate_api_available_local = bool(api_token)
+    
+    # API 키 사용 여부 로그 (키의 일부만 표시)
+    if api_token:
+        key_preview = api_token[:10] + "..." + api_token[-4:] if len(api_token) > 14 else "***"
+        log_debug(f"[generate_image] 사용 중인 Replicate API 키: {key_preview}")
+        log_debug(f"[generate_image] API 키 길이: {len(api_token)}")
+    else:
+        log_error(f"[경고] Replicate API 키가 설정되지 않았습니다!")
+        log_error(f"[경고] replicate_api_key 파라미터: {replicate_api_key}")
+        log_error(f"[경고] REPLICATE_API_TOKEN 전역 변수: {REPLICATE_API_TOKEN[:10] if REPLICATE_API_TOKEN else 'None'}...")
+        print(f"[경고] Replicate API 키가 설정되지 않았습니다!")
+    
+    if replicate_api_available_local:
+        try:
+            log_debug(f"[generate_image] Replicate API 사용 시작 - 모드: {mode}, 파일: {os.path.basename(filename)}")
+            log_debug(f"[generate_image] 파일 전체 경로: {os.path.abspath(filename)}")
+            log_debug(f"[generate_image] 파일 디렉토리 존재 여부: {os.path.exists(os.path.dirname(filename))}")
+            log_debug(f"[generate_image] 파일 디렉토리 쓰기 가능 여부: {os.access(os.path.dirname(filename), os.W_OK) if os.path.exists(os.path.dirname(filename)) else False}")
+            print(f"[generate_image] Replicate API 사용 - 모드: {mode}, 파일: {os.path.basename(filename)}")
+            headers = {
                 "Authorization": f"Token {api_token}",
                 "Content-Type": "application/json",
-                }
-                replicate_input = {
+            }
+            replicate_input = {
                 "prompt": base_prompt,
                 "negative_prompt": negative_prompt,
                 "aspect_ratio": "16:9",
-                }
+            }
                 if mode == "realistic":
                     # flux-schnell 모델 파라미터 (docs/cog-flux-main 참고)
                     # - num_inference_steps: 최대 4, 기본값 4 (SchnellPredictor 참고)
@@ -1461,13 +1460,6 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
             print(f"[IMG] (Replicate) 예외 발생: {exc}")
             import traceback
             traceback.print_exc()
-    except Exception as outer_exc:
-        log_error(f"[generate_image] 함수 전체 예외 발생: {outer_exc}", exc_info=outer_exc)
-        print(f"[generate_image] 함수 전체 예외 발생: {outer_exc}")
-        import traceback
-        traceback.print_exc()
-        # 예외 발생 시에도 fallback으로 진행
-        pass
 
     # Stability API는 사용하지 않음 (Replicate만 사용)
     # if mode != "realistic" and stability_api_available:
