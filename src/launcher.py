@@ -1,5 +1,6 @@
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -16,7 +17,7 @@ from utils import resource_path
 
 REMOTE_VERSION_URL = "https://raw.githubusercontent.com/sellfarmb2b/cartoon-youtube/main/src/version.json"
 RELEASE_DOWNLOAD_URL = (
-    "https://github.com/sellfarmb2b/cartoon-youtube/releases/download/v{version}/YouTubeMaker.exe"
+    "https://github.com/sellfarmb2b/cartoon-youtube/releases/download/v{version}/{filename}"
 )
 
 
@@ -27,9 +28,13 @@ class LauncherApp:
         self.root.geometry("400x250")
         self.root.resizable(False, False)
 
+        # OS 감지
+        self.is_windows = platform.system().lower() == "windows"
+        self.executable_name = "YouTubeMaker.exe" if self.is_windows else "YouTubeMaker"
+
         self.base_dir = resource_path("src")
         self.local_version_file = os.path.join(self.base_dir, "version.json")
-        self.target_executable = os.path.join(self.base_dir, "YouTubeMaker.exe")
+        self.target_executable = os.path.join(self.base_dir, self.executable_name)
 
         self._create_widgets()
         threading.Thread(target=self._check_for_updates, daemon=True).start()
@@ -93,9 +98,9 @@ class LauncherApp:
         return version.parse(data.get("version", "0.0.0"))
 
     def _download_release(self, new_version: str) -> None:
-        download_url = RELEASE_DOWNLOAD_URL.format(version=new_version)
+        download_url = RELEASE_DOWNLOAD_URL.format(version=new_version, filename=self.executable_name)
         self._set_status(f"업데이트 중... (v{new_version})")
-        temp_path = os.path.join(self.base_dir, f"YouTubeMaker_{new_version}.tmp")
+        temp_path = os.path.join(self.base_dir, f"{self.executable_name}_{new_version}.tmp")
 
         response = requests.get(download_url, stream=True, timeout=60)
         response.raise_for_status()
@@ -151,13 +156,15 @@ class LauncherApp:
 
     def _launch_main_app(self) -> None:
         if not os.path.exists(self.target_executable):
-            self._set_status("YouTubeMaker.exe를 찾을 수 없습니다.")
+            self._set_status(f"{self.executable_name}를 찾을 수 없습니다.")
             return
 
         try:
-            if sys.platform.startswith("win"):
+            if self.is_windows:
                 os.startfile(self.target_executable)  # type: ignore[attr-defined]
             else:
+                # macOS: 실행 권한 부여 후 실행
+                os.chmod(self.target_executable, 0o755)
                 subprocess.Popen([self.target_executable])
         except Exception as exc:
             messagebox.showerror("실행 오류", f"애플리케이션 실행에 실패했습니다.\n{exc}")

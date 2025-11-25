@@ -28,25 +28,51 @@ def build_mac():
         shutil.rmtree("build")
     if os.path.exists("dist"):
         shutil.rmtree("dist")
-    if os.path.exists("유튜브_영상_생성기.spec"):
-        os.remove("유튜브_영상_생성기.spec")
+    if os.path.exists("Launcher.spec"):
+        os.remove("Launcher.spec")
+    if os.path.exists("YouTubeMaker.spec"):
+        os.remove("YouTubeMaker.spec")
     
     # 템플릿과 static 폴더 확인
-    if not os.path.exists("templates"):
-        print("⚠️  templates 폴더를 찾을 수 없습니다.")
+    if not os.path.exists("src/templates"):
+        print("⚠️  src/templates 폴더를 찾을 수 없습니다.")
         return False
-    if not os.path.exists("static"):
-        print("⚠️  static 폴더를 찾을 수 없습니다.")
-        os.makedirs("static", exist_ok=True)
+    if not os.path.exists("src/static"):
+        print("⚠️  src/static 폴더를 찾을 수 없습니다.")
+        os.makedirs("src/static", exist_ok=True)
     
-    # PyInstaller 명령 실행
-    cmd = [
+    print("=" * 60)
+    print("Mac용 앱 번들 빌드 시작...")
+    print("=" * 60)
+    
+    # 1. Launcher 빌드
+    print("\n[1/2] Launcher 빌드 중...")
+    launcher_cmd = [
         "pyinstaller",
-        "--name=유튜브_영상_생성기",
+        "--name=Launcher",
         "--onefile",
-        "--noconsole",  # macOS: 콘솔 창 숨김
-        "--add-data=templates:templates",  # macOS는 콜론 사용
-        "--add-data=static:static",
+        "--noconsole",
+        "--add-data=src/version.json:src",
+        "src/launcher.py"
+    ]
+    print(f"명령: {' '.join(launcher_cmd)}")
+    try:
+        subprocess.check_call(launcher_cmd)
+        print("✅ Launcher 빌드 완료")
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Launcher 빌드 실패: {e}")
+        return False
+    
+    # 2. YouTubeMaker 빌드
+    print("\n[2/2] YouTubeMaker 빌드 중...")
+    app_cmd = [
+        "pyinstaller",
+        "--name=YouTubeMaker",
+        "--onefile",
+        "--noconsole",
+        "--add-data=src/templates:src/templates",
+        "--add-data=src/static:src/static",
+        "--add-data=bin/mac/ffmpeg:bin/mac",
         "--hidden-import=flask",
         "--hidden-import=werkzeug",
         "--hidden-import=requests",
@@ -60,6 +86,8 @@ def build_mac():
         "--hidden-import=elevenlabs.client",
         "--hidden-import=replicate",
         "--hidden-import=openai",
+        "--hidden-import=pywebview",
+        "--hidden-import=appdirs",
         "--hidden-import=webbrowser",
         "--hidden-import=socket",
         "--hidden-import=threading",
@@ -71,31 +99,28 @@ def build_mac():
         "--collect-all=flask",
         "--collect-all=werkzeug",
         "--collect-all=PIL",
-        "app.py"
+        "src/app.py"
     ]
-    
-    print("=" * 60)
-    print("Mac용 앱 번들 빌드 시작...")
-    print("=" * 60)
-    print(f"명령: {' '.join(cmd)}")
-    print()
-    
+    print(f"명령: {' '.join(app_cmd)}")
     try:
-        subprocess.check_call(cmd)
-        print("\n" + "=" * 60)
-        print("✅ Mac 빌드 완료!")
-        print("=" * 60)
-        print(f"실행 파일 위치: dist/유튜브_영상_생성기")
-        print(f"앱 번들 위치: dist/유튜브_영상_생성기.app")
-        print("\n💡 사용 방법:")
-        print("   1. dist 폴더의 '유튜브_영상_생성기' 파일을 더블클릭하여 실행")
-        print("   2. 또는 '유튜브_영상_생성기.app' 번들을 더블클릭하여 실행")
-        print("\n⚠️  참고: macOS에서 처음 실행 시 보안 경고가 나타날 수 있습니다.")
-        print("   '시스템 환경설정 > 보안 및 개인 정보 보호'에서 허용해주세요.")
-        return True
+        subprocess.check_call(app_cmd)
+        print("✅ YouTubeMaker 빌드 완료")
     except subprocess.CalledProcessError as e:
-        print(f"\n❌ 빌드 실패: {e}")
+        print(f"❌ YouTubeMaker 빌드 실패: {e}")
         return False
+    
+    print("\n" + "=" * 60)
+    print("✅ Mac 빌드 완료!")
+    print("=" * 60)
+    print(f"실행 파일 위치:")
+    print(f"  - dist/Launcher")
+    print(f"  - dist/YouTubeMaker")
+    print("\n💡 사용 방법:")
+    print("   1. dist 폴더의 'Launcher' 파일을 더블클릭하여 실행")
+    print("   2. Launcher가 자동으로 YouTubeMaker를 업데이트하고 실행합니다")
+    print("\n⚠️  참고: macOS에서 처음 실행 시 보안 경고가 나타날 수 있습니다.")
+    print("   '시스템 환경설정 > 보안 및 개인 정보 보호'에서 허용해주세요.")
+    return True
 
 if __name__ == "__main__":
     success = build_mac()
