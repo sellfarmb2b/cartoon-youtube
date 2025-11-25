@@ -14,6 +14,16 @@ from packaging import version
 
 from utils import resource_path
 
+# PyInstaller로 빌드된 경우 sys.executable이 실행 파일 경로
+def get_launcher_dir():
+    """Launcher 실행 파일이 있는 디렉토리 경로 반환"""
+    if getattr(sys, 'frozen', False):
+        # PyInstaller로 빌드된 경우
+        return os.path.dirname(os.path.abspath(sys.executable))
+    else:
+        # 개발 환경
+        return os.path.dirname(os.path.abspath(__file__))
+
 
 REMOTE_VERSION_URL = "https://raw.githubusercontent.com/sellfarmb2b/cartoon-youtube/refs/heads/main/src/version.json"
 RELEASE_DOWNLOAD_URL = (
@@ -32,9 +42,35 @@ class LauncherApp:
         self.is_windows = platform.system().lower() == "windows"
         self.executable_name = "YouTubeMaker.exe" if self.is_windows else "YouTubeMaker"
 
+        # 실행 파일 위치 찾기 (여러 위치 시도)
+        launcher_dir = get_launcher_dir()
         self.base_dir = resource_path("src")
+        
+        # 여러 가능한 위치에서 실행 파일 찾기
+        possible_dirs = [
+            launcher_dir,  # Launcher.exe와 같은 디렉토리 (가장 가능성 높음)
+            self.base_dir,  # src 폴더
+            os.path.join(launcher_dir, "src"),  # Launcher.exe 옆의 src 폴더
+            os.path.dirname(launcher_dir),  # 상위 디렉토리
+            os.path.join(os.path.dirname(launcher_dir), "src"),  # 상위 디렉토리의 src
+        ]
+        
+        # 실행 파일 찾기
+        self.target_executable = None
+        for dir_path in possible_dirs:
+            test_path = os.path.join(dir_path, self.executable_name)
+            if os.path.exists(test_path):
+                self.target_executable = test_path
+                self.base_dir = dir_path
+                print(f"[Launcher] 실행 파일 찾음: {self.target_executable}")
+                break
+        
+        # 찾지 못한 경우 기본 경로 사용
+        if not self.target_executable:
+            self.target_executable = os.path.join(launcher_dir, self.executable_name)
+            print(f"[Launcher] 실행 파일 기본 경로 설정: {self.target_executable}")
+        
         self.local_version_file = os.path.join(self.base_dir, "version.json")
-        self.target_executable = os.path.join(self.base_dir, self.executable_name)
 
         self._create_widgets()
         threading.Thread(target=self._check_for_updates, daemon=True).start()
@@ -165,9 +201,32 @@ class LauncherApp:
             self._hide_progress()
 
     def _launch_main_app(self) -> None:
+        # 실행 파일이 없으면 여러 위치에서 다시 찾기
         if not os.path.exists(self.target_executable):
-            self._set_status(f"{self.executable_name}를 찾을 수 없습니다.")
-            return
+            launcher_dir = get_launcher_dir()
+            possible_paths = [
+                os.path.join(launcher_dir, self.executable_name),
+                os.path.join(self.base_dir, self.executable_name),
+                os.path.join(launcher_dir, "src", self.executable_name),
+                os.path.join(os.path.dirname(launcher_dir), self.executable_name),
+                os.path.join(os.path.dirname(launcher_dir), "src", self.executable_name),
+            ]
+            
+            found = False
+            for test_path in possible_paths:
+                if os.path.exists(test_path):
+                    self.target_executable = test_path
+                    self.base_dir = os.path.dirname(test_path)
+                    found = True
+                    print(f"[Launcher] 실행 파일 재검색 성공: {self.target_executable}")
+                    break
+            
+            if not found:
+                error_msg = f"{self.executable_name}를 찾을 수 없습니다.\n\n검색한 경로:\n" + "\n".join(possible_paths)
+                self._set_status(f"{self.executable_name}를 찾을 수 없습니다.")
+                print(f"[Launcher] 실행 파일을 찾을 수 없음. 검색 경로: {possible_paths}")
+                messagebox.showerror("파일을 찾을 수 없음", error_msg)
+                return
 
         try:
             if self.is_windows:
