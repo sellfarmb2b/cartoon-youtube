@@ -1291,8 +1291,8 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                             print(f"[Rate Limit] 2. 또는 잠시 후 다시 시도하세요 (Rate Limit이 리셋될 때까지 대기)")
                             raise Exception(f"Replicate API Rate Limit 초과: {error_detail}")
                             
-                            # 200/201이 아니고 429도 아니면 루프 종료
-                            if create_res.status_code not in (200, 201, 429):
+                        # 200/201이 아니고 429도 아니면 루프 종료
+                        if create_res.status_code not in (200, 201, 429):
                             break
                             
                             except Exception as req_exc:
