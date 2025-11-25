@@ -1209,7 +1209,7 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                 "negative_prompt": negative_prompt,
                 "aspect_ratio": "16:9",
             }
-                if mode == "realistic":
+            if mode == "realistic":
                     # flux-schnell 모델 파라미터 (docs/cog-flux-main 참고)
                     # - num_inference_steps: 최대 4, 기본값 4 (SchnellPredictor 참고)
                     # - guidance_scale: 지원하지 않음 (제거)
