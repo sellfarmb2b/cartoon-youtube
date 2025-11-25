@@ -1,0 +1,38 @@
+name: Build Windows Executable
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # 수동 실행도 가능하도록
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: 'x64'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller --noconsole --onefile --name=YouTubeMaker --add-data "src/templates;src/templates" --add-data "src/static;src/static" --add-data "bin/win/ffmpeg.exe;bin/win" src/app.py
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: YouTubeMaker-Windows
+          path: dist/YouTubeMaker.exe
+          retention-days: 30
+
