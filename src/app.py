@@ -1357,59 +1357,59 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                 else:
                     try:
                         prediction = create_res.json()
-                    print(f"[generate_image] 예측 응답: {json.dumps(prediction, indent=2, ensure_ascii=False)[:500]}")
-                    pred_id = prediction.get("id")
-                    get_url = prediction.get("urls", {}).get("get")
-                    if not get_url and pred_id:
-                        get_url = f"https://api.replicate.com/v1/predictions/{pred_id}"
-                    print(f"[generate_image] 예측 ID: {pred_id}, get_url: {get_url}")
-                    print(f"[generate_image] 상태 확인 시작 (최대 180초 대기)")
-                    final = None
-                    poll_count = 0
-                    max_polls = 180
-                    for poll_count in range(max_polls):
-                        if not get_url:
-                            print(f"[generate_image] get_url이 없어서 중단")
-                            break
-                        try:
-                            res = requests.get(get_url, headers=headers, timeout=10)
-                            if res.status_code != 200:
-                                print(f"[IMG] (Replicate) 상태 조회 실패: {res.status_code} {res.text[:500]}")
+                        print(f"[generate_image] 예측 응답: {json.dumps(prediction, indent=2, ensure_ascii=False)[:500]}")
+                        pred_id = prediction.get("id")
+                        get_url = prediction.get("urls", {}).get("get")
+                        if not get_url and pred_id:
+                            get_url = f"https://api.replicate.com/v1/predictions/{pred_id}"
+                        print(f"[generate_image] 예측 ID: {pred_id}, get_url: {get_url}")
+                        print(f"[generate_image] 상태 확인 시작 (최대 180초 대기)")
+                        final = None
+                        poll_count = 0
+                        max_polls = 180
+                        for poll_count in range(max_polls):
+                            if not get_url:
+                                print(f"[generate_image] get_url이 없어서 중단")
                                 break
-                            data = res.json()
-                            status = data.get("status")
-                            # 5초마다 로그 출력 (더 자주)
-                            if poll_count % 5 == 0:
-                                print(f"[generate_image] 상태 확인 중... ({poll_count}초 경과, 상태: {status})")
-                            if status in ("succeeded", "failed", "canceled"):
-                                final = data
-                                print(f"[generate_image] 최종 상태: {status} (총 {poll_count}초 소요)")
-                                if status == "failed":
-                                    error_msg = data.get("error", "알 수 없는 오류")
-                                    print(f"[generate_image] 실패 원인: {error_msg}")
-                                break
-                            time.sleep(1)
-                        except requests.exceptions.Timeout:
-                            print(f"[경고] 상태 조회 타임아웃 ({poll_count}초 경과), 계속 시도...")
-                            time.sleep(1)
-                            continue
-                        except Exception as poll_exc:
-                            print(f"[오류] 상태 조회 중 예외 발생: {poll_exc}")
-                            import traceback
-                            traceback.print_exc()
-                            # 네트워크 오류는 재시도
-                            if poll_count < max_polls - 1:
-                                time.sleep(2)
+                            try:
+                                res = requests.get(get_url, headers=headers, timeout=10)
+                                if res.status_code != 200:
+                                    print(f"[IMG] (Replicate) 상태 조회 실패: {res.status_code} {res.text[:500]}")
+                                    break
+                                data = res.json()
+                                status = data.get("status")
+                                # 5초마다 로그 출력 (더 자주)
+                                if poll_count % 5 == 0:
+                                    print(f"[generate_image] 상태 확인 중... ({poll_count}초 경과, 상태: {status})")
+                                if status in ("succeeded", "failed", "canceled"):
+                                    final = data
+                                    print(f"[generate_image] 최종 상태: {status} (총 {poll_count}초 소요)")
+                                    if status == "failed":
+                                        error_msg = data.get("error", "알 수 없는 오류")
+                                        print(f"[generate_image] 실패 원인: {error_msg}")
+                                    break
+                                time.sleep(1)
+                            except requests.exceptions.Timeout:
+                                print(f"[경고] 상태 조회 타임아웃 ({poll_count}초 경과), 계속 시도...")
+                                time.sleep(1)
                                 continue
-                            break
-                    if poll_count >= max_polls - 1:
-                        print(f"[generate_image] 타임아웃: {max_polls}초 동안 완료되지 않음")
+                            except Exception as poll_exc:
+                                print(f"[오류] 상태 조회 중 예외 발생: {poll_exc}")
+                                import traceback
+                                traceback.print_exc()
+                                # 네트워크 오류는 재시도
+                                if poll_count < max_polls - 1:
+                                    time.sleep(2)
+                                    continue
+                                break
+                        if poll_count >= max_polls - 1:
+                            print(f"[generate_image] 타임아웃: {max_polls}초 동안 완료되지 않음")
                     except Exception as json_exc:
-                    print(f"[오류] 예측 응답 파싱 실패: {json_exc}")
-                    print(f"[오류] 응답 본문: {create_res.text[:1000]}")
-                    import traceback
-                    traceback.print_exc()
-                    final = None
+                        print(f"[오류] 예측 응답 파싱 실패: {json_exc}")
+                        print(f"[오류] 응답 본문: {create_res.text[:1000]}")
+                        import traceback
+                        traceback.print_exc()
+                        final = None
                 if final and final.get("status") == "succeeded":
                     outputs = final.get("output")
                     image_url = None
@@ -2549,37 +2549,37 @@ def run_generation_job(
         assets_folder, subtitle_file, video_file = get_job_paths(job_id)
         
         # API 키 확인 및 환경 변수 fallback
-    if not replicate_api_key or (isinstance(replicate_api_key, str) and not replicate_api_key.strip()):
-        replicate_api_key = REPLICATE_API_TOKEN
-        print(f"[API 키] Replicate API 키: 사용자 입력 없음, 저장된 설정 사용")
-    else:
-        print(f"[API 키] Replicate API 키: 사용자 입력 사용")
-    
-    if not elevenlabs_api_key or (isinstance(elevenlabs_api_key, str) and not elevenlabs_api_key.strip()):
-        elevenlabs_api_key = ELEVENLABS_API_KEY
-        print(f"[API 키] ElevenLabs API 키: 사용자 입력 없음, 저장된 설정 사용")
-    else:
-        print(f"[API 키] ElevenLabs API 키: 사용자 입력 사용")
-    
-    # video_file 경로 확인 및 로깅
-    print(f"[초기화] video_file 경로: {video_file}")
-    print(f"[초기화] STATIC_FOLDER: {STATIC_FOLDER}")
-    print(f"[초기화] job_id: {job_id}")
-    print(f"[초기화] 예상 경로: {os.path.join(STATIC_FOLDER, f'{FINAL_VIDEO_BASE_NAME}_{job_id}.mp4')}")
-    # video_file이 올바른 경로인지 확인
-    expected_video_file = os.path.join(STATIC_FOLDER, f"{FINAL_VIDEO_BASE_NAME}_{job_id}.mp4")
-    if video_file != expected_video_file:
-        print(f"[경고] video_file 경로가 예상과 다릅니다!")
-        print(f"  실제: {video_file}")
-        print(f"  예상: {expected_video_file}")
-        # 올바른 경로로 재설정
-        video_file = expected_video_file
-        print(f"[수정] video_file을 올바른 경로로 재설정: {video_file}")
+        if not replicate_api_key or (isinstance(replicate_api_key, str) and not replicate_api_key.strip()):
+            replicate_api_key = REPLICATE_API_TOKEN
+            print(f"[API 키] Replicate API 키: 사용자 입력 없음, 저장된 설정 사용")
+        else:
+            print(f"[API 키] Replicate API 키: 사용자 입력 사용")
+        
+        if not elevenlabs_api_key or (isinstance(elevenlabs_api_key, str) and not elevenlabs_api_key.strip()):
+            elevenlabs_api_key = ELEVENLABS_API_KEY
+            print(f"[API 키] ElevenLabs API 키: 사용자 입력 없음, 저장된 설정 사용")
+        else:
+            print(f"[API 키] ElevenLabs API 키: 사용자 입력 사용")
+        
+        # video_file 경로 확인 및 로깅
+        print(f"[초기화] video_file 경로: {video_file}")
+        print(f"[초기화] STATIC_FOLDER: {STATIC_FOLDER}")
+        print(f"[초기화] job_id: {job_id}")
+        print(f"[초기화] 예상 경로: {os.path.join(STATIC_FOLDER, f'{FINAL_VIDEO_BASE_NAME}_{job_id}.mp4')}")
+        # video_file이 올바른 경로인지 확인
+        expected_video_file = os.path.join(STATIC_FOLDER, f"{FINAL_VIDEO_BASE_NAME}_{job_id}.mp4")
+        if video_file != expected_video_file:
+            print(f"[경고] video_file 경로가 예상과 다릅니다!")
+            print(f"  실제: {video_file}")
+            print(f"  예상: {expected_video_file}")
+            # 올바른 경로로 재설정
+            video_file = expected_video_file
+            print(f"[수정] video_file을 올바른 경로로 재설정: {video_file}")
 
-    def progress(message):
-        update_job(job_id, message=message)
+        def progress(message):
+            update_job(job_id, message=message)
 
-    try:
+        try:
         update_job(job_id, status="running")
         print("=== [DEBUG] 작업 준비 중 ===")
         progress("작업을 준비 중입니다.")
