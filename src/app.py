@@ -1155,11 +1155,11 @@ def save_image_bytes_as_png(content: bytes, filename: str, target_size=(1280, 76
 
 def generate_image(prompt_text: str, filename: str, mode: str = "animation", replicate_api_key: Optional[str] = None) -> bool:
     """이미지 생성 함수 - Windows 환경 디버깅 강화"""
+    log_debug(f"[generate_image] 함수 시작 - filename: {filename}, mode: {mode}")
+    log_debug(f"[generate_image] prompt_text 길이: {len(prompt_text) if prompt_text else 0}")
+    log_debug(f"[generate_image] replicate_api_key 전달 여부: {bool(replicate_api_key)}")
+    
     try:
-        log_debug(f"[generate_image] 함수 시작 - filename: {filename}, mode: {mode}")
-        log_debug(f"[generate_image] prompt_text 길이: {len(prompt_text) if prompt_text else 0}")
-        log_debug(f"[generate_image] replicate_api_key 전달 여부: {bool(replicate_api_key)}")
-        
         mode = (mode or "animation").lower()
         fallback_context = "scene description"
         if prompt_text:
@@ -1196,21 +1196,21 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
         
         if replicate_api_available_local:
             try:
-            log_debug(f"[generate_image] Replicate API 사용 시작 - 모드: {mode}, 파일: {os.path.basename(filename)}")
-            log_debug(f"[generate_image] 파일 전체 경로: {os.path.abspath(filename)}")
-            log_debug(f"[generate_image] 파일 디렉토리 존재 여부: {os.path.exists(os.path.dirname(filename))}")
-            log_debug(f"[generate_image] 파일 디렉토리 쓰기 가능 여부: {os.access(os.path.dirname(filename), os.W_OK) if os.path.exists(os.path.dirname(filename)) else False}")
-            print(f"[generate_image] Replicate API 사용 - 모드: {mode}, 파일: {os.path.basename(filename)}")
-            headers = {
+                log_debug(f"[generate_image] Replicate API 사용 시작 - 모드: {mode}, 파일: {os.path.basename(filename)}")
+                log_debug(f"[generate_image] 파일 전체 경로: {os.path.abspath(filename)}")
+                log_debug(f"[generate_image] 파일 디렉토리 존재 여부: {os.path.exists(os.path.dirname(filename))}")
+                log_debug(f"[generate_image] 파일 디렉토리 쓰기 가능 여부: {os.access(os.path.dirname(filename), os.W_OK) if os.path.exists(os.path.dirname(filename)) else False}")
+                print(f"[generate_image] Replicate API 사용 - 모드: {mode}, 파일: {os.path.basename(filename)}")
+                headers = {
                 "Authorization": f"Token {api_token}",
                 "Content-Type": "application/json",
-            }
-            replicate_input = {
+                }
+                replicate_input = {
                 "prompt": base_prompt,
                 "negative_prompt": negative_prompt,
                 "aspect_ratio": "16:9",
-            }
-            if mode == "realistic":
+                }
+                if mode == "realistic":
                 # flux-schnell 모델 파라미터 (docs/cog-flux-main 참고)
                 # - num_inference_steps: 최대 4, 기본값 4 (SchnellPredictor 참고)
                 # - guidance_scale: 지원하지 않음 (제거)
@@ -1226,7 +1226,7 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                 # flux-schnell은 최신 버전을 사용하므로 version_id 없이 직접 predictions 엔드포인트 사용
                 request_url = f"https://api.replicate.com/v1/models/{model_owner}/{model_name}/predictions"
                 body = {"input": replicate_input}
-            else:
+                else:
                 # prunaai/hidream-l1-fast 모델 사용 (HiDream-I1-Fast: 16 inference steps)
                 replicate_input.update({"num_inference_steps": 16, "image_format": "png"})
                 # guidance_scale은 hidream 모델에서 지원하지 않을 수 있으므로 제거
@@ -1235,20 +1235,20 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                 request_url = f"https://api.replicate.com/v1/models/{model_owner}/{model_name}/predictions"
                 body = {"input": replicate_input}
 
-            log_debug(f"[generate_image] Replicate API 요청 전송 중...")
-            log_debug(f"[generate_image] 프롬프트: {base_prompt[:200]}...")
-            log_debug(f"[generate_image] Negative 프롬프트: {negative_prompt[:200]}...")
-            log_debug(f"[generate_image] 요청 URL: {request_url}")
-            log_debug(f"[generate_image] 요청 본문: {json.dumps(body, indent=2, ensure_ascii=False)}")
-            print(f"[generate_image] Replicate API 요청 전송 중...")
-            print(f"[generate_image] 프롬프트: {base_prompt[:200]}...")
-            print(f"[generate_image] Negative 프롬프트: {negative_prompt[:200]}...")
-            print(f"[generate_image] 요청 URL: {request_url}")
-            print(f"[generate_image] 요청 본문: {json.dumps(body, indent=2, ensure_ascii=False)}")
-            
-            # Rate limiting: 분당 600개 요청 제한 준수 (최소 0.1초 간격)
-            global _last_replicate_request_time
-            with _replicate_request_lock:
+                log_debug(f"[generate_image] Replicate API 요청 전송 중...")
+                log_debug(f"[generate_image] 프롬프트: {base_prompt[:200]}...")
+                log_debug(f"[generate_image] Negative 프롬프트: {negative_prompt[:200]}...")
+                log_debug(f"[generate_image] 요청 URL: {request_url}")
+                log_debug(f"[generate_image] 요청 본문: {json.dumps(body, indent=2, ensure_ascii=False)}")
+                print(f"[generate_image] Replicate API 요청 전송 중...")
+                print(f"[generate_image] 프롬프트: {base_prompt[:200]}...")
+                print(f"[generate_image] Negative 프롬프트: {negative_prompt[:200]}...")
+                print(f"[generate_image] 요청 URL: {request_url}")
+                print(f"[generate_image] 요청 본문: {json.dumps(body, indent=2, ensure_ascii=False)}")
+                
+                # Rate limiting: 분당 600개 요청 제한 준수 (최소 0.1초 간격)
+                global _last_replicate_request_time
+                with _replicate_request_lock:
                 current_time = time.time()
                 time_since_last = current_time - _last_replicate_request_time
                 if time_since_last < REPLICATE_MIN_REQUEST_INTERVAL:
@@ -1256,11 +1256,11 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                     print(f"[Rate Limit] 요청 간격 조절: {wait_time:.2f}초 대기 중...")
                     time.sleep(wait_time)
                 _last_replicate_request_time = time.time()
-            
-            # 429 에러 재시도를 위한 루프
-            max_retries = 3
-            create_res = None
-            for retry_attempt in range(max_retries):
+                
+                # 429 에러 재시도를 위한 루프
+                max_retries = 3
+                create_res = None
+                for retry_attempt in range(max_retries):
                 try:
                     create_res = requests.post(request_url, headers=headers, json=body, timeout=30)
                     print(f"[generate_image] 응답 상태 코드: {create_res.status_code}")
@@ -1305,8 +1305,8 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                     import traceback
                     traceback.print_exc()
                     raise  # 예외를 다시 발생시켜 fallback으로 넘어가도록 함
-            
-            if create_res is None or create_res.status_code not in (200, 201):
+                
+                if create_res is None or create_res.status_code not in (200, 201):
                 print(f"[IMG] (Replicate) 생성 실패: {create_res.status_code if create_res else 'None'} {create_res.text if create_res else 'No response'}")
                 # 402 에러 (월간 사용 한도 도달) 처리
                 if create_res and create_res.status_code == 402:
@@ -1320,7 +1320,7 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                 if create_res and create_res.status_code >= 500:
                     print(f"[IMG] (Replicate) 서버 에러 ({create_res.status_code}), 즉시 fallback으로 전환")
                     raise Exception(f"Replicate API 서버 에러: {create_res.status_code}")
-            else:
+                else:
                 try:
                     prediction = create_res.json()
                     print(f"[generate_image] 예측 응답: {json.dumps(prediction, indent=2, ensure_ascii=False)[:500]}")
