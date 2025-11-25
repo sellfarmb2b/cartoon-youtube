@@ -1155,43 +1155,44 @@ def save_image_bytes_as_png(content: bytes, filename: str, target_size=(1280, 76
 
 def generate_image(prompt_text: str, filename: str, mode: str = "animation", replicate_api_key: Optional[str] = None) -> bool:
     """이미지 생성 함수 - Windows 환경 디버깅 강화"""
-    log_debug(f"[generate_image] 함수 시작 - filename: {filename}, mode: {mode}")
-    log_debug(f"[generate_image] prompt_text 길이: {len(prompt_text) if prompt_text else 0}")
-    log_debug(f"[generate_image] replicate_api_key 전달 여부: {bool(replicate_api_key)}")
-    
-    mode = (mode or "animation").lower()
-    fallback_context = "scene description"
-    if prompt_text:
-        base_prompt = enforce_prompt_by_mode(prompt_text, fallback_context=fallback_context, mode=mode)
-    else:
-        default_prompt = (
-            "A mysterious scene involving a historic landmark attracting curiosity"
-            if mode == "realistic"
-            else "stickman presenting data in a colorful studio"
-        )
-        base_prompt = enforce_prompt_by_mode(default_prompt, fallback_context="default context", mode=mode)
+    try:
+        log_debug(f"[generate_image] 함수 시작 - filename: {filename}, mode: {mode}")
+        log_debug(f"[generate_image] prompt_text 길이: {len(prompt_text) if prompt_text else 0}")
+        log_debug(f"[generate_image] replicate_api_key 전달 여부: {bool(replicate_api_key)}")
+        
+        mode = (mode or "animation").lower()
+        fallback_context = "scene description"
+        if prompt_text:
+            base_prompt = enforce_prompt_by_mode(prompt_text, fallback_context=fallback_context, mode=mode)
+        else:
+            default_prompt = (
+                "A mysterious scene involving a historic landmark attracting curiosity"
+                if mode == "realistic"
+                else "stickman presenting data in a colorful studio"
+            )
+            base_prompt = enforce_prompt_by_mode(default_prompt, fallback_context="default context", mode=mode)
 
-    if mode == "realistic":
-        negative_prompt = REALISTIC_NEGATIVE_PROMPT
-    else:
-        negative_prompt = (
-            "realistic human, detailed human skin, photograph, 3d render, blank white background, line-art only, text, watermark"
-        )
+        if mode == "realistic":
+            negative_prompt = REALISTIC_NEGATIVE_PROMPT
+        else:
+            negative_prompt = (
+                "realistic human, detailed human skin, photograph, 3d render, blank white background, line-art only, text, watermark"
+            )
 
-    # 사용자가 입력한 API 키를 우선 사용, 없으면 기본값 사용
-    api_token = replicate_api_key or REPLICATE_API_TOKEN
-    replicate_api_available_local = bool(api_token)
-    
-    # API 키 사용 여부 로그 (키의 일부만 표시)
-    if api_token:
-        key_preview = api_token[:10] + "..." + api_token[-4:] if len(api_token) > 14 else "***"
-        log_debug(f"[generate_image] 사용 중인 Replicate API 키: {key_preview}")
-        log_debug(f"[generate_image] API 키 길이: {len(api_token)}")
-    else:
-        log_error(f"[경고] Replicate API 키가 설정되지 않았습니다!")
-        log_error(f"[경고] replicate_api_key 파라미터: {replicate_api_key}")
-        log_error(f"[경고] REPLICATE_API_TOKEN 전역 변수: {REPLICATE_API_TOKEN[:10] if REPLICATE_API_TOKEN else 'None'}...")
-        print(f"[경고] Replicate API 키가 설정되지 않았습니다!")
+        # 사용자가 입력한 API 키를 우선 사용, 없으면 기본값 사용
+        api_token = replicate_api_key or REPLICATE_API_TOKEN
+        replicate_api_available_local = bool(api_token)
+        
+        # API 키 사용 여부 로그 (키의 일부만 표시)
+        if api_token:
+            key_preview = api_token[:10] + "..." + api_token[-4:] if len(api_token) > 14 else "***"
+            log_debug(f"[generate_image] 사용 중인 Replicate API 키: {key_preview}")
+            log_debug(f"[generate_image] API 키 길이: {len(api_token)}")
+        else:
+            log_error(f"[경고] Replicate API 키가 설정되지 않았습니다!")
+            log_error(f"[경고] replicate_api_key 파라미터: {replicate_api_key}")
+            log_error(f"[경고] REPLICATE_API_TOKEN 전역 변수: {REPLICATE_API_TOKEN[:10] if REPLICATE_API_TOKEN else 'None'}...")
+            print(f"[경고] Replicate API 키가 설정되지 않았습니다!")
     
     if replicate_api_available_local:
         try:
@@ -1234,47 +1235,47 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                 request_url = f"https://api.replicate.com/v1/models/{model_owner}/{model_name}/predictions"
                 body = {"input": replicate_input}
 
-                log_debug(f"[generate_image] Replicate API 요청 전송 중...")
-                log_debug(f"[generate_image] 프롬프트: {base_prompt[:200]}...")
-                log_debug(f"[generate_image] Negative 프롬프트: {negative_prompt[:200]}...")
-                log_debug(f"[generate_image] 요청 URL: {request_url}")
-                log_debug(f"[generate_image] 요청 본문: {json.dumps(body, indent=2, ensure_ascii=False)}")
-                print(f"[generate_image] Replicate API 요청 전송 중...")
-                print(f"[generate_image] 프롬프트: {base_prompt[:200]}...")
-                print(f"[generate_image] Negative 프롬프트: {negative_prompt[:200]}...")
-                print(f"[generate_image] 요청 URL: {request_url}")
-                print(f"[generate_image] 요청 본문: {json.dumps(body, indent=2, ensure_ascii=False)}")
-                
-                # Rate limiting: 분당 600개 요청 제한 준수 (최소 0.1초 간격)
-                global _last_replicate_request_time
-                with _replicate_request_lock:
-                    current_time = time.time()
-                    time_since_last = current_time - _last_replicate_request_time
-                    if time_since_last < REPLICATE_MIN_REQUEST_INTERVAL:
-                        wait_time = REPLICATE_MIN_REQUEST_INTERVAL - time_since_last
-                        print(f"[Rate Limit] 요청 간격 조절: {wait_time:.2f}초 대기 중...")
-                        time.sleep(wait_time)
-                    _last_replicate_request_time = time.time()
+            log_debug(f"[generate_image] Replicate API 요청 전송 중...")
+            log_debug(f"[generate_image] 프롬프트: {base_prompt[:200]}...")
+            log_debug(f"[generate_image] Negative 프롬프트: {negative_prompt[:200]}...")
+            log_debug(f"[generate_image] 요청 URL: {request_url}")
+            log_debug(f"[generate_image] 요청 본문: {json.dumps(body, indent=2, ensure_ascii=False)}")
+            print(f"[generate_image] Replicate API 요청 전송 중...")
+            print(f"[generate_image] 프롬프트: {base_prompt[:200]}...")
+            print(f"[generate_image] Negative 프롬프트: {negative_prompt[:200]}...")
+            print(f"[generate_image] 요청 URL: {request_url}")
+            print(f"[generate_image] 요청 본문: {json.dumps(body, indent=2, ensure_ascii=False)}")
+            
+            # Rate limiting: 분당 600개 요청 제한 준수 (최소 0.1초 간격)
+            global _last_replicate_request_time
+            with _replicate_request_lock:
+                current_time = time.time()
+                time_since_last = current_time - _last_replicate_request_time
+                if time_since_last < REPLICATE_MIN_REQUEST_INTERVAL:
+                    wait_time = REPLICATE_MIN_REQUEST_INTERVAL - time_since_last
+                    print(f"[Rate Limit] 요청 간격 조절: {wait_time:.2f}초 대기 중...")
+                    time.sleep(wait_time)
+                _last_replicate_request_time = time.time()
+            
+            # 429 에러 재시도를 위한 루프
+            max_retries = 3
+            create_res = None
+            for retry_attempt in range(max_retries):
+                try:
+                    create_res = requests.post(request_url, headers=headers, json=body, timeout=30)
+                    print(f"[generate_image] 응답 상태 코드: {create_res.status_code}")
+                    print(f"[generate_image] 응답 본문 (처음 500자): {create_res.text[:500]}")
                     
-                    # 429 에러 재시도를 위한 루프
-                    max_retries = 3
-                    create_res = None
-                for retry_attempt in range(max_retries):
-                    try:
-                        create_res = requests.post(request_url, headers=headers, json=body, timeout=30)
-                        print(f"[generate_image] 응답 상태 코드: {create_res.status_code}")
-                        print(f"[generate_image] 응답 본문 (처음 500자): {create_res.text[:500]}")
-                        
-                        # 429 에러 (Rate Limit) 처리
-                        if create_res.status_code == 429:
-                            error_data = create_res.json() if create_res.text else {}
-                            error_detail = error_data.get("detail", "Request was throttled.")
-                            # retry_after 값이 있으면 사용, 없으면 기본값 사용
-                            retry_after = error_data.get("retry_after")
-                            if retry_after:
-                                wait_time = int(retry_after) + 1  # retry_after에 1초 추가하여 안전하게 대기
-                            else:
-                                wait_time = REPLICATE_RATE_LIMIT_RETRY_DELAY
+                    # 429 에러 (Rate Limit) 처리
+                    if create_res.status_code == 429:
+                        error_data = create_res.json() if create_res.text else {}
+                        error_detail = error_data.get("detail", "Request was throttled.")
+                        # retry_after 값이 있으면 사용, 없으면 기본값 사용
+                        retry_after = error_data.get("retry_after")
+                        if retry_after:
+                            wait_time = int(retry_after) + 1  # retry_after에 1초 추가하여 안전하게 대기
+                        else:
+                            wait_time = REPLICATE_RATE_LIMIT_RETRY_DELAY
                         
                         if retry_attempt < max_retries - 1:
                             print(f"[Rate Limit] 429 에러 발생: {error_detail}")
@@ -1289,118 +1290,118 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                             print(f"[Rate Limit] 1. https://replicate.com/account/billing 에서 크레딧을 충전하세요 ($5 이상 권장)")
                             print(f"[Rate Limit] 2. 또는 잠시 후 다시 시도하세요 (Rate Limit이 리셋될 때까지 대기)")
                             raise Exception(f"Replicate API Rate Limit 초과: {error_detail}")
-                            
-                        # 200/201이 아니고 429도 아니면 루프 종료
-                        if create_res.status_code not in (200, 201, 429):
-                            break
-                            
-                    except Exception as req_exc:
-                        if retry_attempt < max_retries - 1 and "429" in str(req_exc):
-                            wait_time = REPLICATE_RATE_LIMIT_RETRY_DELAY
-                            print(f"[Rate Limit] 예외 발생, {wait_time}초 후 재시도: {req_exc}")
-                            time.sleep(wait_time)
-                            continue
-                        print(f"[오류] Replicate API 요청 실패: {req_exc}")
-                        import traceback
-                        traceback.print_exc()
-                        raise  # 예외를 다시 발생시켜 fallback으로 넘어가도록 함
+                    
+                    # 200/201이 아니고 429도 아니면 루프 종료
+                    if create_res.status_code not in (200, 201, 429):
+                        break
                         
-                    if create_res is None or create_res.status_code not in (200, 201):
-                        print(f"[IMG] (Replicate) 생성 실패: {create_res.status_code if create_res else 'None'} {create_res.text if create_res else 'No response'}")
-                        # 402 에러 (월간 사용 한도 도달) 처리
-                        if create_res and create_res.status_code == 402:
-                            error_data = create_res.json() if create_res.text else {}
-                            error_detail = error_data.get("detail", "월간 사용 한도에 도달했습니다.")
-                            print(f"[경고] Replicate API 월간 사용 한도 도달: {error_detail}")
-                            print(f"[경고] https://replicate.com/account/billing#limits 에서 한도를 확인하거나 증가시켜주세요.")
-                            print(f"[경고] 한도를 증가시킨 경우 몇 분 후 다시 시도해주세요.")
-                            raise Exception(f"Replicate API 월간 사용 한도 도달: {error_detail}")
-                        # 500 에러나 다른 서버 에러인 경우 즉시 fallback으로
-                        if create_res and create_res.status_code >= 500:
-                            print(f"[IMG] (Replicate) 서버 에러 ({create_res.status_code}), 즉시 fallback으로 전환")
-                            raise Exception(f"Replicate API 서버 에러: {create_res.status_code}")
-                else:
-                    try:
-                        prediction = create_res.json()
-                        print(f"[generate_image] 예측 응답: {json.dumps(prediction, indent=2, ensure_ascii=False)[:500]}")
-                        pred_id = prediction.get("id")
-                        get_url = prediction.get("urls", {}).get("get")
-                        if not get_url and pred_id:
-                            get_url = f"https://api.replicate.com/v1/predictions/{pred_id}"
-                        print(f"[generate_image] 예측 ID: {pred_id}, get_url: {get_url}")
-                        print(f"[generate_image] 상태 확인 시작 (최대 180초 대기)")
-                        final = None
-                        poll_count = 0
-                        max_polls = 180
-                        for poll_count in range(max_polls):
-                            if not get_url:
-                                print(f"[generate_image] get_url이 없어서 중단")
-                                break
+                except Exception as req_exc:
+                    if retry_attempt < max_retries - 1 and "429" in str(req_exc):
+                        wait_time = REPLICATE_RATE_LIMIT_RETRY_DELAY
+                        print(f"[Rate Limit] 예외 발생, {wait_time}초 후 재시도: {req_exc}")
+                        time.sleep(wait_time)
+                        continue
+                    print(f"[오류] Replicate API 요청 실패: {req_exc}")
+                    import traceback
+                    traceback.print_exc()
+                    raise  # 예외를 다시 발생시켜 fallback으로 넘어가도록 함
+            
+            if create_res is None or create_res.status_code not in (200, 201):
+                print(f"[IMG] (Replicate) 생성 실패: {create_res.status_code if create_res else 'None'} {create_res.text if create_res else 'No response'}")
+                # 402 에러 (월간 사용 한도 도달) 처리
+                if create_res and create_res.status_code == 402:
+                    error_data = create_res.json() if create_res.text else {}
+                    error_detail = error_data.get("detail", "월간 사용 한도에 도달했습니다.")
+                    print(f"[경고] Replicate API 월간 사용 한도 도달: {error_detail}")
+                    print(f"[경고] https://replicate.com/account/billing#limits 에서 한도를 확인하거나 증가시켜주세요.")
+                    print(f"[경고] 한도를 증가시킨 경우 몇 분 후 다시 시도해주세요.")
+                    raise Exception(f"Replicate API 월간 사용 한도 도달: {error_detail}")
+                # 500 에러나 다른 서버 에러인 경우 즉시 fallback으로
+                if create_res and create_res.status_code >= 500:
+                    print(f"[IMG] (Replicate) 서버 에러 ({create_res.status_code}), 즉시 fallback으로 전환")
+                    raise Exception(f"Replicate API 서버 에러: {create_res.status_code}")
+            else:
+                try:
+                    prediction = create_res.json()
+                    print(f"[generate_image] 예측 응답: {json.dumps(prediction, indent=2, ensure_ascii=False)[:500]}")
+                    pred_id = prediction.get("id")
+                    get_url = prediction.get("urls", {}).get("get")
+                    if not get_url and pred_id:
+                        get_url = f"https://api.replicate.com/v1/predictions/{pred_id}"
+                    print(f"[generate_image] 예측 ID: {pred_id}, get_url: {get_url}")
+                    print(f"[generate_image] 상태 확인 시작 (최대 180초 대기)")
+                    final = None
+                    poll_count = 0
+                    max_polls = 180
+                    for poll_count in range(max_polls):
+                        if not get_url:
+                            print(f"[generate_image] get_url이 없어서 중단")
+                            break
                         try:
-                                res = requests.get(get_url, headers=headers, timeout=10)
-                                if res.status_code != 200:
+                            res = requests.get(get_url, headers=headers, timeout=10)
+                            if res.status_code != 200:
                                 print(f"[IMG] (Replicate) 상태 조회 실패: {res.status_code} {res.text[:500]}")
                                 break
-                                data = res.json()
-                                status = data.get("status")
-                                # 5초마다 로그 출력 (더 자주)
-                                if poll_count % 5 == 0:
+                            data = res.json()
+                            status = data.get("status")
+                            # 5초마다 로그 출력 (더 자주)
+                            if poll_count % 5 == 0:
                                 print(f"[generate_image] 상태 확인 중... ({poll_count}초 경과, 상태: {status})")
-                                if status in ("succeeded", "failed", "canceled"):
+                            if status in ("succeeded", "failed", "canceled"):
                                 final = data
                                 print(f"[generate_image] 최종 상태: {status} (총 {poll_count}초 소요)")
                                 if status == "failed":
                                     error_msg = data.get("error", "알 수 없는 오류")
                                     print(f"[generate_image] 실패 원인: {error_msg}")
                                 break
-                                time.sleep(1)
+                            time.sleep(1)
                         except requests.exceptions.Timeout:
-                                print(f"[경고] 상태 조회 타임아웃 ({poll_count}초 경과), 계속 시도...")
-                                time.sleep(1)
-                                continue
+                            print(f"[경고] 상태 조회 타임아웃 ({poll_count}초 경과), 계속 시도...")
+                            time.sleep(1)
+                            continue
                         except Exception as poll_exc:
-                                print(f"[오류] 상태 조회 중 예외 발생: {poll_exc}")
-                                import traceback
-                                traceback.print_exc()
-                                # 네트워크 오류는 재시도
-                                if poll_count < max_polls - 1:
+                            print(f"[오류] 상태 조회 중 예외 발생: {poll_exc}")
+                            import traceback
+                            traceback.print_exc()
+                            # 네트워크 오류는 재시도
+                            if poll_count < max_polls - 1:
                                 time.sleep(2)
                                 continue
-                                break
-                        if poll_count >= max_polls - 1:
+                            break
+                    if poll_count >= max_polls - 1:
                         print(f"[generate_image] 타임아웃: {max_polls}초 동안 완료되지 않음")
-                        except Exception as json_exc:
-                        print(f"[오류] 예측 응답 파싱 실패: {json_exc}")
-                        print(f"[오류] 응답 본문: {create_res.text[:1000]}")
-                        import traceback
-                        traceback.print_exc()
-                        final = None
-                        if final and final.get("status") == "succeeded":
-                        outputs = final.get("output")
-                        image_url = None
-                        image_b64 = None
-                        if isinstance(outputs, str):
+                except Exception as json_exc:
+                    print(f"[오류] 예측 응답 파싱 실패: {json_exc}")
+                    print(f"[오류] 응답 본문: {create_res.text[:1000]}")
+                    import traceback
+                    traceback.print_exc()
+                    final = None
+                if final and final.get("status") == "succeeded":
+                    outputs = final.get("output")
+                    image_url = None
+                    image_b64 = None
+                    if isinstance(outputs, str):
                         image_url = outputs
-                        elif isinstance(outputs, list) and outputs:
+                    elif isinstance(outputs, list) and outputs:
                         first = outputs[0]
                         if isinstance(first, str):
-                                image_url = first
+                            image_url = first
                         elif isinstance(first, dict):
-                                image_url = first.get("url") or first.get("image")
-                                image_b64 = first.get("image_base64") or first.get("b64_json")
-                        elif isinstance(outputs, dict):
+                            image_url = first.get("url") or first.get("image")
+                            image_b64 = first.get("image_base64") or first.get("b64_json")
+                    elif isinstance(outputs, dict):
                         image_url = outputs.get("url") or outputs.get("image")
                         image_b64 = outputs.get("image_base64")
-                        if image_b64:
+                    if image_b64:
                         print(f"[generate_image] base64 이미지 저장 중...")
                         try:
-                                image_bytes = base64.b64decode(image_b64)
-                                print(f"[generate_image] base64 디코딩 완료, 크기: {len(image_bytes)} bytes")
-                                if len(image_bytes) < 100:
+                            image_bytes = base64.b64decode(image_b64)
+                            print(f"[generate_image] base64 디코딩 완료, 크기: {len(image_bytes)} bytes")
+                            if len(image_bytes) < 100:
                                 print(f"[경고] 이미지 데이터가 너무 작습니다: {len(image_bytes)} bytes")
-                                save_image_bytes_as_png(image_bytes, filename)
-                                # 저장된 파일 확인
-                                if os.path.exists(filename):
+                            save_image_bytes_as_png(image_bytes, filename)
+                            # 저장된 파일 확인
+                            if os.path.exists(filename):
                                 file_size = os.path.getsize(filename)
                                 print(f"[generate_image] 이미지 저장 완료: {filename} (크기: {file_size} bytes)")
                                 # 이미지가 검은색인지 확인 (첫 몇 픽셀 확인)
@@ -1415,23 +1416,23 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                                 except Exception as img_check_exc:
                                     print(f"[경고] 이미지 확인 실패: {img_check_exc}")
                                 return True
-                                else:
+                            else:
                                 print(f"[오류] 파일이 저장되지 않았습니다: {filename}")
                         except Exception as b64_exc:
-                                print(f"[오류] base64 디코딩 실패: {b64_exc}")
-                                import traceback
-                                traceback.print_exc()
-                        if image_url:
+                            print(f"[오류] base64 디코딩 실패: {b64_exc}")
+                            import traceback
+                            traceback.print_exc()
+                    if image_url:
                         print(f"[generate_image] 이미지 URL에서 다운로드 중: {image_url}")
                         try:
-                                resp = requests.get(image_url, timeout=60)
-                                resp.raise_for_status()
-                                print(f"[generate_image] 이미지 다운로드 완료, 크기: {len(resp.content)} bytes")
-                                if len(resp.content) < 100:
+                            resp = requests.get(image_url, timeout=60)
+                            resp.raise_for_status()
+                            print(f"[generate_image] 이미지 다운로드 완료, 크기: {len(resp.content)} bytes")
+                            if len(resp.content) < 100:
                                 print(f"[경고] 다운로드된 이미지 데이터가 너무 작습니다: {len(resp.content)} bytes")
-                                save_image_bytes_as_png(resp.content, filename)
-                                # 저장된 파일 확인
-                                if os.path.exists(filename):
+                            save_image_bytes_as_png(resp.content, filename)
+                            # 저장된 파일 확인
+                            if os.path.exists(filename):
                                 file_size = os.path.getsize(filename)
                                 print(f"[generate_image] 이미지 다운로드 및 저장 완료: {filename} (크기: {file_size} bytes)")
                                 # 이미지가 검은색인지 확인
@@ -1445,21 +1446,26 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                                 except Exception as img_check_exc:
                                     print(f"[경고] 이미지 확인 실패: {img_check_exc}")
                                 return True
-                                else:
+                            else:
                                 print(f"[오류] 파일이 저장되지 않았습니다: {filename}")
                         except Exception as download_exc:
-                                print(f"[오류] 이미지 다운로드 실패: {download_exc}")
-                                import traceback
-                                traceback.print_exc()
-                        print("[IMG] (Replicate) 출력이 비어 있습니다.")
-                        print(f"[디버그] outputs 타입: {type(outputs)}, 값: {outputs}")
-                        elif final:
-                        print(f"[IMG] (Replicate) 예측 실패: {final.get('status')}, 에러: {final.get('error')}")
-            except Exception as exc:
+                            print(f"[오류] 이미지 다운로드 실패: {download_exc}")
+                            import traceback
+                            traceback.print_exc()
+                    print("[IMG] (Replicate) 출력이 비어 있습니다.")
+                    print(f"[디버그] outputs 타입: {type(outputs)}, 값: {outputs}")
+                elif final:
+                    print(f"[IMG] (Replicate) 예측 실패: {final.get('status')}, 에러: {final.get('error')}")
+        except Exception as exc:
             log_error(f"[IMG] (Replicate) 예외 발생: {exc}", exc_info=exc)
             print(f"[IMG] (Replicate) 예외 발생: {exc}")
             import traceback
             traceback.print_exc()
+    except Exception as outer_exc:
+        log_error(f"[generate_image] 함수 전체 예외 발생: {outer_exc}", exc_info=outer_exc)
+        print(f"[generate_image] 함수 전체 예외 발생: {outer_exc}")
+        import traceback
+        traceback.print_exc()
 
     # Stability API는 사용하지 않음 (Replicate만 사용)
     # if mode != "realistic" and stability_api_available:
