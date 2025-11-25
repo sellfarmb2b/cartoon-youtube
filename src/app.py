@@ -1280,13 +1280,13 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                 # Rate limiting: 분당 600개 요청 제한 준수 (최소 0.1초 간격)
                 global _last_replicate_request_time
                 with _replicate_request_lock:
-                current_time = time.time()
-                time_since_last = current_time - _last_replicate_request_time
-                if time_since_last < REPLICATE_MIN_REQUEST_INTERVAL:
-                    wait_time = REPLICATE_MIN_REQUEST_INTERVAL - time_since_last
-                    print(f"[Rate Limit] 요청 간격 조절: {wait_time:.2f}초 대기 중...")
-                    time.sleep(wait_time)
-                _last_replicate_request_time = time.time()
+                    current_time = time.time()
+                    time_since_last = current_time - _last_replicate_request_time
+                    if time_since_last < REPLICATE_MIN_REQUEST_INTERVAL:
+                        wait_time = REPLICATE_MIN_REQUEST_INTERVAL - time_since_last
+                        print(f"[Rate Limit] 요청 간격 조절: {wait_time:.2f}초 대기 중...")
+                        time.sleep(wait_time)
+                    _last_replicate_request_time = time.time()
                 
                 # 429 에러 재시도를 위한 루프
                 max_retries = 3
