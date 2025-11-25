@@ -1195,7 +1195,7 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
             print(f"[경고] Replicate API 키가 설정되지 않았습니다!")
         
         if replicate_api_available_local:
-        try:
+            try:
             log_debug(f"[generate_image] Replicate API 사용 시작 - 모드: {mode}, 파일: {os.path.basename(filename)}")
             log_debug(f"[generate_image] 파일 전체 경로: {os.path.abspath(filename)}")
             log_debug(f"[generate_image] 파일 디렉토리 존재 여부: {os.path.exists(os.path.dirname(filename))}")
