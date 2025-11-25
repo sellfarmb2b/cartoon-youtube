@@ -1155,12 +1155,11 @@ def save_image_bytes_as_png(content: bytes, filename: str, target_size=(1280, 76
 
 def generate_image(prompt_text: str, filename: str, mode: str = "animation", replicate_api_key: Optional[str] = None) -> bool:
     """이미지 생성 함수 - Windows 환경 디버깅 강화"""
-    try:
-        log_debug(f"[generate_image] 함수 시작 - filename: {filename}, mode: {mode}")
-        log_debug(f"[generate_image] prompt_text 길이: {len(prompt_text) if prompt_text else 0}")
-        log_debug(f"[generate_image] replicate_api_key 전달 여부: {bool(replicate_api_key)}")
-        
-        mode = (mode or "animation").lower()
+    log_debug(f"[generate_image] 함수 시작 - filename: {filename}, mode: {mode}")
+    log_debug(f"[generate_image] prompt_text 길이: {len(prompt_text) if prompt_text else 0}")
+    log_debug(f"[generate_image] replicate_api_key 전달 여부: {bool(replicate_api_key)}")
+    
+    mode = (mode or "animation").lower()
         fallback_context = "scene description"
         if prompt_text:
             base_prompt = enforce_prompt_by_mode(prompt_text, fallback_context=fallback_context, mode=mode)
@@ -1183,16 +1182,17 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
         api_token = replicate_api_key or REPLICATE_API_TOKEN
         replicate_api_available_local = bool(api_token)
         
-        # API 키 사용 여부 로그 (키의 일부만 표시)
-        if api_token:
-            key_preview = api_token[:10] + "..." + api_token[-4:] if len(api_token) > 14 else "***"
-            log_debug(f"[generate_image] 사용 중인 Replicate API 키: {key_preview}")
-            log_debug(f"[generate_image] API 키 길이: {len(api_token)}")
-        else:
-            log_error(f"[경고] Replicate API 키가 설정되지 않았습니다!")
-            log_error(f"[경고] replicate_api_key 파라미터: {replicate_api_key}")
-            log_error(f"[경고] REPLICATE_API_TOKEN 전역 변수: {REPLICATE_API_TOKEN[:10] if REPLICATE_API_TOKEN else 'None'}...")
-            print(f"[경고] Replicate API 키가 설정되지 않았습니다!")
+    # API 키 사용 여부 로그 (키의 일부만 표시)
+    if api_token:
+        key_preview = api_token[:10] + "..." + api_token[-4:] if len(api_token) > 14 else "***"
+        log_debug(f"[generate_image] 사용 중인 Replicate API 키: {key_preview}")
+        log_debug(f"[generate_image] API 키 길이: {len(api_token)}")
+        print(f"[generate_image] 사용 중인 Replicate API 키: {key_preview}")
+    else:
+        log_error(f"[경고] Replicate API 키가 설정되지 않았습니다!")
+        log_error(f"[경고] replicate_api_key 파라미터: {replicate_api_key}")
+        log_error(f"[경고] REPLICATE_API_TOKEN 전역 변수: {REPLICATE_API_TOKEN[:10] if REPLICATE_API_TOKEN else 'None'}...")
+        print(f"[경고] Replicate API 키가 설정되지 않았습니다!")
     
     if replicate_api_available_local:
         try:
