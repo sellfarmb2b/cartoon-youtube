@@ -136,21 +136,31 @@ class LauncherApp:
     def _check_for_updates(self) -> None:
         try:
             local_version = self._load_local_version()
-            remote_version = self._fetch_remote_version()
-
-            if remote_version > local_version:
-                self._download_release(str(remote_version))
-            else:
-                self._set_status("최신 버전입니다!")
-                time.sleep(1)
+            try:
+                remote_version = self._fetch_remote_version()
+                
+                if remote_version > local_version:
+                    self._download_release(str(remote_version))
+                else:
+                    self._set_status("최신 버전입니다!")
+                    time.sleep(1)
+            except requests.RequestException as network_error:
+                # 네트워크 오류 시 조용히 무시하고 로컬 버전 실행
+                self._set_status("업데이트 확인 건너뜀 (오프라인 모드)")
+                time.sleep(0.5)
+                print(f"[Launcher] 업데이트 서버 연결 실패, 로컬 버전 실행: {network_error}")
 
             self._launch_main_app()
-        except requests.RequestException as network_error:
-            self._set_status("네트워크 오류가 발생했습니다.")
-            messagebox.showerror("오류", f"업데이트 서버에 연결할 수 없습니다.\n{network_error}")
         except Exception as exc:
-            self._set_status("업데이트 중 오류가 발생했습니다.")
-            messagebox.showerror("오류", f"알 수 없는 오류가 발생했습니다.\n{exc}")
+            # 치명적 오류가 아닌 경우에도 앱 실행 시도
+            self._set_status("업데이트 확인 중 오류 발생, 앱 실행 중...")
+            print(f"[Launcher] 업데이트 확인 중 오류: {exc}")
+            time.sleep(0.5)
+            try:
+                self._launch_main_app()
+            except Exception as launch_exc:
+                self._set_status("앱 실행 실패")
+                messagebox.showerror("실행 오류", f"애플리케이션 실행에 실패했습니다.\n{launch_exc}")
         finally:
             self._hide_progress()
 
