@@ -27,16 +27,19 @@ jobs:
       run: |
         pyinstaller --noconsole --onefile src/launcher.py
 
-    # 메인 앱 빌드 (데이터 포함)
+    # 메인 앱 빌드 (데이터 포함) - 폴더 모드로 변경
     - name: Build YouTubeMaker
       run: |
-        pyinstaller --noconsole --onefile --name=YouTubeMaker --add-data "src/templates;src/templates" --add-data "bin/win/ffmpeg.exe;bin/win" src/app.py
+        pyinstaller --noconsole --onedir --name=YouTubeMaker --add-data "src/templates;src/templates" --add-data "bin/win/ffmpeg.exe;bin/win" src/app.py
+
+    # Launcher.exe를 YouTubeMaker 폴더로 이동
+    - name: Move Launcher to YouTubeMaker folder
+      run: |
+        Move-Item -Path "dist\Launcher.exe" -Destination "dist\YouTubeMaker\Launcher.exe" -Force
 
     - name: Upload Windows build artifacts
       uses: actions/upload-artifact@v4
       with:
         name: Windows-Build-Files
-        path: |
-          dist/Launcher.exe
-          dist/YouTubeMaker.exe
+        path: dist/YouTubeMaker
         retention-days: 30
