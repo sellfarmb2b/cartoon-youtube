@@ -1079,7 +1079,23 @@
                             } else if (statusData.status === 'error') {
                                 clearInterval(pollingInterval);
                                 pollingInterval = null;
-                                setStatus(statusData.error || '이미지 생성 중 오류가 발생했습니다.', 'error');
+                                const errorMsg = statusData.error || '이미지 생성 중 오류가 발생했습니다.';
+                                setStatus(errorMsg, 'error');
+                                
+                                // 로그 파일 확인 기능 추가
+                                fetch('/api/debug/info')
+                                    .then(res => res.json())
+                                    .then(debugInfo => {
+                                        if (debugInfo.log_file) {
+                                            const logPath = debugInfo.log_file;
+                                            console.log('[디버그] 로그 파일 위치:', logPath);
+                                            // 에러 메시지에 로그 파일 위치 추가
+                                            const logMsg = `\n\n로그 파일 위치: ${logPath}\n문제가 지속되면 로그 파일을 확인하세요.`;
+                                            setStatus(errorMsg + logMsg, 'error');
+                                        }
+                                    })
+                                    .catch(err => console.error('로그 정보 조회 실패:', err));
+                                
                                 generateImagesBtn.disabled = false;
                                 generateImagesBtn.textContent = '이미지 생성';
                             } else if (statusData.status === 'running' || statusData.status === 'processing') {
@@ -1344,7 +1360,23 @@
                             } else if (statusData.status === 'error') {
                                 clearInterval(pollingInterval);
                                 pollingInterval = null;
-                                setStatus(statusData.error || '이미지 생성 중 오류가 발생했습니다.', 'error');
+                                const errorMsg = statusData.error || '이미지 생성 중 오류가 발생했습니다.';
+                                setStatus(errorMsg, 'error');
+                                
+                                // 로그 파일 확인 기능 추가
+                                fetch('/api/debug/info')
+                                    .then(res => res.json())
+                                    .then(debugInfo => {
+                                        if (debugInfo.log_file) {
+                                            const logPath = debugInfo.log_file;
+                                            console.log('[디버그] 로그 파일 위치:', logPath);
+                                            // 에러 메시지에 로그 파일 위치 추가
+                                            const logMsg = `\n\n로그 파일 위치: ${logPath}\n문제가 지속되면 로그 파일을 확인하세요.`;
+                                            setStatus(errorMsg + logMsg, 'error');
+                                        }
+                                    })
+                                    .catch(err => console.error('로그 정보 조회 실패:', err));
+                                
                                 generateImagesBtn.disabled = false;
                                 generateImagesBtn.textContent = '2단계: 이미지 생성';
                             } else if (statusData.status === 'running' || statusData.status === 'processing') {
