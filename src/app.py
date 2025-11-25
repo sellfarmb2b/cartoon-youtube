@@ -1284,7 +1284,7 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                             print(f"[Rate Limit] https://replicate.com/account/billing 에서 크레딧을 충전하세요.")
                             time.sleep(wait_time)
                             continue  # 재시도
-                            else:
+                        else:
                             print(f"[Rate Limit] 429 에러: 최대 재시도 횟수 초과")
                             print(f"[Rate Limit] 해결 방법:")
                             print(f"[Rate Limit] 1. https://replicate.com/account/billing 에서 크레딧을 충전하세요 ($5 이상 권장)")
