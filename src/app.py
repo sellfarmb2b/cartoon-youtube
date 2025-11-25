@@ -3383,23 +3383,23 @@ def api_generate_images():
                     success = generate_image(prompt, image_filename, mode=mode)
                     
                     # 생성 결과 확인
-                        if not success or not os.path.exists(image_filename):
-                            print(f"[경고] {idx}번 이미지 생성 실패 또는 파일 없음, 기본 이미지 생성")
-                            Image.new("RGB", (1920, 1080), color="black").save(image_filename)
-                            with jobs_lock:
-                                job_data = jobs.get(job_id)
-                                if job_data is not None:
-                                    job_data["progress"].append(f"{idx}번 이미지 생성 실패 (기본 이미지 사용)")
-                        else:
-                            file_size = os.path.getsize(image_filename)
-                            print(f"[이미지 생성] {idx}/{total} 완료 - 파일 크기: {file_size} bytes")
-                            # 진행도 업데이트 (완료)
-                            progress_pct = int((idx / total) * 100)
-                            with jobs_lock:
-                                job_data = jobs.get(job_id)
-                                if job_data is not None:
-                                    job_data["stage_progress"] = progress_pct
-                                    job_data["progress"].append(f"{idx}번 이미지 생성 완료 ({file_size} bytes)")
+                    if not success or not os.path.exists(image_filename):
+                        print(f"[경고] {idx}번 이미지 생성 실패 또는 파일 없음, 기본 이미지 생성")
+                        Image.new("RGB", (1920, 1080), color="black").save(image_filename)
+                        with jobs_lock:
+                            job_data = jobs.get(job_id)
+                            if job_data is not None:
+                                job_data["progress"].append(f"{idx}번 이미지 생성 실패 (기본 이미지 사용)")
+                    else:
+                        file_size = os.path.getsize(image_filename)
+                        print(f"[이미지 생성] {idx}/{total} 완료 - 파일 크기: {file_size} bytes")
+                        # 진행도 업데이트 (완료)
+                        progress_pct = int((idx / total) * 100)
+                        with jobs_lock:
+                            job_data = jobs.get(job_id)
+                            if job_data is not None:
+                                job_data["stage_progress"] = progress_pct
+                                job_data["progress"].append(f"{idx}번 이미지 생성 완료 ({file_size} bytes)")
                     
                     # Windows 경로 처리 개선
                     abs_path = os.path.abspath(image_filename)
