@@ -1193,8 +1193,8 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
             log_error(f"[경고] replicate_api_key 파라미터: {replicate_api_key}")
             log_error(f"[경고] REPLICATE_API_TOKEN 전역 변수: {REPLICATE_API_TOKEN[:10] if REPLICATE_API_TOKEN else 'None'}...")
             print(f"[경고] Replicate API 키가 설정되지 않았습니다!")
-    
-    if replicate_api_available_local:
+        
+        if replicate_api_available_local:
         try:
             log_debug(f"[generate_image] Replicate API 사용 시작 - 모드: {mode}, 파일: {os.path.basename(filename)}")
             log_debug(f"[generate_image] 파일 전체 경로: {os.path.abspath(filename)}")
@@ -1466,6 +1466,8 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
         print(f"[generate_image] 함수 전체 예외 발생: {outer_exc}")
         import traceback
         traceback.print_exc()
+        # 예외 발생 시에도 fallback으로 진행
+        pass
 
     # Stability API는 사용하지 않음 (Replicate만 사용)
     # if mode != "realistic" and stability_api_available:
