@@ -163,7 +163,8 @@
         <div class="card">
             <h2 style="margin-top:0; color:#1f2937;">🎉 영상 생성 완료!</h2>
             <p>아래 링크를 눌러 다운로드하세요.</p>
-            <a href="/static/{{ video_filename }}" download style="display:inline-block; margin-top:10px;">
+            {% set video_job_id = video_filename.replace('final_video_', '').replace('.mp4', '') %}
+            <a href="/download_video/{{ video_job_id }}" style="display:inline-block; margin-top:10px;">
                 <button type="button">{{ video_filename }} 다운로드</button>
             </a>
         </div>
@@ -1424,7 +1425,7 @@
                                         <h2 style="margin-top:0; color:#1f2937;">🎉 영상 생성 완료!</h2>
                                         <p>아래 링크를 눌러 다운로드하세요.</p>
                                         <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
-                                            <a href="${data.video_url}" download style="display:inline-block;">
+                                            <a href="${data.video_url}" style="display:inline-block;">
                                                 <button type="button">영상 다운로드</button>
                                             </a>
                                             <button type="button" onclick="window.location.href='/download_images/${jobId}'" style="background:#10b981;">

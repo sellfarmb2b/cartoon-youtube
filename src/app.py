@@ -3629,7 +3629,7 @@ def job_status(job_id):
         if os.path.exists(expected_path):
             # 파일이 존재할 때만 video_url 생성
             # video_filename은 이미 상대 경로이므로 그대로 사용
-            video_url = f"/static/{video_filename}"
+            video_url = url_for("download_video", job_id=job_id)
             print(f"[job_status] ✅ video_filename: {video_filename}, video_url: {video_url}")
             print(f"[job_status] ✅ 파일 경로: {expected_path}")
         else:
@@ -3813,6 +3813,31 @@ def download_subtitle(job_id):
         import traceback
         traceback.print_exc()
         return jsonify({"error": f"자막 다운로드 실패: {str(e)}"}), 500
+
+
+@app.route("/download_video/<job_id>")
+def download_video(job_id):
+    """생성된 최종 비디오 파일 다운로드"""
+    try:
+        _, _, video_file = get_job_paths(job_id)
+        if not os.path.exists(video_file):
+            return jsonify({"error": "영상 파일을 찾을 수 없습니다."}), 404
+
+        if os.path.getsize(video_file) == 0:
+            return jsonify({"error": "영상 파일이 비어 있습니다."}), 404
+
+        download_name = os.path.basename(video_file)
+        return send_file(
+            video_file,
+            mimetype="video/mp4",
+            as_attachment=True,
+            download_name=download_name,
+        )
+    except Exception as e:
+        print(f"[다운로드 오류] 비디오 파일 다운로드 실패: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"영상 다운로드 실패: {str(e)}"}), 500
 
 
 def find_available_port(start: int = 5001, end: int = 5010) -> int:
