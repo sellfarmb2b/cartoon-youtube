@@ -1249,17 +1249,17 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                 # Rate limiting: 분당 600개 요청 제한 준수 (최소 0.1초 간격)
                 global _last_replicate_request_time
                 with _replicate_request_lock:
-                current_time = time.time()
-                time_since_last = current_time - _last_replicate_request_time
-                if time_since_last < REPLICATE_MIN_REQUEST_INTERVAL:
-                    wait_time = REPLICATE_MIN_REQUEST_INTERVAL - time_since_last
-                    print(f"[Rate Limit] 요청 간격 조절: {wait_time:.2f}초 대기 중...")
-                    time.sleep(wait_time)
-                _last_replicate_request_time = time.time()
-                
-                # 429 에러 재시도를 위한 루프
-                max_retries = 3
-                create_res = None
+                    current_time = time.time()
+                    time_since_last = current_time - _last_replicate_request_time
+                    if time_since_last < REPLICATE_MIN_REQUEST_INTERVAL:
+                        wait_time = REPLICATE_MIN_REQUEST_INTERVAL - time_since_last
+                        print(f"[Rate Limit] 요청 간격 조절: {wait_time:.2f}초 대기 중...")
+                        time.sleep(wait_time)
+                    _last_replicate_request_time = time.time()
+                    
+                    # 429 에러 재시도를 위한 루프
+                    max_retries = 3
+                    create_res = None
                 for retry_attempt in range(max_retries):
                 try:
                     create_res = requests.post(request_url, headers=headers, json=body, timeout=30)
@@ -1305,10 +1305,10 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                     import traceback
                     traceback.print_exc()
                     raise  # 예외를 다시 발생시켜 fallback으로 넘어가도록 함
-                
+                    
                 if create_res is None or create_res.status_code not in (200, 201):
-                print(f"[IMG] (Replicate) 생성 실패: {create_res.status_code if create_res else 'None'} {create_res.text if create_res else 'No response'}")
-                # 402 에러 (월간 사용 한도 도달) 처리
+                    print(f"[IMG] (Replicate) 생성 실패: {create_res.status_code if create_res else 'None'} {create_res.text if create_res else 'No response'}")
+                    # 402 에러 (월간 사용 한도 도달) 처리
                 if create_res and create_res.status_code == 402:
                     error_data = create_res.json() if create_res.text else {}
                     error_detail = error_data.get("detail", "월간 사용 한도에 도달했습니다.")
@@ -1316,7 +1316,7 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                     print(f"[경고] https://replicate.com/account/billing#limits 에서 한도를 확인하거나 증가시켜주세요.")
                     print(f"[경고] 한도를 증가시킨 경우 몇 분 후 다시 시도해주세요.")
                     raise Exception(f"Replicate API 월간 사용 한도 도달: {error_detail}")
-                # 500 에러나 다른 서버 에러인 경우 즉시 fallback으로
+                    # 500 에러나 다른 서버 에러인 경우 즉시 fallback으로
                 if create_res and create_res.status_code >= 500:
                     print(f"[IMG] (Replicate) 서버 에러 ({create_res.status_code}), 즉시 fallback으로 전환")
                     raise Exception(f"Replicate API 서버 에러: {create_res.status_code}")
