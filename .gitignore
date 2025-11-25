@@ -43,6 +43,7 @@ static/*.jpeg
 *.json
 !package.json
 !package-lock.json
+!src/version.json
 
 # 테스트 파일
 test_image.png
