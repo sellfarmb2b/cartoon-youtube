@@ -29,10 +29,10 @@ jobs:
       run: |
         pyinstaller --noconsole --onefile src/launcher.py
 
-    # 메인 앱 빌드 (데이터 포함) - 폴더 모드로 변경
+    # 메인 앱 빌드 (데이터 포함) - 폴더 모드로 변경 (디버깅 전용: 콘솔 창 표시)
     - name: Build YouTubeMaker
       run: |
-        pyinstaller --noconsole --onedir --name=YouTubeMaker --add-data "src/templates;src/templates" --add-data "bin/win/ffmpeg.exe;bin/win" src/app.py
+        pyinstaller --console --onedir --name=YouTubeMaker --add-data "src/templates;src/templates" --add-data "bin/win/ffmpeg.exe;bin/win" src/app.py
 
     # Launcher.exe를 YouTubeMaker 폴더로 이동
     - name: Move Launcher to YouTubeMaker folder

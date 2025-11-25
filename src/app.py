@@ -1050,17 +1050,25 @@ def generate_visual_prompts(sentences: List[str], mode: str = "animation", progr
 
 
 def generate_tts_with_alignment(voice_id: str, text: str, audio_filename: str, elevenlabs_api_key: Optional[str] = None):
-    text = (text or "").strip()
-    if not text:
-        print("[TTS] 입력 문장이 비어 있어 TTS를 건너뜁니다.")
-        return None
-    if not is_voice_allowed(voice_id):
-        voice_id = get_default_voice_id()
-    # 사용자가 입력한 API 키를 우선 사용, 없으면 기본값 사용
-    api_key = elevenlabs_api_key or ELEVENLABS_API_KEY
-    if not api_key:
-        print("[TTS] ElevenLabs API 키가 설정되지 않았습니다.")
-        return None
+    print("=" * 80)
+    print("=== [DEBUG] TTS 생성 요청 받음 ===")
+    print(f"=== [DEBUG] voice_id: {voice_id} ===")
+    print(f"=== [DEBUG] audio_filename: {audio_filename} ===")
+    print(f"=== [DEBUG] text 길이: {len(text) if text else 0} ===")
+    print("=" * 80)
+    try:
+        text = (text or "").strip()
+        if not text:
+            print("[TTS] 입력 문장이 비어 있어 TTS를 건너뜁니다.")
+            return None
+        if not is_voice_allowed(voice_id):
+            voice_id = get_default_voice_id()
+        # 사용자가 입력한 API 키를 우선 사용, 없으면 기본값 사용
+        api_key = elevenlabs_api_key or ELEVENLABS_API_KEY
+        print(f"=== [DEBUG] API 키 확인: {api_key[:10] + '...' if api_key and len(api_key) > 10 else 'None'} ===")
+        if not api_key:
+            print("[TTS] ElevenLabs API 키가 설정되지 않았습니다.")
+            return None
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/with-timestamps"
     headers = {"xi-api-key": api_key, "Accept": "application/json"}
     payload = {
@@ -1133,8 +1141,16 @@ def generate_tts_with_alignment(voice_id: str, text: str, audio_filename: str, e
         if attempt < TTS_MAX_RETRIES:
             print(f"[TTS] {wait_seconds}초 후 재시도합니다...")
             time.sleep(wait_seconds)
-    print(f"[TTS] 모든 재시도 실패: {last_error}")
-    return None
+        print(f"[TTS] 모든 재시도 실패: {last_error}")
+        return None
+    except Exception as tts_exc:
+        print("=" * 80)
+        print("=== [DEBUG] 오류: TTS 생성 예외 발생 ===")
+        print(f"=== [DEBUG] 예외 내용: {tts_exc} ===")
+        import traceback
+        traceback.print_exc()
+        print("=" * 80)
+        return None
 
 
 def save_image_bytes_as_png(content: bytes, filename: str, target_size=(1280, 768)):
@@ -1155,11 +1171,20 @@ def save_image_bytes_as_png(content: bytes, filename: str, target_size=(1280, 76
 
 def generate_image(prompt_text: str, filename: str, mode: str = "animation", replicate_api_key: Optional[str] = None) -> bool:
     """이미지 생성 함수 - Windows 환경 디버깅 강화"""
+    print("=" * 80)
+    print("=== [DEBUG] 이미지 생성 요청 받음 ===")
+    print(f"=== [DEBUG] filename: {filename}")
+    print(f"=== [DEBUG] mode: {mode}")
+    print(f"=== [DEBUG] prompt_text 길이: {len(prompt_text) if prompt_text else 0}")
+    print(f"=== [DEBUG] replicate_api_key 전달 여부: {bool(replicate_api_key)}")
+    print("=" * 80)
+    
     log_debug(f"[generate_image] 함수 시작 - filename: {filename}, mode: {mode}")
     log_debug(f"[generate_image] prompt_text 길이: {len(prompt_text) if prompt_text else 0}")
     log_debug(f"[generate_image] replicate_api_key 전달 여부: {bool(replicate_api_key)}")
     
-    mode = (mode or "animation").lower()
+    try:
+        mode = (mode or "animation").lower()
     fallback_context = "scene description"
     if prompt_text:
         base_prompt = enforce_prompt_by_mode(prompt_text, fallback_context=fallback_context, mode=mode)
@@ -1178,29 +1203,35 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
             "realistic human, detailed human skin, photograph, 3d render, blank white background, line-art only, text, watermark"
         )
 
-    # 사용자가 입력한 API 키를 우선 사용, 없으면 기본값 사용
-    api_token = replicate_api_key or REPLICATE_API_TOKEN
-    replicate_api_available_local = bool(api_token)
+        # 사용자가 입력한 API 키를 우선 사용, 없으면 기본값 사용
+        api_token = replicate_api_key or REPLICATE_API_TOKEN
+        replicate_api_available_local = bool(api_token)
+        
+        # API 키 사용 여부 로그 (키의 일부만 표시)
+        print("=== [DEBUG] API 키 확인 ===")
+        if api_token:
+            key_preview = api_token[:10] + "..." + api_token[-4:] if len(api_token) > 14 else "***"
+            print(f"=== [DEBUG] API 키 확인: {key_preview} ===")
+            print(f"=== [DEBUG] API 키 길이: {len(api_token)} ===")
+            log_debug(f"[generate_image] 사용 중인 Replicate API 키: {key_preview}")
+            log_debug(f"[generate_image] API 키 길이: {len(api_token)}")
+        else:
+            print("=== [DEBUG] 경고: Replicate API 키가 설정되지 않았습니다! ===")
+            log_error(f"[경고] Replicate API 키가 설정되지 않았습니다!")
+            log_error(f"[경고] replicate_api_key 파라미터: {replicate_api_key}")
+            log_error(f"[경고] REPLICATE_API_TOKEN 전역 변수: {REPLICATE_API_TOKEN[:10] if REPLICATE_API_TOKEN else 'None'}...")
     
-    # API 키 사용 여부 로그 (키의 일부만 표시)
-    if api_token:
-        key_preview = api_token[:10] + "..." + api_token[-4:] if len(api_token) > 14 else "***"
-        log_debug(f"[generate_image] 사용 중인 Replicate API 키: {key_preview}")
-        log_debug(f"[generate_image] API 키 길이: {len(api_token)}")
-        print(f"[generate_image] 사용 중인 Replicate API 키: {key_preview}")
-    else:
-        log_error(f"[경고] Replicate API 키가 설정되지 않았습니다!")
-        log_error(f"[경고] replicate_api_key 파라미터: {replicate_api_key}")
-        log_error(f"[경고] REPLICATE_API_TOKEN 전역 변수: {REPLICATE_API_TOKEN[:10] if REPLICATE_API_TOKEN else 'None'}...")
-        print(f"[경고] Replicate API 키가 설정되지 않았습니다!")
-    
-    if replicate_api_available_local:
-        try:
-            log_debug(f"[generate_image] Replicate API 사용 시작 - 모드: {mode}, 파일: {os.path.basename(filename)}")
-            log_debug(f"[generate_image] 파일 전체 경로: {os.path.abspath(filename)}")
-            log_debug(f"[generate_image] 파일 디렉토리 존재 여부: {os.path.exists(os.path.dirname(filename))}")
-            log_debug(f"[generate_image] 파일 디렉토리 쓰기 가능 여부: {os.access(os.path.dirname(filename), os.W_OK) if os.path.exists(os.path.dirname(filename)) else False}")
-            print(f"[generate_image] Replicate API 사용 - 모드: {mode}, 파일: {os.path.basename(filename)}")
+        if replicate_api_available_local:
+            print("=== [DEBUG] Replicate 호출 시작 ===")
+            try:
+                log_debug(f"[generate_image] Replicate API 사용 시작 - 모드: {mode}, 파일: {os.path.basename(filename)}")
+                log_debug(f"[generate_image] 파일 전체 경로: {os.path.abspath(filename)}")
+                log_debug(f"[generate_image] 파일 디렉토리 존재 여부: {os.path.exists(os.path.dirname(filename))}")
+                log_debug(f"[generate_image] 파일 디렉토리 쓰기 가능 여부: {os.access(os.path.dirname(filename), os.W_OK) if os.path.exists(os.path.dirname(filename)) else False}")
+                print(f"[generate_image] Replicate API 사용 - 모드: {mode}, 파일: {os.path.basename(filename)}")
+                print(f"=== [DEBUG] 파일 전체 경로: {os.path.abspath(filename)} ===")
+                print(f"=== [DEBUG] 파일 디렉토리 존재 여부: {os.path.exists(os.path.dirname(filename))} ===")
+                print(f"=== [DEBUG] 파일 디렉토리 쓰기 가능 여부: {os.access(os.path.dirname(filename), os.W_OK) if os.path.exists(os.path.dirname(filename)) else False} ===")
             headers = {
                 "Authorization": f"Token {api_token}",
                 "Content-Type": "application/json",
@@ -1235,16 +1266,16 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                 request_url = f"https://api.replicate.com/v1/models/{model_owner}/{model_name}/predictions"
                 body = {"input": replicate_input}
 
-            log_debug(f"[generate_image] Replicate API 요청 전송 중...")
-            log_debug(f"[generate_image] 프롬프트: {base_prompt[:200]}...")
-            log_debug(f"[generate_image] Negative 프롬프트: {negative_prompt[:200]}...")
-            log_debug(f"[generate_image] 요청 URL: {request_url}")
-            log_debug(f"[generate_image] 요청 본문: {json.dumps(body, indent=2, ensure_ascii=False)}")
-            print(f"[generate_image] Replicate API 요청 전송 중...")
-            print(f"[generate_image] 프롬프트: {base_prompt[:200]}...")
-            print(f"[generate_image] Negative 프롬프트: {negative_prompt[:200]}...")
-            print(f"[generate_image] 요청 URL: {request_url}")
-            print(f"[generate_image] 요청 본문: {json.dumps(body, indent=2, ensure_ascii=False)}")
+                print("=== [DEBUG] Replicate API 요청 전송 중 ===")
+                print(f"=== [DEBUG] 프롬프트: {base_prompt[:200]}... ===")
+                print(f"=== [DEBUG] Negative 프롬프트: {negative_prompt[:200]}... ===")
+                print(f"=== [DEBUG] 요청 URL: {request_url} ===")
+                print(f"=== [DEBUG] 요청 본문: {json.dumps(body, indent=2, ensure_ascii=False)} ===")
+                log_debug(f"[generate_image] Replicate API 요청 전송 중...")
+                log_debug(f"[generate_image] 프롬프트: {base_prompt[:200]}...")
+                log_debug(f"[generate_image] Negative 프롬프트: {negative_prompt[:200]}...")
+                log_debug(f"[generate_image] 요청 URL: {request_url}")
+                log_debug(f"[generate_image] 요청 본문: {json.dumps(body, indent=2, ensure_ascii=False)}")
             
             # Rate limiting: 분당 600개 요청 제한 준수 (최소 0.1초 간격)
             global _last_replicate_request_time
@@ -1301,9 +1332,12 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                         print(f"[Rate Limit] 예외 발생, {wait_time}초 후 재시도: {req_exc}")
                         time.sleep(wait_time)
                         continue
-                    print(f"[오류] Replicate API 요청 실패: {req_exc}")
+                    print("=" * 80)
+                    print("=== [DEBUG] 오류: Replicate API 요청 실패 ===")
+                    print(f"=== [DEBUG] 예외 내용: {req_exc} ===")
                     import traceback
                     traceback.print_exc()
+                    print("=" * 80)
                     raise  # 예외를 다시 발생시켜 fallback으로 넘어가도록 함
             
             if create_res is None or create_res.status_code not in (200, 201):
@@ -1456,20 +1490,27 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                     print(f"[디버그] outputs 타입: {type(outputs)}, 값: {outputs}")
                 elif final:
                     print(f"[IMG] (Replicate) 예측 실패: {final.get('status')}, 에러: {final.get('error')}")
-        except Exception as exc:
-            log_error(f"[IMG] (Replicate) 예외 발생: {exc}", exc_info=exc)
-            print(f"[IMG] (Replicate) 예외 발생: {exc}")
-            import traceback
-            traceback.print_exc()
+            except Exception as exc:
+                print("=" * 80)
+                print("=== [DEBUG] 오류: Replicate API 예외 발생 ===")
+                print(f"=== [DEBUG] 예외 내용: {exc} ===")
+                import traceback
+                traceback.print_exc()
+                print("=" * 80)
+                log_error(f"[IMG] (Replicate) 예외 발생: {exc}", exc_info=exc)
 
-    # Stability API는 사용하지 않음 (Replicate만 사용)
-    # if mode != "realistic" and stability_api_available:
-    #     ... (Stability API 코드 제거됨)
+        # Stability API는 사용하지 않음 (Replicate만 사용)
+        # if mode != "realistic" and stability_api_available:
+        #     ... (Stability API 코드 제거됨)
 
-    # fallback: create black image
-    log_error(f"[경고] 이미지 생성 실패, 검은색 이미지 생성 시도: {filename}")
-    try:
-        print(f"[경고] 이미지 생성 실패, 검은색 이미지 생성: {filename}")
+        # fallback: create black image
+        print("=" * 80)
+        print("=== [DEBUG] 경고: 이미지 생성 실패, 검은색 이미지 생성 시도 ===")
+        print(f"=== [DEBUG] filename: {filename} ===")
+        print("=" * 80)
+        log_error(f"[경고] 이미지 생성 실패, 검은색 이미지 생성 시도: {filename}")
+        try:
+            print(f"[경고] 이미지 생성 실패, 검은색 이미지 생성: {filename}")
         log_debug(f"[fallback] 검은색 이미지 생성 시작 - 경로: {os.path.abspath(filename)}")
         log_debug(f"[fallback] 디렉토리 존재 여부: {os.path.exists(os.path.dirname(filename))}")
         black_img = Image.new("RGB", (1920, 1080), color="black")
@@ -1499,12 +1540,24 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                 print(f"[검은색 이미지] 재생성 완료 (검증 실패 후)")
         else:
             print(f"[오류] 검은색 이미지 파일이 생성되지 않았습니다: {filename}")
-    except Exception as fallback_exc:
-        print(f"[오류] 검은색 이미지 생성 실패: {fallback_exc}")
+        except Exception as fallback_exc:
+            print("=" * 80)
+            print("=== [DEBUG] 오류: 검은색 이미지 생성 실패 ===")
+            print(f"=== [DEBUG] 예외 내용: {fallback_exc} ===")
+            import traceback
+            traceback.print_exc()
+            print("=" * 80)
+        
+        return False
+    except Exception as outer_exc:
+        print("=" * 80)
+        print("=== [DEBUG] 오류: generate_image 함수 전체 예외 발생 ===")
+        print(f"=== [DEBUG] 예외 내용: {outer_exc} ===")
         import traceback
         traceback.print_exc()
-    
-    return False
+        print("=" * 80)
+        log_error(f"[generate_image] 함수 전체 예외 발생: {outer_exc}", exc_info=outer_exc)
+        return False
 
 
 def generate_assets(
@@ -2487,7 +2540,13 @@ def run_generation_job(
     replicate_api_key=None,
     elevenlabs_api_key=None,
 ):
-    assets_folder, subtitle_file, video_file = get_job_paths(job_id)
+    print("=" * 80)
+    print("=== [DEBUG] 영상 생성 작업 시작 ===")
+    print(f"=== [DEBUG] job_id: {job_id} ===")
+    print(f"=== [DEBUG] mode: {mode} ===")
+    print("=" * 80)
+    try:
+        assets_folder, subtitle_file, video_file = get_job_paths(job_id)
     
     # API 키 확인 및 환경 변수 fallback
     if not replicate_api_key or (isinstance(replicate_api_key, str) and not replicate_api_key.strip()):
@@ -2522,6 +2581,7 @@ def run_generation_job(
 
     try:
         update_job(job_id, status="running")
+        print("=== [DEBUG] 작업 준비 중 ===")
         progress("작업을 준비 중입니다.")
         # sentences_override가 있으면 사용 (이미 파싱된 한국어 문장만 포함)
         if sentences_override:
@@ -3009,6 +3069,12 @@ def run_generation_job(
             # 파일이 없으면 video_filename을 None으로 설정
             update_job(job_id, status="error", error="최종 비디오 파일이 생성되지 않았습니다.", video_filename=None)
     except Exception as exc:
+        print("=" * 80)
+        print("=== [DEBUG] 오류: 영상 생성 작업 예외 발생 ===")
+        print(f"=== [DEBUG] 예외 내용: {exc} ===")
+        import traceback
+        traceback.print_exc()
+        print("=" * 80)
         print(f"[작업 오류] {exc}")
         update_job(job_id, status="error", error=str(exc))
         progress("작업 처리 중 오류가 발생했습니다.")
@@ -3570,6 +3636,11 @@ def api_generate_images_direct():
     os.makedirs(assets_folder, exist_ok=True)
     
     def generate_images_with_progress():
+        print("=" * 80)
+        print("=== [DEBUG] 이미지 생성 시작 ===")
+        print(f"=== [DEBUG] 총 {len(sentences)}개 이미지 생성 예정 ===")
+        print(f"=== [DEBUG] 테스트 모드: {test_mode} ===")
+        print("=" * 80)
         try:
             total = len(sentences)
             image_results = []
