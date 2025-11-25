@@ -1461,11 +1461,6 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
             print(f"[IMG] (Replicate) 예외 발생: {exc}")
             import traceback
             traceback.print_exc()
-    except Exception as outer_exc:
-        log_error(f"[generate_image] 함수 전체 예외 발생: {outer_exc}", exc_info=outer_exc)
-        print(f"[generate_image] 함수 전체 예외 발생: {outer_exc}")
-        import traceback
-        traceback.print_exc()
 
     # Stability API는 사용하지 않음 (Replicate만 사용)
     # if mode != "realistic" and stability_api_available:
