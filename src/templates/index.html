@@ -220,6 +220,43 @@
 </div>
 
 <script>
+        // 비디오 파일 다운로드 함수 (전역 스코프)
+        async function downloadVideo(jobId) {
+            try {
+                const statusMessage = document.getElementById('statusMessage');
+                if (statusMessage) {
+                    statusMessage.style.display = 'block';
+                    statusMessage.textContent = '비디오 다운로드 중...';
+                    statusMessage.className = 'status-msg info';
+                }
+                const response = await fetch(`/download_video/${jobId}`);
+                if (!response.ok) {
+                    throw new Error('다운로드 실패');
+                }
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `video_${jobId}.mp4`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                if (statusMessage) {
+                    statusMessage.textContent = '비디오 다운로드가 시작되었습니다.';
+                    statusMessage.className = 'status-msg success';
+                }
+            } catch (error) {
+                console.error('다운로드 오류:', error);
+                const statusMessage = document.getElementById('statusMessage');
+                if (statusMessage) {
+                    statusMessage.style.display = 'block';
+                    statusMessage.textContent = '비디오 다운로드 중 오류가 발생했습니다.';
+                    statusMessage.className = 'status-msg error';
+                }
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', function () {
             const previewBtn = document.getElementById('previewBtn');
             const voiceSelect = document.getElementById('voiceSelect');
@@ -1423,11 +1460,9 @@
                                 resultContainer.innerHTML = `
                                     <div class="card">
                                         <h2 style="margin-top:0; color:#1f2937;">🎉 영상 생성 완료!</h2>
-                                        <p>아래 링크를 눌러 다운로드하세요.</p>
+                                        <p>아래 버튼을 눌러 다운로드하세요.</p>
                                         <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
-                                            <a href="${data.video_url}" style="display:inline-block;">
-                                                <button type="button">영상 다운로드</button>
-                                            </a>
+                                            <button type="button" onclick="downloadVideo('${jobId}')">영상 다운로드</button>
                                             <button type="button" onclick="window.location.href='/download_images/${jobId}'" style="background:#10b981;">
                                                 일괄 사진 다운로드
                                             </button>
