@@ -68,7 +68,7 @@ def build_mac():
     app_cmd = [
         "pyinstaller",
         "--name=YouTubeMaker",
-        "--onefile",
+        "--onedir",
         "--noconsole",
         "--add-data=src/templates:src/templates",
         "--add-data=src/static:src/static",
@@ -110,10 +110,11 @@ def build_mac():
     print("=" * 60)
     print(f"실행 파일 위치:")
     print(f"  - dist/Launcher")
-    print(f"  - dist/YouTubeMaker")
+    print(f"  - dist/YouTubeMaker/YouTubeMaker")
     print("\n💡 사용 방법:")
     print("   1. dist 폴더의 'Launcher' 파일을 더블클릭하여 실행")
     print("   2. Launcher가 자동으로 YouTubeMaker를 업데이트하고 실행합니다")
+    print("   3. YouTubeMaker는 dist/YouTubeMaker/ 폴더 안에 생성됩니다")
     print("\n⚠️  참고: macOS에서 처음 실행 시 보안 경고가 나타날 수 있습니다.")
     print("   '시스템 환경설정 > 보안 및 개인 정보 보호'에서 허용해주세요.")
     return True
