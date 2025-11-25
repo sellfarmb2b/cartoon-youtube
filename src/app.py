@@ -1210,29 +1210,29 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                 "aspect_ratio": "16:9",
             }
             if mode == "realistic":
-                    # flux-schnell 모델 파라미터 (docs/cog-flux-main 참고)
-                    # - num_inference_steps: 최대 4, 기본값 4 (SchnellPredictor 참고)
-                    # - guidance_scale: 지원하지 않음 (제거)
-                    # - scheduler: 지원하지 않음 (제거)
-                    replicate_input.update(
-                        {
-                            "num_inference_steps": 4,  # flux-schnell은 최대 4까지만 지원
-                            "output_format": "png",
-                        }
-                    )
-                    model_owner = "black-forest-labs"
-                    model_name = "flux-schnell"
-                    # flux-schnell은 최신 버전을 사용하므로 version_id 없이 직접 predictions 엔드포인트 사용
-                    request_url = f"https://api.replicate.com/v1/models/{model_owner}/{model_name}/predictions"
-                    body = {"input": replicate_input}
-                else:
-                    # prunaai/hidream-l1-fast 모델 사용 (HiDream-I1-Fast: 16 inference steps)
-                    replicate_input.update({"num_inference_steps": 16, "image_format": "png"})
-                    # guidance_scale은 hidream 모델에서 지원하지 않을 수 있으므로 제거
-                    model_owner = "prunaai"
-                    model_name = "hidream-l1-fast"
-                    request_url = f"https://api.replicate.com/v1/models/{model_owner}/{model_name}/predictions"
-                    body = {"input": replicate_input}
+                # flux-schnell 모델 파라미터 (docs/cog-flux-main 참고)
+                # - num_inference_steps: 최대 4, 기본값 4 (SchnellPredictor 참고)
+                # - guidance_scale: 지원하지 않음 (제거)
+                # - scheduler: 지원하지 않음 (제거)
+                replicate_input.update(
+                    {
+                        "num_inference_steps": 4,  # flux-schnell은 최대 4까지만 지원
+                        "output_format": "png",
+                    }
+                )
+                model_owner = "black-forest-labs"
+                model_name = "flux-schnell"
+                # flux-schnell은 최신 버전을 사용하므로 version_id 없이 직접 predictions 엔드포인트 사용
+                request_url = f"https://api.replicate.com/v1/models/{model_owner}/{model_name}/predictions"
+                body = {"input": replicate_input}
+            else:
+                # prunaai/hidream-l1-fast 모델 사용 (HiDream-I1-Fast: 16 inference steps)
+                replicate_input.update({"num_inference_steps": 16, "image_format": "png"})
+                # guidance_scale은 hidream 모델에서 지원하지 않을 수 있으므로 제거
+                model_owner = "prunaai"
+                model_name = "hidream-l1-fast"
+                request_url = f"https://api.replicate.com/v1/models/{model_owner}/{model_name}/predictions"
+                body = {"input": replicate_input}
 
                 log_debug(f"[generate_image] Replicate API 요청 전송 중...")
                 log_debug(f"[generate_image] 프롬프트: {base_prompt[:200]}...")
