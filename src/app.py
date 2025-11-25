@@ -3005,75 +3005,72 @@ def select_download_folder():
         if not current_path or not os.path.isdir(current_path):
             current_path = get_default_download_folder()
         
-        # webview의 create_file_dialog 사용 시도
         selected_folder = None
         error_message = None
         
-        try:
-            # webview의 create_file_dialog는 메인 스레드에서만 작동
-            # 하지만 Flask가 별도 스레드에서 실행되므로 직접 호출 불가
-            # 대신 JavaScript API를 통해 처리하거나, tkinter 사용
+        # tkinter를 사용한 폴더 선택 (webview 환경에서도 작동)
+        if TKINTER_AVAILABLE:
+            selected_folder = [None]
+            error_message = [None]
+            dialog_complete = threading.Event()
             
-            if TKINTER_AVAILABLE:
-                # tkinter를 사용한 폴더 선택
-                selected_folder = [None]
-                error_message = [None]
-                dialog_complete = threading.Event()
-                
-                def select_folder():
+            def select_folder():
+                try:
+                    # 루트 윈도우 생성 (숨김)
+                    root = tk.Tk()
+                    root.withdraw()  # 메인 윈도우 숨기기
+                    
+                    # macOS에서 focus 관련 문제 방지
                     try:
-                        # 루트 윈도우 생성 (숨김)
-                        root = tk.Tk()
-                        root.withdraw()  # 메인 윈도우 숨기기
-                        root.attributes('-topmost', True)  # 다른 창 위에 표시
-                        
-                        # macOS에서 focus_force가 문제를 일으킬 수 있으므로 제거
-                        try:
-                            root.lift()
-                        except:
-                            pass
-                        
-                        # 폴더 선택 다이얼로그 열기
-                        folder = filedialog.askdirectory(
-                            title="다운로드 폴더 선택",
-                            initialdir=current_path if current_path else None,
-                            parent=root
-                        )
-                        
-                        selected_folder[0] = folder if folder else None
-                        root.quit()  # destroy 대신 quit 사용
+                        root.attributes('-topmost', True)
+                        root.lift()
+                    except:
+                        pass
+                    
+                    # 폴더 선택 다이얼로그 열기
+                    folder = filedialog.askdirectory(
+                        title="다운로드 폴더 선택",
+                        initialdir=current_path if current_path else None,
+                        parent=root
+                    )
+                    
+                    selected_folder[0] = folder if folder else None
+                    
+                    # 윈도우 정리
+                    try:
+                        root.quit()
+                    except:
+                        pass
+                    try:
                         root.destroy()
-                    except Exception as e:
-                        error_message[0] = str(e)
-                        import traceback
-                        traceback.print_exc()
-                        selected_folder[0] = None
-                    finally:
-                        dialog_complete.set()
-                
-                # GUI 스레드에서 실행
-                thread = threading.Thread(target=select_folder, daemon=False)
-                thread.start()
-                
-                # 다이얼로그가 완료될 때까지 대기 (최대 60초)
-                if not dialog_complete.wait(timeout=60):
-                    return jsonify({"error": "폴더 선택 시간이 초과되었습니다."}), 500
-                
-                thread.join(timeout=5)  # 스레드 종료 대기
-                
-                if error_message[0]:
-                    print(f"[폴더 선택 오류] {error_message[0]}")
-                    return jsonify({"error": f"폴더 선택 중 오류: {error_message[0]}"}), 500
-                
-                selected_folder = selected_folder[0]
-            else:
-                return jsonify({"error": "폴더 선택 기능을 사용할 수 없습니다. (tkinter 없음)"}), 500
-                
-        except Exception as e:
-            error_message = str(e)
-            print(f"[폴더 선택 오류] {e}")
-            import traceback
-            traceback.print_exc()
+                    except:
+                        pass
+                except Exception as e:
+                    error_message[0] = str(e)
+                    import traceback
+                    print(f"[폴더 선택 내부 오류] {e}")
+                    traceback.print_exc()
+                    selected_folder[0] = None
+                finally:
+                    dialog_complete.set()
+            
+            # GUI 스레드에서 실행
+            thread = threading.Thread(target=select_folder, daemon=False)
+            thread.start()
+            
+            # 다이얼로그가 완료될 때까지 대기 (최대 60초)
+            if not dialog_complete.wait(timeout=60):
+                return jsonify({"error": "폴더 선택 시간이 초과되었습니다."}), 500
+            
+            thread.join(timeout=5)  # 스레드 종료 대기
+            
+            if error_message[0]:
+                print(f"[폴더 선택 오류] {error_message[0]}")
+                return jsonify({"error": f"폴더 선택 중 오류: {error_message[0]}"}), 500
+            
+            selected_folder = selected_folder[0]
+        else:
+            return jsonify({"error": "폴더 선택 기능을 사용할 수 없습니다. (tkinter 없음)"}), 500
         
         if selected_folder:
             # 선택한 폴더 경로 저장
@@ -4041,6 +4038,29 @@ def run_flask_server(port: int) -> None:
     app.run(host="127.0.0.1", port=port, debug=debug_mode, use_reloader=False)
 
 
+# 전역 변수로 webview 창 저장
+_webview_window = None
+
+def select_folder_dialog(initial_dir=None):
+    """webview에서 호출할 수 있는 폴더 선택 함수"""
+    global _webview_window
+    try:
+        if _webview_window:
+            # webview의 create_file_dialog 사용
+            result = webview.create_file_dialog(
+                webview.FOLDER_DIALOG,
+                directory=initial_dir if initial_dir else None
+            )
+            if result and len(result) > 0:
+                return result[0]
+        return None
+    except Exception as e:
+        print(f"[폴더 선택 오류] {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
 if __name__ == "__main__":
     selected_port = find_available_port()
     flask_thread = threading.Thread(target=run_flask_server, args=(selected_port,), daemon=True)
@@ -4052,5 +4072,6 @@ if __name__ == "__main__":
     print(f"주소: {window_url}")
     print(f"{'=' * 60}\n")
 
-    webview.create_window("YouTube Maker", window_url, width=1280, height=800, resizable=True)
-    webview.start()
+    _webview_window = webview.create_window("YouTube Maker", window_url, width=1280, height=800, resizable=True)
+    # JavaScript에서 호출할 수 있도록 함수 등록
+    webview.start(debug=False)
