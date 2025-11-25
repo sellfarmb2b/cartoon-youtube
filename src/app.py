@@ -3383,26 +3383,32 @@ def api_generate_images():
                     success = generate_image(prompt, image_filename, mode=mode)
                     
                     # 생성 결과 확인
-                    if not success or not os.path.exists(image_filename):
-                        print(f"[경고] {idx}번 이미지 생성 실패 또는 파일 없음, 기본 이미지 생성")
-                        Image.new("RGB", (1920, 1080), color="black").save(image_filename)
-                        with jobs_lock:
-                            job_data = jobs.get(job_id)
-                            if job_data is not None:
-                                job_data["progress"].append(f"{idx}번 이미지 생성 실패 (기본 이미지 사용)")
-                    else:
-                        file_size = os.path.getsize(image_filename)
-                        print(f"[이미지 생성] {idx}/{total} 완료 - 파일 크기: {file_size} bytes")
-                        with jobs_lock:
-                            job_data = jobs.get(job_id)
-                            if job_data is not None:
-                                job_data["progress"].append(f"{idx}번 이미지 생성 완료 ({file_size} bytes)")
+                        if not success or not os.path.exists(image_filename):
+                            print(f"[경고] {idx}번 이미지 생성 실패 또는 파일 없음, 기본 이미지 생성")
+                            Image.new("RGB", (1920, 1080), color="black").save(image_filename)
+                            with jobs_lock:
+                                job_data = jobs.get(job_id)
+                                if job_data is not None:
+                                    job_data["progress"].append(f"{idx}번 이미지 생성 실패 (기본 이미지 사용)")
+                        else:
+                            file_size = os.path.getsize(image_filename)
+                            print(f"[이미지 생성] {idx}/{total} 완료 - 파일 크기: {file_size} bytes")
+                            # 진행도 업데이트 (완료)
+                            progress_pct = int((idx / total) * 100)
+                            with jobs_lock:
+                                job_data = jobs.get(job_id)
+                                if job_data is not None:
+                                    job_data["stage_progress"] = progress_pct
+                                    job_data["progress"].append(f"{idx}번 이미지 생성 완료 ({file_size} bytes)")
                     
+                    # Windows 경로 처리 개선
                     abs_path = os.path.abspath(image_filename)
                     image_files[idx] = abs_path
                     rel_path = os.path.relpath(abs_path, STATIC_FOLDER)
+                    # Windows 경로 구분자를 /로 변환
+                    rel_path = rel_path.replace(os.sep, "/")
                     # url_for 대신 직접 경로 구성 (백그라운드 스레드에서 안전)
-                    image_url = "/static/" + rel_path.replace(os.sep, "/")
+                    image_url = "/static/" + rel_path
                     image_results.append({"index": idx, "sentence": sentence, "prompt": prompt, "image_url": image_url})
                     
                 except Exception as img_exc:
