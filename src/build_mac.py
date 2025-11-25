@@ -73,8 +73,6 @@ def build_mac():
         "--add-data=src/templates:src/templates",
         "--add-data=src/static:src/static",
         "--add-data=bin/mac/ffmpeg:bin/mac",
-        "--hidden-import=flask",
-        "--hidden-import=werkzeug",
         "--hidden-import=requests",
         "--hidden-import=ffmpeg",
         "--hidden-import=PIL",
@@ -92,13 +90,11 @@ def build_mac():
         "--hidden-import=socket",
         "--hidden-import=threading",
         "--hidden-import=concurrent.futures",
-        "--hidden-import=zipfile",
-        "--hidden-import=base64",
-        "--hidden-import=json",
         "--hidden-import=uuid",
-        "--collect-all=flask",
-        "--collect-all=werkzeug",
-        "--collect-all=PIL",
+        "--exclude-module=tkinter",
+        "--exclude-module=matplotlib",
+        "--exclude-module=scipy",
+        "--exclude-module=pandas",
         "src/app.py"
     ]
     print(f"명령: {' '.join(app_cmd)}")
