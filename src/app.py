@@ -2579,496 +2579,495 @@ def run_generation_job(
         def progress(message):
             update_job(job_id, message=message)
 
-        try:
-            update_job(job_id, status="running")
-            print("=== [DEBUG] 작업 준비 중 ===")
-            progress("작업을 준비 중입니다.")
-            # sentences_override가 있으면 사용 (이미 파싱된 한국어 문장만 포함)
-            if sentences_override:
-                sentences = sentences_override
-            else:
-                sentences = split_script_into_sentences(script_text)
-            if not sentences:
-                raise ValueError("대본에서 문장을 추출할 수 없습니다.")
-            progress(f"{len(sentences)}개 문장으로 분리되었습니다.")
+        update_job(job_id, status="running")
+        print("=== [DEBUG] 작업 준비 중 ===")
+        progress("작업을 준비 중입니다.")
+        # sentences_override가 있으면 사용 (이미 파싱된 한국어 문장만 포함)
+        if sentences_override:
+            sentences = sentences_override
+        else:
+            sentences = split_script_into_sentences(script_text)
+        if not sentences:
+            raise ValueError("대본에서 문장을 추출할 수 없습니다.")
+        progress(f"{len(sentences)}개 문장으로 분리되었습니다.")
 
-            # 긴 대본을 청크로 분할
-            chunks = split_sentences_into_chunks(sentences)
-            total_chunks = len(chunks)
+        # 긴 대본을 청크로 분할
+        chunks = split_sentences_into_chunks(sentences)
+        total_chunks = len(chunks)
+        
+        if total_chunks > 1:
+            progress(f"대본을 {total_chunks}개 청크로 분할했습니다. (각 청크당 약 {SCRIPT_CHUNK_TARGET_MINUTES}분 분량)")
+        
+        all_scene_data = []
+        chunk_video_files = []
+        sentence_offset = 0
+        
+        # 각 청크를 독립적으로 처리
+        for chunk_idx, chunk_sentences in enumerate(chunks, 1):
+            progress(f"청크 {chunk_idx}/{total_chunks} 처리 중... ({len(chunk_sentences)}개 문장, sentence_offset={sentence_offset})")
             
-            if total_chunks > 1:
-                progress(f"대본을 {total_chunks}개 청크로 분할했습니다. (각 청크당 약 {SCRIPT_CHUNK_TARGET_MINUTES}분 분량)")
+            # 청크별 폴더 생성
+            chunk_folder = os.path.join(assets_folder, f"chunk_{chunk_idx}")
+            os.makedirs(chunk_folder, exist_ok=True)
             
-            all_scene_data = []
-            chunk_video_files = []
-            sentence_offset = 0
+            # 프롬프트와 이미지 매핑 조정 (sentence_offset 고려)
+            chunk_prompts_override = None
+            chunk_existing_images = None
+            if prompts_override:
+                chunk_prompts_override = prompts_override[sentence_offset:sentence_offset + len(chunk_sentences)]
+            if existing_images:
+                # existing_images는 전체 인덱스를 사용하므로 그대로 전달
+                chunk_existing_images = {
+                    idx: path
+                    for idx, path in existing_images.items()
+                    if sentence_offset < idx <= sentence_offset + len(chunk_sentences)
+                }
+                print(f"[DEBUG] 청크 {chunk_idx}: sentence_offset={sentence_offset}, existing_images 키: {list(chunk_existing_images.keys())[:5]}...")
             
-            # 각 청크를 독립적으로 처리
-            for chunk_idx, chunk_sentences in enumerate(chunks, 1):
-                progress(f"청크 {chunk_idx}/{total_chunks} 처리 중... ({len(chunk_sentences)}개 문장, sentence_offset={sentence_offset})")
-                
-                # 청크별 폴더 생성
-                chunk_folder = os.path.join(assets_folder, f"chunk_{chunk_idx}")
-                os.makedirs(chunk_folder, exist_ok=True)
-                
-                # 프롬프트와 이미지 매핑 조정 (sentence_offset 고려)
-                chunk_prompts_override = None
-                chunk_existing_images = None
-                if prompts_override:
-                    chunk_prompts_override = prompts_override[sentence_offset:sentence_offset + len(chunk_sentences)]
-                if existing_images:
-                    # existing_images는 전체 인덱스를 사용하므로 그대로 전달
-                    chunk_existing_images = {
-                        idx: path
-                        for idx, path in existing_images.items()
-                        if sentence_offset < idx <= sentence_offset + len(chunk_sentences)
-                    }
-                    print(f"[DEBUG] 청크 {chunk_idx}: sentence_offset={sentence_offset}, existing_images 키: {list(chunk_existing_images.keys())[:5]}...")
-                
-                # 자산 생성 (scene_offset을 sentence_offset으로 전달하여 전체 인덱스가 연속되도록 함)
-                update_job(job_id, stage_progress=0, current_stage=f"자산 생성 (청크 {chunk_idx}/{total_chunks})")
-                print(f"[DEBUG] 청크 {chunk_idx}: generate_assets 호출, scene_offset={sentence_offset}, 문장 개수={len(chunk_sentences)}")
-                chunk_scene_data = generate_assets(
-                    chunk_sentences,
-                    voice_id,
-                    chunk_folder,
-                    progress_cb=lambda msg: progress(f"[청크 {chunk_idx}] {msg}"),
-                    prompts_override=chunk_prompts_override,
-                    existing_images=chunk_existing_images,
-                    mode=mode,
-                    original_script=script_text,  # 전체 원본 스크립트 전달 (문맥 분석용)
-                    scene_offset=sentence_offset,  # 전체 인덱스가 연속되도록 offset 전달
-                    replicate_api_key=replicate_api_key,
-                    elevenlabs_api_key=elevenlabs_api_key,
-                )
-                if not chunk_scene_data:
-                    raise RuntimeError(f"청크 {chunk_idx} 자산 생성에 실패했습니다.")
-                
-                # 타임스탬프 계산
-                update_job(job_id, stage_progress=1, current_stage=f"타임스탬프 계산 (청크 {chunk_idx}/{total_chunks})")
-                chunk_scene_data_with_timestamps, chunk_duration = calculate_timestamps(
-                    chunk_scene_data, progress_cb=lambda msg: progress(f"[청크 {chunk_idx}] {msg}")
-                )
-                
-                # 청크별 오디오 파일 빠른 체크
-                print(f"\n[체크] 청크 {chunk_idx} 오디오 파일 확인:")
-                print(f"  sentence_offset={sentence_offset}, 문장 개수={len(chunk_sentences)}")
-                audio_count = 0
-                missing_audio = []
-                scene_ids = []
-                for scene in chunk_scene_data_with_timestamps:
-                    scene_id = scene.get('scene_id')
-                    scene_ids.append(scene_id)
-                    audio_file = scene.get('audio_file')
-                    if audio_file and os.path.exists(audio_file):
-                        audio_count += 1
-                        if audio_count <= 5:  # 처음 5개만 상세 로그
-                            size = os.path.getsize(audio_file)
-                            print(f"  scene_{scene_id}: ✅ 존재 ({size} bytes) - {audio_file}")
-                    else:
-                        missing_audio.append(scene_id)
-                        print(f"  scene_{scene_id}: ❌ 없음 - 경로: {audio_file}")
-                        # 실제 파일 시스템에서 확인
-                        expected_path = os.path.join(chunk_folder, f"scene_{scene_id}_audio.mp3")
-                        if os.path.exists(expected_path):
-                            print(f"    -> 하지만 예상 경로에는 존재: {expected_path}")
-                print(f"  총 {len(chunk_scene_data_with_timestamps)}개 중 {audio_count}개 오디오 파일 존재")
-                print(f"  scene_id 범위: {min(scene_ids) if scene_ids else 'N/A'} ~ {max(scene_ids) if scene_ids else 'N/A'}")
-                if missing_audio:
-                    print(f"  [경고] 누락된 오디오: scene_{missing_audio[:10]}...")
-                print()
-                
-                # 청크별 비디오 생성
-                chunk_video_file = os.path.join(chunk_folder, f"chunk_{chunk_idx}_video.mp4")
-                chunk_subtitle_file = os.path.join(chunk_folder, f"chunk_{chunk_idx}_subtitles.srt")
-                update_job(job_id, stage_progress=2, current_stage=f"영상 합성 (청크 {chunk_idx}/{total_chunks})")
-                chunk_success = create_video(
-                    chunk_scene_data_with_timestamps,
-                    char_limit,
-                    chunk_subtitle_file,
-                    chunk_video_file,
-                    chunk_folder,
-                    progress_cb=lambda msg: progress(f"[청크 {chunk_idx}] {msg}"),
-                    include_subtitles=include_subtitles,
-                )
-                if not chunk_success:
-                    raise RuntimeError(f"청크 {chunk_idx} 영상 합성에 실패했습니다.")
-                
-                # 청크 비디오 파일 존재 확인
-                if not os.path.exists(chunk_video_file):
-                    raise RuntimeError(f"청크 {chunk_idx} 비디오 파일이 생성되지 않았습니다: {chunk_video_file}")
+            # 자산 생성 (scene_offset을 sentence_offset으로 전달하여 전체 인덱스가 연속되도록 함)
+            update_job(job_id, stage_progress=0, current_stage=f"자산 생성 (청크 {chunk_idx}/{total_chunks})")
+            print(f"[DEBUG] 청크 {chunk_idx}: generate_assets 호출, scene_offset={sentence_offset}, 문장 개수={len(chunk_sentences)}")
+            chunk_scene_data = generate_assets(
+                chunk_sentences,
+                voice_id,
+                chunk_folder,
+                progress_cb=lambda msg: progress(f"[청크 {chunk_idx}] {msg}"),
+                prompts_override=chunk_prompts_override,
+                existing_images=chunk_existing_images,
+                mode=mode,
+                original_script=script_text,  # 전체 원본 스크립트 전달 (문맥 분석용)
+                scene_offset=sentence_offset,  # 전체 인덱스가 연속되도록 offset 전달
+                replicate_api_key=replicate_api_key,
+                elevenlabs_api_key=elevenlabs_api_key,
+            )
+            if not chunk_scene_data:
+                raise RuntimeError(f"청크 {chunk_idx} 자산 생성에 실패했습니다.")
+            
+            # 타임스탬프 계산
+            update_job(job_id, stage_progress=1, current_stage=f"타임스탬프 계산 (청크 {chunk_idx}/{total_chunks})")
+            chunk_scene_data_with_timestamps, chunk_duration = calculate_timestamps(
+                chunk_scene_data, progress_cb=lambda msg: progress(f"[청크 {chunk_idx}] {msg}")
+            )
+            
+            # 청크별 오디오 파일 빠른 체크
+            print(f"\n[체크] 청크 {chunk_idx} 오디오 파일 확인:")
+            print(f"  sentence_offset={sentence_offset}, 문장 개수={len(chunk_sentences)}")
+            audio_count = 0
+            missing_audio = []
+            scene_ids = []
+            for scene in chunk_scene_data_with_timestamps:
+                scene_id = scene.get('scene_id')
+                scene_ids.append(scene_id)
+                audio_file = scene.get('audio_file')
+                if audio_file and os.path.exists(audio_file):
+                    audio_count += 1
+                    if audio_count <= 5:  # 처음 5개만 상세 로그
+                        size = os.path.getsize(audio_file)
+                        print(f"  scene_{scene_id}: ✅ 존재 ({size} bytes) - {audio_file}")
                 else:
-                    file_size = os.path.getsize(chunk_video_file)
-                    print(f"[확인] 청크 {chunk_idx} 비디오 파일 생성됨: {chunk_video_file} ({file_size} bytes)")
-                
-                chunk_video_files.append(chunk_video_file)
-                all_scene_data.extend(chunk_scene_data_with_timestamps)
-                sentence_offset += len(chunk_sentences)
-                
-                print(f"[확인] 청크 {chunk_idx} 완료. chunk_video_files 리스트에 추가됨. 현재 리스트 길이: {len(chunk_video_files)}")
-                print(f"[확인] 다음 청크의 sentence_offset: {sentence_offset}")
-                
-                # 청크별 비디오 파일의 오디오 트랙 빠른 체크
-                print(f"\n[체크] 청크 {chunk_idx} 비디오 파일 오디오 트랙 확인:")
-                try:
-                    if not os.path.exists(chunk_video_file):
-                        print(f"  ❌ 비디오 파일이 존재하지 않음: {chunk_video_file}")
-                    else:
-                        probe = ffmpeg.probe(chunk_video_file)
-                        audio_streams = [s for s in probe.get('streams', []) if s.get('codec_type') == 'audio']
-                        video_streams = [s for s in probe.get('streams', []) if s.get('codec_type') == 'video']
-                        if audio_streams:
-                            duration = float(audio_streams[0].get('duration', 0))
-                            bitrate = audio_streams[0].get('bit_rate', 'N/A')
-                            print(f"  ✅ 오디오 트랙 존재 (길이: {duration:.2f}초, 비트레이트: {bitrate})")
-                            print(f"  비디오 스트림: {len(video_streams)}개")
-                        else:
-                            print(f"  ❌ 오디오 트랙이 없습니다! (비디오 스트림: {len(video_streams)}개)")
-                            print(f"  파일: {chunk_video_file}")
-                except Exception as e:
-                    print(f"  ❌ 오디오 트랙 확인 실패: {e}")
-                    import traceback
-                    traceback.print_exc()
-                print()
-                
-                progress(f"청크 {chunk_idx}/{total_chunks} 완료")
+                    missing_audio.append(scene_id)
+                    print(f"  scene_{scene_id}: ❌ 없음 - 경로: {audio_file}")
+                    # 실제 파일 시스템에서 확인
+                    expected_path = os.path.join(chunk_folder, f"scene_{scene_id}_audio.mp3")
+                    if os.path.exists(expected_path):
+                        print(f"    -> 하지만 예상 경로에는 존재: {expected_path}")
+            print(f"  총 {len(chunk_scene_data_with_timestamps)}개 중 {audio_count}개 오디오 파일 존재")
+            print(f"  scene_id 범위: {min(scene_ids) if scene_ids else 'N/A'} ~ {max(scene_ids) if scene_ids else 'N/A'}")
+            if missing_audio:
+                print(f"  [경고] 누락된 오디오: scene_{missing_audio[:10]}...")
+            print()
             
-            # 모든 청크가 완료되면 최종 비디오 합치기
-            if total_chunks > 1:
-                progress(f"모든 청크 완료. 최종 비디오 합치는 중...")
-                update_job(job_id, stage_progress=2, current_stage="최종 비디오 합치기")
-                
-                # 청크 비디오 파일 리스트 확인
-                print(f"\n[최종 체크 전] chunk_video_files 리스트 확인:")
-                print(f"  총 청크 수: {total_chunks}")
-                print(f"  chunk_video_files 리스트 길이: {len(chunk_video_files)}")
-                for idx, video_file in enumerate(chunk_video_files, 1):
-                    exists = os.path.exists(video_file)
-                    size = os.path.getsize(video_file) if exists else 0
-                    print(f"  청크 {idx}: {'✅' if exists else '❌'} {video_file} ({size} bytes)")
-                print()
-                
-                # 모든 청크의 오디오 트랙 최종 체크
-                print(f"\n[최종 체크] {total_chunks}개 청크의 오디오 트랙 확인:")
-                total_audio_duration = 0.0
-                for idx, chunk_file in enumerate(chunk_video_files, 1):
-                    try:
-                        if not os.path.exists(chunk_file):
-                            print(f"  청크 {idx}: ❌ 비디오 파일이 존재하지 않음: {chunk_file}")
-                            continue
-                        probe = ffmpeg.probe(chunk_file)
-                        audio_streams = [s for s in probe.get('streams', []) if s.get('codec_type') == 'audio']
-                        video_streams = [s for s in probe.get('streams', []) if s.get('codec_type') == 'video']
-                        if audio_streams:
-                            duration = float(audio_streams[0].get('duration', 0))
-                            total_audio_duration += duration
-                            bitrate = audio_streams[0].get('bit_rate', 'N/A')
-                            print(f"  청크 {idx}: ✅ 오디오 있음 (길이: {duration:.2f}초, 비트레이트: {bitrate}, 비디오 스트림: {len(video_streams)}개)")
-                            print(f"    파일: {chunk_file}")
-                        else:
-                            print(f"  청크 {idx}: ❌ 오디오 없음! (비디오 스트림: {len(video_streams)}개)")
-                            print(f"    파일: {chunk_file}")
-                    except Exception as e:
-                        print(f"  청크 {idx}: ❌ 확인 실패: {e}")
-                        import traceback
-                        traceback.print_exc()
-                print(f"  총 예상 오디오 길이: {total_audio_duration:.2f}초")
-                print()
-                
-                # FFmpeg로 비디오 합치기 (비디오와 오디오를 별도로 합침)
+            # 청크별 비디오 생성
+            chunk_video_file = os.path.join(chunk_folder, f"chunk_{chunk_idx}_video.mp4")
+            chunk_subtitle_file = os.path.join(chunk_folder, f"chunk_{chunk_idx}_subtitles.srt")
+            update_job(job_id, stage_progress=2, current_stage=f"영상 합성 (청크 {chunk_idx}/{total_chunks})")
+            chunk_success = create_video(
+                chunk_scene_data_with_timestamps,
+                char_limit,
+                chunk_subtitle_file,
+                chunk_video_file,
+                chunk_folder,
+                progress_cb=lambda msg: progress(f"[청크 {chunk_idx}] {msg}"),
+                include_subtitles=include_subtitles,
+            )
+            if not chunk_success:
+                raise RuntimeError(f"청크 {chunk_idx} 영상 합성에 실패했습니다.")
+            
+            # 청크 비디오 파일 존재 확인
+            if not os.path.exists(chunk_video_file):
+                raise RuntimeError(f"청크 {chunk_idx} 비디오 파일이 생성되지 않았습니다: {chunk_video_file}")
+            else:
+                file_size = os.path.getsize(chunk_video_file)
+                print(f"[확인] 청크 {chunk_idx} 비디오 파일 생성됨: {chunk_video_file} ({file_size} bytes)")
+            
+            chunk_video_files.append(chunk_video_file)
+            all_scene_data.extend(chunk_scene_data_with_timestamps)
+            sentence_offset += len(chunk_sentences)
+            
+            print(f"[확인] 청크 {chunk_idx} 완료. chunk_video_files 리스트에 추가됨. 현재 리스트 길이: {len(chunk_video_files)}")
+            print(f"[확인] 다음 청크의 sentence_offset: {sentence_offset}")
+            
+            # 청크별 비디오 파일의 오디오 트랙 빠른 체크
+            print(f"\n[체크] 청크 {chunk_idx} 비디오 파일 오디오 트랙 확인:")
+            try:
+                if not os.path.exists(chunk_video_file):
+                    print(f"  ❌ 비디오 파일이 존재하지 않음: {chunk_video_file}")
+                else:
+                    probe = ffmpeg.probe(chunk_video_file)
+                    audio_streams = [s for s in probe.get('streams', []) if s.get('codec_type') == 'audio']
+                    video_streams = [s for s in probe.get('streams', []) if s.get('codec_type') == 'video']
+                    if audio_streams:
+                        duration = float(audio_streams[0].get('duration', 0))
+                        bitrate = audio_streams[0].get('bit_rate', 'N/A')
+                        print(f"  ✅ 오디오 트랙 존재 (길이: {duration:.2f}초, 비트레이트: {bitrate})")
+                        print(f"  비디오 스트림: {len(video_streams)}개")
+                    else:
+                        print(f"  ❌ 오디오 트랙이 없습니다! (비디오 스트림: {len(video_streams)}개)")
+                        print(f"  파일: {chunk_video_file}")
+            except Exception as e:
+                print(f"  ❌ 오디오 트랙 확인 실패: {e}")
+                import traceback
+                traceback.print_exc()
+            print()
+            
+            progress(f"청크 {chunk_idx}/{total_chunks} 완료")
+        
+        # 모든 청크가 완료되면 최종 비디오 합치기
+        if total_chunks > 1:
+            progress(f"모든 청크 완료. 최종 비디오 합치는 중...")
+            update_job(job_id, stage_progress=2, current_stage="최종 비디오 합치기")
+            
+            # 청크 비디오 파일 리스트 확인
+            print(f"\n[최종 체크 전] chunk_video_files 리스트 확인:")
+            print(f"  총 청크 수: {total_chunks}")
+            print(f"  chunk_video_files 리스트 길이: {len(chunk_video_files)}")
+            for idx, video_file in enumerate(chunk_video_files, 1):
+                exists = os.path.exists(video_file)
+                size = os.path.getsize(video_file) if exists else 0
+                print(f"  청크 {idx}: {'✅' if exists else '❌'} {video_file} ({size} bytes)")
+            print()
+            
+            # 모든 청크의 오디오 트랙 최종 체크
+            print(f"\n[최종 체크] {total_chunks}개 청크의 오디오 트랙 확인:")
+            total_audio_duration = 0.0
+            for idx, chunk_file in enumerate(chunk_video_files, 1):
                 try:
-                    print(f"\n[비디오 합치기 시작] {len(chunk_video_files)}개 청크 합치는 중...")
-                    
-                    # 각 청크의 비디오와 오디오를 별도로 추출
-                    video_streams = []
-                    audio_streams = []
-                    
-                    for idx, chunk_file in enumerate(chunk_video_files, 1):
-                        chunk_input = ffmpeg.input(chunk_file)
-                        # 비디오 스트림 추출
-                        video_streams.append(chunk_input['v'])
-                        # 오디오 스트림 추출 (없으면 무음 오디오 생성)
-                        try:
-                            # 오디오 스트림이 있는지 확인
-                            probe = ffmpeg.probe(chunk_file)
-                            has_audio = any(s.get('codec_type') == 'audio' for s in probe.get('streams', []))
-                            if has_audio:
-                                audio_streams.append(chunk_input['a'])
-                                print(f"  청크 {idx}: 비디오 + 오디오")
-                            else:
-                                # 오디오가 없으면 비디오 길이만큼 무음 오디오 생성
-                                video_duration = float([s for s in probe.get('streams', []) if s.get('codec_type') == 'video'][0].get('duration', 0))
-                                silent_audio = ffmpeg.input('anullsrc=channel_layout=mono:sample_rate=44100', f='lavfi', t=video_duration)
-                                audio_streams.append(silent_audio)
-                                print(f"  청크 {idx}: 비디오만 (무음 오디오 추가)")
-                        except Exception as e:
-                            print(f"  청크 {idx}: 오디오 확인 실패, 무음 오디오 사용: {e}")
-                            # 오류 시 기본 무음 오디오 생성 (10초)
-                            silent_audio = ffmpeg.input('anullsrc=channel_layout=mono:sample_rate=44100', f='lavfi', t=10)
-                            audio_streams.append(silent_audio)
-                    
-                    # 비디오와 오디오를 각각 합침
-                    if len(video_streams) > 1:
-                        concatenated_video = ffmpeg.concat(*video_streams, v=1, a=0)
+                    if not os.path.exists(chunk_file):
+                        print(f"  청크 {idx}: ❌ 비디오 파일이 존재하지 않음: {chunk_file}")
+                        continue
+                    probe = ffmpeg.probe(chunk_file)
+                    audio_streams = [s for s in probe.get('streams', []) if s.get('codec_type') == 'audio']
+                    video_streams = [s for s in probe.get('streams', []) if s.get('codec_type') == 'video']
+                    if audio_streams:
+                        duration = float(audio_streams[0].get('duration', 0))
+                        total_audio_duration += duration
+                        bitrate = audio_streams[0].get('bit_rate', 'N/A')
+                        print(f"  청크 {idx}: ✅ 오디오 있음 (길이: {duration:.2f}초, 비트레이트: {bitrate}, 비디오 스트림: {len(video_streams)}개)")
+                        print(f"    파일: {chunk_file}")
                     else:
-                        concatenated_video = video_streams[0]
-                    
-                    if len(audio_streams) > 1:
-                        concatenated_audio = ffmpeg.concat(*audio_streams, v=0, a=1)
-                    else:
-                        concatenated_audio = audio_streams[0]
-                    
-                    # 임시 파일로 먼저 생성 (입력 파일과 겹치지 않도록)
-                    temp_video_file = os.path.join(assets_folder, f"temp_final_video_{job_id}.mp4")
-                    print(f"[비디오 합치기] 임시 파일로 생성: {temp_video_file}")
-                    print(f"[비디오 합치기] 최종 파일 경로: {video_file}")
-                    
-                    # 입력 파일과 출력 파일이 겹치는지 확인
-                    for idx, chunk_file in enumerate(chunk_video_files, 1):
-                        abs_chunk = os.path.abspath(chunk_file)
-                        abs_temp = os.path.abspath(temp_video_file)
-                        abs_final = os.path.abspath(video_file)
-                        if abs_chunk == abs_temp or abs_chunk == abs_final:
-                            print(f"  ⚠️ 경고: 청크 {idx} 파일이 출력 파일과 겹칩니다!")
-                            print(f"    청크 파일: {abs_chunk}")
-                            print(f"    임시 파일: {abs_temp}")
-                            print(f"    최종 파일: {abs_final}")
-                    
-                    # FFmpeg 최적화: 빠른 합치기를 위한 설정
-                    output = ffmpeg.output(
-                        concatenated_video,
-                        concatenated_audio,
-                        temp_video_file, 
-                        vcodec='libx264', 
-                        acodec='aac', 
-                        pix_fmt='yuv420p',
-                        **{
-                            "preset": "fast",
-                            "crf": "23",
-                            "threads": "0",
-                            "movflags": "+faststart",
-                        }
-                    )
-                    try:
-                        ffmpeg.run(output, overwrite_output=True, quiet=False)
-                        # 임시 파일을 최종 경로로 이동
-                        import shutil
-                        if os.path.exists(temp_video_file):
-                            # video_file이 올바른 경로인지 다시 확인
-                            expected_final_path = os.path.join(STATIC_FOLDER, f"{FINAL_VIDEO_BASE_NAME}_{job_id}.mp4")
-                            if video_file != expected_final_path:
-                                print(f"[경고] video_file이 덮어씌워졌습니다! 올바른 경로로 재설정합니다.")
-                                print(f"  잘못된 경로: {video_file}")
-                                print(f"  올바른 경로: {expected_final_path}")
-                                video_file = expected_final_path
-                            # 최종 경로로 이동
-                            shutil.move(temp_video_file, video_file)
-                            print(f"[비디오 합치기] 임시 파일을 최종 경로로 이동 완료")
-                            print(f"[비디오 합치기] 최종 파일 경로: {video_file}")
-                        progress("최종 비디오 합치기 완료")
-                        print(f"[비디오 합치기 완료] {video_file}")
-                    except ffmpeg.Error as exc:
-                        print(f"[FFmpeg 오류] 최종 비디오 합치기 실패:")
-                        if exc.stderr:
-                            print(exc.stderr.decode('utf-8'))
-                        # 임시 파일 정리
-                        if os.path.exists(temp_video_file):
-                            try:
-                                os.remove(temp_video_file)
-                            except:
-                                pass
-                        raise
-                    
-                    # 최종 비디오의 오디오 트랙 확인
-                    if os.path.exists(video_file):
-                        try:
-                            final_probe = ffmpeg.probe(video_file)
-                            final_audio = [s for s in final_probe.get('streams', []) if s.get('codec_type') == 'audio']
-                            final_video = [s for s in final_probe.get('streams', []) if s.get('codec_type') == 'video']
-                            if final_audio:
-                                final_duration = float(final_audio[0].get('duration', 0))
-                                print(f"\n[최종 비디오 체크] 오디오 길이: {final_duration:.2f}초 (예상: {total_audio_duration:.2f}초)")
-                                if abs(final_duration - total_audio_duration) > 1.0:
-                                    print(f"  ⚠️ 경고: 최종 오디오 길이가 예상과 다릅니다! (차이: {abs(final_duration - total_audio_duration):.2f}초)")
-                            else:
-                                print(f"\n[최종 비디오 체크] ❌ 오디오 트랙이 없습니다!")
-                        except Exception as e:
-                            print(f"\n[최종 비디오 체크] 확인 실패: {e}")
+                        print(f"  청크 {idx}: ❌ 오디오 없음! (비디오 스트림: {len(video_streams)}개)")
+                        print(f"    파일: {chunk_file}")
                 except Exception as e:
-                    print(f"[경고] 비디오 합치기 실패: {e}")
+                    print(f"  청크 {idx}: ❌ 확인 실패: {e}")
                     import traceback
                     traceback.print_exc()
-                    # 합치기 실패 시 첫 번째 청크 비디오를 사용
+            print(f"  총 예상 오디오 길이: {total_audio_duration:.2f}초")
+            print()
+            
+            # FFmpeg로 비디오 합치기 (비디오와 오디오를 별도로 합침)
+            try:
+                print(f"\n[비디오 합치기 시작] {len(chunk_video_files)}개 청크 합치는 중...")
+                
+                # 각 청크의 비디오와 오디오를 별도로 추출
+                video_streams = []
+                audio_streams = []
+                
+                for idx, chunk_file in enumerate(chunk_video_files, 1):
+                    chunk_input = ffmpeg.input(chunk_file)
+                    # 비디오 스트림 추출
+                    video_streams.append(chunk_input['v'])
+                    # 오디오 스트림 추출 (없으면 무음 오디오 생성)
+                    try:
+                        # 오디오 스트림이 있는지 확인
+                        probe = ffmpeg.probe(chunk_file)
+                        has_audio = any(s.get('codec_type') == 'audio' for s in probe.get('streams', []))
+                        if has_audio:
+                            audio_streams.append(chunk_input['a'])
+                            print(f"  청크 {idx}: 비디오 + 오디오")
+                        else:
+                            # 오디오가 없으면 비디오 길이만큼 무음 오디오 생성
+                            video_duration = float([s for s in probe.get('streams', []) if s.get('codec_type') == 'video'][0].get('duration', 0))
+                            silent_audio = ffmpeg.input('anullsrc=channel_layout=mono:sample_rate=44100', f='lavfi', t=video_duration)
+                            audio_streams.append(silent_audio)
+                            print(f"  청크 {idx}: 비디오만 (무음 오디오 추가)")
+                    except Exception as e:
+                        print(f"  청크 {idx}: 오디오 확인 실패, 무음 오디오 사용: {e}")
+                        # 오류 시 기본 무음 오디오 생성 (10초)
+                        silent_audio = ffmpeg.input('anullsrc=channel_layout=mono:sample_rate=44100', f='lavfi', t=10)
+                        audio_streams.append(silent_audio)
+                
+                # 비디오와 오디오를 각각 합침
+                if len(video_streams) > 1:
+                    concatenated_video = ffmpeg.concat(*video_streams, v=1, a=0)
+                else:
+                    concatenated_video = video_streams[0]
+                
+                if len(audio_streams) > 1:
+                    concatenated_audio = ffmpeg.concat(*audio_streams, v=0, a=1)
+                else:
+                    concatenated_audio = audio_streams[0]
+                
+                # 임시 파일로 먼저 생성 (입력 파일과 겹치지 않도록)
+                temp_video_file = os.path.join(assets_folder, f"temp_final_video_{job_id}.mp4")
+                print(f"[비디오 합치기] 임시 파일로 생성: {temp_video_file}")
+                print(f"[비디오 합치기] 최종 파일 경로: {video_file}")
+                
+                # 입력 파일과 출력 파일이 겹치는지 확인
+                for idx, chunk_file in enumerate(chunk_video_files, 1):
+                    abs_chunk = os.path.abspath(chunk_file)
+                    abs_temp = os.path.abspath(temp_video_file)
+                    abs_final = os.path.abspath(video_file)
+                    if abs_chunk == abs_temp or abs_chunk == abs_final:
+                        print(f"  ⚠️ 경고: 청크 {idx} 파일이 출력 파일과 겹칩니다!")
+                        print(f"    청크 파일: {abs_chunk}")
+                        print(f"    임시 파일: {abs_temp}")
+                        print(f"    최종 파일: {abs_final}")
+                
+                # FFmpeg 최적화: 빠른 합치기를 위한 설정
+                output = ffmpeg.output(
+                    concatenated_video,
+                    concatenated_audio,
+                    temp_video_file, 
+                    vcodec='libx264', 
+                    acodec='aac', 
+                    pix_fmt='yuv420p',
+                    **{
+                        "preset": "fast",
+                        "crf": "23",
+                        "threads": "0",
+                        "movflags": "+faststart",
+                    }
+                )
+                try:
+                    ffmpeg.run(output, overwrite_output=True, quiet=False)
+                    # 임시 파일을 최종 경로로 이동
                     import shutil
-                    shutil.copy2(chunk_video_files[0], video_file)
-                    progress("비디오 합치기 실패, 첫 번째 청크를 사용합니다.")
-            else:
-                # 청크가 하나면 그대로 사용
+                    if os.path.exists(temp_video_file):
+                        # video_file이 올바른 경로인지 다시 확인
+                        expected_final_path = os.path.join(STATIC_FOLDER, f"{FINAL_VIDEO_BASE_NAME}_{job_id}.mp4")
+                        if video_file != expected_final_path:
+                            print(f"[경고] video_file이 덮어씌워졌습니다! 올바른 경로로 재설정합니다.")
+                            print(f"  잘못된 경로: {video_file}")
+                            print(f"  올바른 경로: {expected_final_path}")
+                            video_file = expected_final_path
+                        # 최종 경로로 이동
+                        shutil.move(temp_video_file, video_file)
+                        print(f"[비디오 합치기] 임시 파일을 최종 경로로 이동 완료")
+                        print(f"[비디오 합치기] 최종 파일 경로: {video_file}")
+                    progress("최종 비디오 합치기 완료")
+                    print(f"[비디오 합치기 완료] {video_file}")
+                except ffmpeg.Error as exc:
+                    print(f"[FFmpeg 오류] 최종 비디오 합치기 실패:")
+                    if exc.stderr:
+                        print(exc.stderr.decode('utf-8'))
+                    # 임시 파일 정리
+                    if os.path.exists(temp_video_file):
+                        try:
+                            os.remove(temp_video_file)
+                        except:
+                            pass
+                    raise
+                
+                # 최종 비디오의 오디오 트랙 확인
+                if os.path.exists(video_file):
+                    try:
+                        final_probe = ffmpeg.probe(video_file)
+                        final_audio = [s for s in final_probe.get('streams', []) if s.get('codec_type') == 'audio']
+                        final_video = [s for s in final_probe.get('streams', []) if s.get('codec_type') == 'video']
+                        if final_audio:
+                            final_duration = float(final_audio[0].get('duration', 0))
+                            print(f"\n[최종 비디오 체크] 오디오 길이: {final_duration:.2f}초 (예상: {total_audio_duration:.2f}초)")
+                            if abs(final_duration - total_audio_duration) > 1.0:
+                                print(f"  ⚠️ 경고: 최종 오디오 길이가 예상과 다릅니다! (차이: {abs(final_duration - total_audio_duration):.2f}초)")
+                        else:
+                            print(f"\n[최종 비디오 체크] ❌ 오디오 트랙이 없습니다!")
+                    except Exception as e:
+                        print(f"\n[최종 비디오 체크] 확인 실패: {e}")
+            except Exception as e:
+                print(f"[경고] 비디오 합치기 실패: {e}")
+                import traceback
+                traceback.print_exc()
+                # 합치기 실패 시 첫 번째 청크 비디오를 사용
                 import shutil
                 shutil.copy2(chunk_video_files[0], video_file)
+                progress("비디오 합치기 실패, 첫 번째 청크를 사용합니다.")
+        else:
+            # 청크가 하나면 그대로 사용
+            import shutil
+            shutil.copy2(chunk_video_files[0], video_file)
 
-            # 전체 SRT 파일 생성 (청크별 SRT 파일을 시간 조정하여 합치기)
-            if total_chunks > 1:
-                progress("전체 자막 파일 생성 중...")
-                try:
-                    # SRT 시간 문자열을 초로 변환하는 헬퍼 함수
-                    def srt_time_to_seconds(srt_time: str) -> float:
+        # 전체 SRT 파일 생성 (청크별 SRT 파일을 시간 조정하여 합치기)
+        if total_chunks > 1:
+            progress("전체 자막 파일 생성 중...")
+            try:
+                # SRT 시간 문자열을 초로 변환하는 헬퍼 함수
+                def srt_time_to_seconds(srt_time: str) -> float:
                         """SRT 시간 형식 (HH:MM:SS,mmm)을 초로 변환"""
                         time_part, ms_part = srt_time.split(',')
                         h, m, s = map(int, time_part.split(':'))
                         ms = int(ms_part)
                         return h * 3600 + m * 60 + s + ms / 1000.0
-                    
-                    # 각 청크의 비디오 길이 계산 (시간 오프셋 계산용)
-                    chunk_durations = []
-                    for chunk_idx in range(1, total_chunks + 1):
-                        chunk_video_file = os.path.join(assets_folder, f"chunk_{chunk_idx}", f"chunk_{chunk_idx}_video.mp4")
-                        if os.path.exists(chunk_video_file):
-                            try:
-                                probe = ffmpeg.probe(chunk_video_file)
-                                video_streams = [s for s in probe.get('streams', []) if s.get('codec_type') == 'video']
-                                if video_streams:
-                                    duration = float(video_streams[0].get('duration', 0))
-                                    chunk_durations.append(duration)
-                                    print(f"[SRT 합치기] 청크 {chunk_idx} 길이: {duration:.2f}초")
-                                else:
-                                    chunk_durations.append(0.0)
-                            except Exception as e:
-                                print(f"[경고] 청크 {chunk_idx} 길이 확인 실패: {e}")
+                
+                # 각 청크의 비디오 길이 계산 (시간 오프셋 계산용)
+                chunk_durations = []
+                for chunk_idx in range(1, total_chunks + 1):
+                    chunk_video_file = os.path.join(assets_folder, f"chunk_{chunk_idx}", f"chunk_{chunk_idx}_video.mp4")
+                    if os.path.exists(chunk_video_file):
+                        try:
+                            probe = ffmpeg.probe(chunk_video_file)
+                            video_streams = [s for s in probe.get('streams', []) if s.get('codec_type') == 'video']
+                            if video_streams:
+                                duration = float(video_streams[0].get('duration', 0))
+                                chunk_durations.append(duration)
+                                print(f"[SRT 합치기] 청크 {chunk_idx} 길이: {duration:.2f}초")
+                            else:
                                 chunk_durations.append(0.0)
-                        else:
+                        except Exception as e:
+                            print(f"[경고] 청크 {chunk_idx} 길이 확인 실패: {e}")
                             chunk_durations.append(0.0)
-                    
-                    # 각 청크의 누적 시간 오프셋 계산
-                    chunk_offsets = [0.0]
-                    for i in range(1, total_chunks):
-                        chunk_offsets.append(chunk_offsets[i-1] + chunk_durations[i-1])
-                    
-                    print(f"[SRT 합치기] 청크 오프셋: {chunk_offsets}")
-                    
-                    # 전체 SRT 파일 생성
-                    subtitle_index = 1
-                    with open(subtitle_file, "w", encoding="utf-8") as f:
-                        for chunk_idx in range(1, total_chunks + 1):
-                            chunk_subtitle_file = os.path.join(assets_folder, f"chunk_{chunk_idx}", f"chunk_{chunk_idx}_subtitles.srt")
-                            time_offset = chunk_offsets[chunk_idx - 1]
+                    else:
+                        chunk_durations.append(0.0)
+                
+                # 각 청크의 누적 시간 오프셋 계산
+                chunk_offsets = [0.0]
+                for i in range(1, total_chunks):
+                    chunk_offsets.append(chunk_offsets[i-1] + chunk_durations[i-1])
+                
+                print(f"[SRT 합치기] 청크 오프셋: {chunk_offsets}")
+                
+                # 전체 SRT 파일 생성
+                subtitle_index = 1
+                with open(subtitle_file, "w", encoding="utf-8") as f:
+                    for chunk_idx in range(1, total_chunks + 1):
+                        chunk_subtitle_file = os.path.join(assets_folder, f"chunk_{chunk_idx}", f"chunk_{chunk_idx}_subtitles.srt")
+                        time_offset = chunk_offsets[chunk_idx - 1]
+                        
+                        if not os.path.exists(chunk_subtitle_file):
+                            print(f"[경고] 청크 {chunk_idx} SRT 파일이 없습니다: {chunk_subtitle_file}")
+                            continue
+                        
+                        print(f"[SRT 합치기] 청크 {chunk_idx} SRT 파일 읽는 중... (오프셋: {time_offset:.2f}초)")
+                        
+                        try:
+                            with open(chunk_subtitle_file, "r", encoding="utf-8") as chunk_f:
+                                lines = chunk_f.readlines()
                             
-                            if not os.path.exists(chunk_subtitle_file):
-                                print(f"[경고] 청크 {chunk_idx} SRT 파일이 없습니다: {chunk_subtitle_file}")
-                                continue
-                            
-                            print(f"[SRT 합치기] 청크 {chunk_idx} SRT 파일 읽는 중... (오프셋: {time_offset:.2f}초)")
-                            
-                            try:
-                                with open(chunk_subtitle_file, "r", encoding="utf-8") as chunk_f:
-                                    lines = chunk_f.readlines()
+                            i = 0
+                            while i < len(lines):
+                                line = lines[i].strip()
+                                if not line:
+                                    i += 1
+                                    continue
                                 
-                                i = 0
-                                while i < len(lines):
-                                    line = lines[i].strip()
-                                    if not line:
-                                        i += 1
-                                        continue
-                                    
-                                    # 자막 인덱스 (무시하고 새로 할당)
-                                    try:
-                                        int(line)
-                                    except ValueError:
-                                        i += 1
-                                        continue
-                                    
-                                    # 시간 정보
-                                    if i + 1 >= len(lines):
-                                        break
-                                    time_line = lines[i + 1].strip()
-                                    if '-->' not in time_line:
-                                        i += 1
-                                        continue
-                                    
-                                    start_time_str, end_time_str = time_line.split('-->')
-                                    start_time = srt_time_to_seconds(start_time_str.strip()) + time_offset
-                                    end_time = srt_time_to_seconds(end_time_str.strip()) + time_offset
-                                    
-                                    # 자막 텍스트 수집
-                                    subtitle_text_lines = []
-                                    i += 2
-                                    while i < len(lines) and lines[i].strip():
-                                        subtitle_text_lines.append(lines[i].rstrip())
-                                        i += 1
-                                    
-                                    if subtitle_text_lines:
-                                        f.write(f"{subtitle_index}\n")
-                                        f.write(f"{seconds_to_srt_time(start_time)} --> {seconds_to_srt_time(end_time)}\n")
-                                        f.write("\n".join(subtitle_text_lines) + "\n")
-                                        f.write("\n")
-                                        subtitle_index += 1
-                                    
-                                    i += 1  # 빈 줄 건너뛰기
-                            except Exception as chunk_exc:
-                                print(f"[경고] 청크 {chunk_idx} SRT 파일 읽기 실패: {chunk_exc}")
-                                import traceback
-                                traceback.print_exc()
-                                continue
-                    
-                    if os.path.exists(subtitle_file):
-                        srt_size = os.path.getsize(subtitle_file)
-                        print(f"[완료] 전체 SRT 파일 생성됨: {subtitle_file} (크기: {srt_size} bytes, 총 {subtitle_index - 1}개 자막)")
-                    else:
-                        print(f"[경고] SRT 파일이 생성되지 않았습니다: {subtitle_file}")
-                except Exception as srt_exc:
-                    print(f"[경고] 전체 SRT 파일 생성 실패: {srt_exc}")
-                    import traceback
-                    traceback.print_exc()
-            elif total_chunks == 1:
-                # 청크가 하나면 해당 청크의 SRT 파일을 복사
-                progress("자막 파일 복사 중...")
-                try:
-                    chunk_subtitle_file = os.path.join(assets_folder, "chunk_1", "chunk_1_subtitles.srt")
-                    if os.path.exists(chunk_subtitle_file):
-                        import shutil
-                        shutil.copy2(chunk_subtitle_file, subtitle_file)
-                        print(f"[완료] SRT 파일 복사됨: {subtitle_file}")
-                    else:
-                        print(f"[경고] 청크 1 SRT 파일이 없습니다: {chunk_subtitle_file}")
-                except Exception as srt_exc:
-                    print(f"[경고] SRT 파일 복사 실패: {srt_exc}")
-                    import traceback
-                    traceback.print_exc()
-            
-            # 파일이 실제로 존재하는지 확인하고, 존재할 때만 video_filename 설정
-            # video_file은 get_job_paths에서 이미 올바른 경로로 설정되어 있어야 함
-            # (STATIC_FOLDER/final_video_{job_id}.mp4)
-            print(f"[작업 완료 확인] video_file 경로: {video_file}")
-            print(f"[작업 완료 확인] STATIC_FOLDER: {STATIC_FOLDER}")
-            print(f"[작업 완료 확인] job_id: {job_id}")
-            
-            # 비디오 파일 존재 여부 확인 (최대 5초 대기)
-            max_wait = 5
-            wait_count = 0
-            while not os.path.exists(video_file) and wait_count < max_wait:
-                print(f"[작업 완료 확인] 비디오 파일 대기 중... ({wait_count + 1}/{max_wait})")
-                time.sleep(1)
-                wait_count += 1
-            
-            if os.path.exists(video_file):
-                file_size = os.path.getsize(video_file)
-                # video_filename은 STATIC_FOLDER를 기준으로 한 상대 경로로 저장
-                # 예: final_video_{job_id}.mp4
-                video_filename = os.path.relpath(video_file, STATIC_FOLDER)
-                # Windows 경로 구분자를 /로 통일
-                video_filename = video_filename.replace(os.sep, '/')
-                print(f"[완료] 최종 비디오 파일 생성됨: {video_file} (크기: {file_size} bytes)")
-                print(f"[완료] 다운로드 파일명 (상대 경로): {video_filename}")
-                # 최종 비디오가 완전히 생성되었을 때만 video_filename 설정
-                update_job(job_id, status="completed", video_filename=video_filename, stage_progress=3, current_stage="완료")
-            else:
-                print(f"[경고] 비디오 파일이 존재하지 않습니다: {video_file}")
-                print(f"[경고] video_file 경로 확인: {video_file}")
-                print(f"[경고] STATIC_FOLDER: {STATIC_FOLDER}")
-                print(f"[경고] job_id: {job_id}")
-                # 파일이 없으면 video_filename을 None으로 설정
-                update_job(job_id, status="error", error="최종 비디오 파일이 생성되지 않았습니다.", video_filename=None)
-        except Exception as exc:
+                                # 자막 인덱스 (무시하고 새로 할당)
+                                try:
+                                    int(line)
+                                except ValueError:
+                                    i += 1
+                                    continue
+                                
+                                # 시간 정보
+                                if i + 1 >= len(lines):
+                                    break
+                                time_line = lines[i + 1].strip()
+                                if '-->' not in time_line:
+                                    i += 1
+                                    continue
+                                
+                                start_time_str, end_time_str = time_line.split('-->')
+                                start_time = srt_time_to_seconds(start_time_str.strip()) + time_offset
+                                end_time = srt_time_to_seconds(end_time_str.strip()) + time_offset
+                                
+                                # 자막 텍스트 수집
+                                subtitle_text_lines = []
+                                i += 2
+                                while i < len(lines) and lines[i].strip():
+                                    subtitle_text_lines.append(lines[i].rstrip())
+                                    i += 1
+                                
+                                if subtitle_text_lines:
+                                    f.write(f"{subtitle_index}\n")
+                                    f.write(f"{seconds_to_srt_time(start_time)} --> {seconds_to_srt_time(end_time)}\n")
+                                    f.write("\n".join(subtitle_text_lines) + "\n")
+                                    f.write("\n")
+                                    subtitle_index += 1
+                                
+                                i += 1  # 빈 줄 건너뛰기
+                        except Exception as chunk_exc:
+                            print(f"[경고] 청크 {chunk_idx} SRT 파일 읽기 실패: {chunk_exc}")
+                            import traceback
+                            traceback.print_exc()
+                            continue
+                
+                if os.path.exists(subtitle_file):
+                    srt_size = os.path.getsize(subtitle_file)
+                    print(f"[완료] 전체 SRT 파일 생성됨: {subtitle_file} (크기: {srt_size} bytes, 총 {subtitle_index - 1}개 자막)")
+                else:
+                    print(f"[경고] SRT 파일이 생성되지 않았습니다: {subtitle_file}")
+            except Exception as srt_exc:
+                print(f"[경고] 전체 SRT 파일 생성 실패: {srt_exc}")
+                import traceback
+                traceback.print_exc()
+        elif total_chunks == 1:
+            # 청크가 하나면 해당 청크의 SRT 파일을 복사
+            progress("자막 파일 복사 중...")
+            try:
+                chunk_subtitle_file = os.path.join(assets_folder, "chunk_1", "chunk_1_subtitles.srt")
+                if os.path.exists(chunk_subtitle_file):
+                    import shutil
+                    shutil.copy2(chunk_subtitle_file, subtitle_file)
+                    print(f"[완료] SRT 파일 복사됨: {subtitle_file}")
+                else:
+                    print(f"[경고] 청크 1 SRT 파일이 없습니다: {chunk_subtitle_file}")
+            except Exception as srt_exc:
+                print(f"[경고] SRT 파일 복사 실패: {srt_exc}")
+                import traceback
+                traceback.print_exc()
+        
+        # 파일이 실제로 존재하는지 확인하고, 존재할 때만 video_filename 설정
+        # video_file은 get_job_paths에서 이미 올바른 경로로 설정되어 있어야 함
+        # (STATIC_FOLDER/final_video_{job_id}.mp4)
+        print(f"[작업 완료 확인] video_file 경로: {video_file}")
+        print(f"[작업 완료 확인] STATIC_FOLDER: {STATIC_FOLDER}")
+        print(f"[작업 완료 확인] job_id: {job_id}")
+        
+        # 비디오 파일 존재 여부 확인 (최대 5초 대기)
+        max_wait = 5
+        wait_count = 0
+        while not os.path.exists(video_file) and wait_count < max_wait:
+            print(f"[작업 완료 확인] 비디오 파일 대기 중... ({wait_count + 1}/{max_wait})")
+            time.sleep(1)
+            wait_count += 1
+        
+        if os.path.exists(video_file):
+            file_size = os.path.getsize(video_file)
+            # video_filename은 STATIC_FOLDER를 기준으로 한 상대 경로로 저장
+            # 예: final_video_{job_id}.mp4
+            video_filename = os.path.relpath(video_file, STATIC_FOLDER)
+            # Windows 경로 구분자를 /로 통일
+            video_filename = video_filename.replace(os.sep, '/')
+            print(f"[완료] 최종 비디오 파일 생성됨: {video_file} (크기: {file_size} bytes)")
+            print(f"[완료] 다운로드 파일명 (상대 경로): {video_filename}")
+            # 최종 비디오가 완전히 생성되었을 때만 video_filename 설정
+            update_job(job_id, status="completed", video_filename=video_filename, stage_progress=3, current_stage="완료")
+        else:
+            print(f"[경고] 비디오 파일이 존재하지 않습니다: {video_file}")
+            print(f"[경고] video_file 경로 확인: {video_file}")
+            print(f"[경고] STATIC_FOLDER: {STATIC_FOLDER}")
+            print(f"[경고] job_id: {job_id}")
+            # 파일이 없으면 video_filename을 None으로 설정
+            update_job(job_id, status="error", error="최종 비디오 파일이 생성되지 않았습니다.", video_filename=None)
+    except Exception as exc:
             print("=" * 80)
             print("=== [DEBUG] 오류: 영상 생성 작업 예외 발생 ===")
             print(f"=== [DEBUG] 예외 내용: {exc} ===")
