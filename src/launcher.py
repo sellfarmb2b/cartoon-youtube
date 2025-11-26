@@ -11,6 +11,35 @@ from packaging import version
 
 from utils import resource_path
 
+IS_WINDOWS = platform.system().lower() == "windows"
+
+if IS_WINDOWS:
+    from ctypes import windll
+else:
+    windll = None
+
+
+def _show_message(message: str, title: str = "YouTube Maker", icon: str = "info") -> None:
+    """Windows용 메시지 박스 래퍼 (콘솔 없이 오류 안내)."""
+    icon_map = {
+        "info": 0x40,     # MB_ICONINFORMATION
+        "warning": 0x30,  # MB_ICONWARNING
+        "error": 0x10,    # MB_ICONERROR
+    }
+    if IS_WINDOWS and windll is not None:
+        windll.user32.MessageBoxW(0, message, title, icon_map.get(icon, 0x40))
+    else:
+        # 비 Windows 환경에서는 stderr로 안내 (콘솔 없이 실행되는 경우 대비)
+        sys.stderr.write(f"{title}: {message}\n")
+
+
+def _show_error(message: str) -> None:
+    _show_message(message, icon="error")
+
+
+def _show_warning(message: str) -> None:
+    _show_message(message, icon="warning")
+
 # PyInstaller로 빌드된 경우 sys.executable이 실행 파일 경로
 def get_launcher_dir():
     """Launcher 실행 파일이 있는 디렉토리 경로 반환"""
@@ -54,13 +83,11 @@ class LauncherApp:
             if os.path.exists(test_path):
                 self.target_executable = test_path
                 self.base_dir = dir_path
-                print(f"[Launcher] 실행 파일 찾음: {self.target_executable}")
                 break
         
         # 찾지 못한 경우 기본 경로 사용
         if not self.target_executable:
             self.target_executable = os.path.join(launcher_dir, self.executable_name)
-            print(f"[Launcher] 실행 파일 기본 경로 설정: {self.target_executable}")
         
         self.local_version_file = os.path.join(self.base_dir, "version.json")
 
@@ -85,7 +112,6 @@ class LauncherApp:
 
     def _download_release(self, new_version: str) -> None:
         download_url = RELEASE_DOWNLOAD_URL.format(version=new_version, filename=self.executable_name)
-        print(f"업데이트 다운로드 중... (v{new_version})")
         temp_path = os.path.join(self.base_dir, f"{self.executable_name}_{new_version}.tmp")
 
         response = requests.get(download_url, stream=True, timeout=60)
@@ -101,51 +127,33 @@ class LauncherApp:
                     continue
                 f.write(chunk)
                 downloaded += len(chunk)
-                if total_size > 0:
-                    progress_value = (downloaded / total_size) * 100
-                    # 진행률을 정수로 표시 (소수점 제거)
-                    progress_int = int(progress_value)
-                    # 같은 줄에 덮어쓰기 (줄바꿈 없이)
-                    print(f"\r업데이트 다운로드 중... ({progress_int}%)", end="", flush=True)
-                else:
-                    print(f"\r업데이트 다운로드 중... (크기 확인 중)", end="", flush=True)
+                # 콘솔 출력 대신 조용히 진행
 
-        print()  # 줄바꿈
         shutil.move(temp_path, self.target_executable)
         self._save_local_version(new_version)
-        print("업데이트가 완료되었습니다.")
 
     def _check_for_updates(self) -> None:
         try:
-            print("현재 버전 확인 중...")
             local_version = self._load_local_version()
-            print(f"로컬 버전: {local_version}")
-            
+
             try:
-                print("원격 버전 확인 중...")
                 remote_version = self._fetch_remote_version()
-                print(f"원격 버전: {remote_version}")
                 
                 if remote_version > local_version:
                     self._download_release(str(remote_version))
                 else:
-                    print("최신 버전입니다!")
                     time.sleep(0.5)
             except requests.RequestException as network_error:
-                # 네트워크 오류 시 조용히 무시하고 로컬 버전 실행
-                print(f"업데이트 확인 건너뜀 (오프라인 모드): {network_error}")
+                _show_warning(f"업데이트 서버에 연결할 수 없습니다. 오프라인 모드로 실행합니다.\n\n{network_error}")
                 time.sleep(0.5)
 
             self._launch_main_app()
         except Exception as exc:
-            # 치명적 오류가 아닌 경우에도 앱 실행 시도
-            print(f"업데이트 확인 중 오류 발생, 앱 실행 시도 중...: {exc}")
             time.sleep(0.5)
             try:
                 self._launch_main_app()
             except Exception as launch_exc:
-                print(f"앱 실행 실패: {launch_exc}")
-                input("에러 발생! 엔터를 누르면 종료합니다...")
+                _show_error(f"앱 실행에 실패했습니다.\n\n{launch_exc}")
                 sys.exit(1)
 
     def _launch_main_app(self) -> None:
@@ -166,16 +174,13 @@ class LauncherApp:
                     self.target_executable = test_path
                     self.base_dir = os.path.dirname(test_path)
                     found = True
-                    print(f"[Launcher] 실행 파일 재검색 성공: {self.target_executable}")
                     break
             
             if not found:
                 error_msg = f"{self.executable_name}를 찾을 수 없습니다.\n검색한 경로:\n" + "\n".join(possible_paths)
-                print(error_msg)
-                input("에러 발생! 엔터를 누르면 종료합니다...")
+                _show_error(error_msg)
                 sys.exit(1)
 
-        print("실행 중...")
         try:
             if self.is_windows:
                 os.startfile(self.target_executable)  # type: ignore[attr-defined]
@@ -183,29 +188,28 @@ class LauncherApp:
                 # macOS: 실행 권한 부여 후 실행
                 os.chmod(self.target_executable, 0o755)
                 subprocess.Popen([self.target_executable])
+        except OSError as exc:
+            if getattr(exc, "winerror", None) == 1223:
+                _show_error("관리자 권한이 필요합니다. 관리자 권한으로 다시 실행해주세요.")
+            else:
+                _show_error(f"애플리케이션 실행에 실패했습니다.\n\n{exc}")
+            sys.exit(1)
         except Exception as exc:
-            print(f"애플리케이션 실행에 실패했습니다: {exc}")
-            input("에러 발생! 엔터를 누르면 종료합니다...")
+            _show_error(f"애플리케이션 실행에 실패했습니다.\n\n{exc}")
             sys.exit(1)
 
 
 def main():
-    print("=" * 60)
-    print("YouTube Maker Launcher")
-    print("=" * 60)
-    print()
-    
     try:
         launcher = LauncherApp()
         launcher._check_for_updates()
     except KeyboardInterrupt:
-        print("\n\n사용자에 의해 중단되었습니다.")
+        _show_warning("실행이 사용자에 의해 중단되었습니다.")
         sys.exit(0)
     except Exception as exc:
-        print(f"\n치명적 오류 발생: {exc}")
         import traceback
         traceback.print_exc()
-        input("에러 발생! 엔터를 누르면 종료합니다...")
+        _show_error(f"치명적 오류가 발생했습니다.\n\n{exc}")
         sys.exit(1)
 
 
