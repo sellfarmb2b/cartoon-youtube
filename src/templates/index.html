@@ -194,6 +194,21 @@
             <button type="button" id="selectFolderBtn" style="background:#6366f1; padding:10px 16px; white-space:nowrap;">폴더 선택</button>
         </div>
         <p class="settings-helper">다운로드 폴더 경로를 지정하면 생성된 파일이 해당 폴더로 복사됩니다. 폴더 선택 버튼을 클릭하여 직접 선택하거나, 경로를 입력할 수 있습니다.</p>
+        
+        <hr style="margin: 24px 0; border: none; border-top: 1px solid #e5e7eb;">
+        
+        <h3 style="margin-top: 0; margin-bottom: 12px; color: #1f2937; font-size: 16px;">사용자 정의 보이스 ID 관리</h3>
+        <p class="settings-helper">ElevenLabs에서 제공하는 보이스 ID를 추가하여 사용할 수 있습니다.</p>
+        
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom: 12px;">
+            <input type="text" id="customVoiceIdInput" placeholder="보이스 ID 입력 (예: pNInz6AJB3aCYtXltRbl)" autocomplete="off" style="flex:1; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;">
+            <button type="button" id="addVoiceIdBtn" style="background:#10b981; padding:10px 16px; white-space:nowrap;">추가</button>
+        </div>
+        
+        <div id="customVoiceList" style="max-height: 200px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px; background: #f9fafb;">
+            <p style="margin: 0; color: #6b7280; font-size: 14px; text-align: center; padding: 12px;">추가된 보이스 ID가 여기에 표시됩니다.</p>
+        </div>
+        
         <div class="settings-actions">
             <button type="button" id="cancelSettingsBtn" style="background:#e5e7eb; color:#111827;">취소</button>
             <button type="button" id="saveSettingsBtn">저장</button>
@@ -298,12 +313,16 @@
             const settingsOpenaiInput = document.getElementById('settingsOpenaiKey');
             const settingsDownloadFolderInput = document.getElementById('settingsDownloadFolder');
             const selectFolderBtn = document.getElementById('selectFolderBtn');
+            const customVoiceIdInput = document.getElementById('customVoiceIdInput');
+            const addVoiceIdBtn = document.getElementById('addVoiceIdBtn');
+            const customVoiceList = document.getElementById('customVoiceList');
             let settingsState = {
                 replicate_api_key: '',
                 elevenlabs_api_key: '',
                 openai_api_key: '',
                 download_folder_path: ''
             };
+            let customVoiceIds = [];
 
             function populateSettingsForm() {
                 if (!settingsReplicateInput || !settingsElevenlabsInput || !settingsOpenaiInput) return;
@@ -318,6 +337,7 @@
             function openSettingsModal() {
                 if (!settingsModal) return;
                 populateSettingsForm();
+                loadCustomVoices(); // 보이스 목록도 로드
                 settingsModal.classList.add('active');
             }
 
@@ -340,8 +360,145 @@
                         download_folder_path: data.download_folder_path || ''
                     };
                     populateSettingsForm();
+                    
+                    // 보이스 목록 로드
+                    await loadCustomVoices();
                 } catch (error) {
                     console.error('[설정] 불러오기 실패:', error);
+                }
+            }
+            
+            async function loadCustomVoices() {
+                try {
+                    const response = await fetch('/api/voices');
+                    if (!response.ok) {
+                        throw new Error('보이스 목록을 불러오지 못했습니다.');
+                    }
+                    const data = await response.json();
+                    customVoiceIds = data.custom_voice_ids || [];
+                    renderCustomVoiceList();
+                } catch (error) {
+                    console.error('[보이스] 목록 불러오기 실패:', error);
+                }
+            }
+            
+            function renderCustomVoiceList() {
+                if (!customVoiceList) return;
+                
+                if (customVoiceIds.length === 0) {
+                    customVoiceList.innerHTML = '<p style="margin: 0; color: #6b7280; font-size: 14px; text-align: center; padding: 12px;">추가된 보이스 ID가 여기에 표시됩니다.</p>';
+                    return;
+                }
+                
+                customVoiceList.innerHTML = customVoiceIds.map(voiceId => `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; margin-bottom: 4px; background: white; border-radius: 4px; border: 1px solid #e5e7eb;">
+                        <span style="font-family: monospace; font-size: 13px; color: #1f2937;">${voiceId}</span>
+                        <button type="button" class="delete-voice-btn" data-voice-id="${voiceId}" style="background: #ef4444; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;">삭제</button>
+                    </div>
+                `).join('');
+                
+                // 삭제 버튼 이벤트 리스너 추가
+                customVoiceList.querySelectorAll('.delete-voice-btn').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        const voiceId = btn.getAttribute('data-voice-id');
+                        await deleteCustomVoice(voiceId);
+                    });
+                });
+            }
+            
+            async function addCustomVoice() {
+                if (!customVoiceIdInput || !addVoiceIdBtn) return;
+                
+                const voiceId = customVoiceIdInput.value.trim();
+                if (!voiceId) {
+                    setStatus('보이스 ID를 입력해주세요.', 'error');
+                    return;
+                }
+                
+                // 기본 형식 검증 (영문자, 숫자로만 구성)
+                if (!/^[a-zA-Z0-9]+$/.test(voiceId)) {
+                    setStatus('보이스 ID는 영문자와 숫자로만 구성되어야 합니다.', 'error');
+                    return;
+                }
+                
+                addVoiceIdBtn.disabled = true;
+                addVoiceIdBtn.textContent = '추가 중...';
+                
+                try {
+                    const response = await fetch('/api/voices', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ voice_id: voiceId })
+                    });
+                    
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.error || '보이스 ID 추가에 실패했습니다.');
+                    }
+                    
+                    customVoiceIdInput.value = '';
+                    await loadCustomVoices();
+                    
+                    // 보이스 선택 드롭다운 새로고침
+                    await refreshVoiceSelect();
+                    
+                    setStatus('보이스 ID가 추가되었습니다.', 'success');
+                } catch (error) {
+                    console.error('[보이스] 추가 실패:', error);
+                    setStatus(error.message || '보이스 ID 추가에 실패했습니다.', 'error');
+                } finally {
+                    addVoiceIdBtn.disabled = false;
+                    addVoiceIdBtn.textContent = '추가';
+                }
+            }
+            
+            async function deleteCustomVoice(voiceId) {
+                if (!confirm(`보이스 ID "${voiceId}"를 삭제하시겠습니까?`)) {
+                    return;
+                }
+                
+                try {
+                    const response = await fetch(`/api/voices?voice_id=${encodeURIComponent(voiceId)}`, {
+                        method: 'DELETE'
+                    });
+                    
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.error || '보이스 ID 삭제에 실패했습니다.');
+                    }
+                    
+                    await loadCustomVoices();
+                    
+                    // 보이스 선택 드롭다운 새로고침
+                    await refreshVoiceSelect();
+                    
+                    setStatus('보이스 ID가 삭제되었습니다.', 'success');
+                } catch (error) {
+                    console.error('[보이스] 삭제 실패:', error);
+                    setStatus(error.message || '보이스 ID 삭제에 실패했습니다.', 'error');
+                }
+            }
+            
+            async function refreshVoiceSelect() {
+                try {
+                    const response = await fetch('/api/voices');
+                    if (!response.ok) return;
+                    const data = await response.json();
+                    const voices = data.voices || [];
+                    
+                    if (voiceSelect) {
+                        const currentValue = voiceSelect.value;
+                        voiceSelect.innerHTML = voices.map(voice => 
+                            `<option value="${voice.id}">${voice.name}</option>`
+                        ).join('');
+                        
+                        // 기존 선택값 유지 (가능한 경우)
+                        if (currentValue && Array.from(voiceSelect.options).some(opt => opt.value === currentValue)) {
+                            voiceSelect.value = currentValue;
+                        }
+                    }
+                } catch (error) {
+                    console.error('[보이스] 선택 드롭다운 새로고침 실패:', error);
                 }
             }
 
@@ -1573,6 +1730,22 @@
             if (saveSettingsBtn) {
                 saveSettingsBtn.addEventListener('click', () => {
                     saveSettings();
+                });
+            }
+            
+            // 보이스 ID 추가 버튼 이벤트
+            if (addVoiceIdBtn) {
+                addVoiceIdBtn.addEventListener('click', () => {
+                    addCustomVoice();
+                });
+            }
+            
+            // 보이스 ID 입력 필드에서 Enter 키 처리
+            if (customVoiceIdInput) {
+                customVoiceIdInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        addCustomVoice();
+                    }
                 });
             }
             

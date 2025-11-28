@@ -229,23 +229,40 @@ def get_available_voices():
 
     from elevenlabs.client import ElevenLabs
 
+    # 사용자 정의 보이스 ID 가져오기
+    custom_voice_ids = config_manager.get("custom_voice_ids", [])
+    if not isinstance(custom_voice_ids, list):
+        custom_voice_ids = []
+    
+    # 기본 보이스 ID와 사용자 정의 보이스 ID 합치기
+    all_allowed_ids = set(ELEVENLABS_VOICE_IDS) | set(custom_voice_ids)
+
     voice_entries = []
     try:
-        client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
-        all_voices = client.voices.get_all()
-        allowed_ids = set(ELEVENLABS_VOICE_IDS)
-        for voice in all_voices.voices:
-            if voice.voice_id in allowed_ids:
-                voice_entries.append({"id": voice.voice_id, "name": voice.name or voice.voice_id})
+        if ELEVENLABS_API_KEY:
+            client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
+            all_voices = client.voices.get_all()
+            
+            # API에서 가져온 보이스 중 허용된 ID만 추가
+            for voice in all_voices.voices:
+                if voice.voice_id in all_allowed_ids:
+                    voice_entries.append({"id": voice.voice_id, "name": voice.name or voice.voice_id})
 
-        # 보이스 목록이 비어 있는 경우, 미리 지정한 아이디라도 그대로 사용
+        # API에서 가져오지 못한 보이스 ID도 추가 (이름 없이 ID만)
         known_ids = {entry["id"] for entry in voice_entries}
-        for vid in ELEVENLABS_VOICE_IDS:
+        for vid in all_allowed_ids:
             if vid not in known_ids:
-                voice_entries.append({"id": vid, "name": vid})
+                # 사용자 정의 보이스는 "(사용자 정의)" 태그 추가
+                is_custom = vid in custom_voice_ids
+                name = f"{vid} (사용자 정의)" if is_custom else vid
+                voice_entries.append({"id": vid, "name": name})
     except Exception as exc:
         print(f"[경고] ElevenLabs 보이스 목록 불러오기 실패: {exc}")
-        voice_entries = [{"id": vid, "name": vid} for vid in ELEVENLABS_VOICE_IDS]
+        # API 실패 시에도 기본 보이스 ID와 사용자 정의 보이스 ID는 추가
+        for vid in all_allowed_ids:
+            is_custom = vid in custom_voice_ids
+            name = f"{vid} (사용자 정의)" if is_custom else vid
+            voice_entries.append({"id": vid, "name": name})
 
     if not voice_entries:
         voice_entries = [{"id": "pNInz6AJB3aCYtXltRbl", "name": "Default"}]
@@ -3120,6 +3137,75 @@ def api_settings():
     global _cached_voice_list
     _cached_voice_list = None
     return jsonify({"status": "ok"})
+
+
+@app.route("/api/voices", methods=["GET", "POST", "DELETE"])
+def api_voices():
+    """보이스 ID 관리 API"""
+    if request.method == "GET":
+        # 현재 사용 가능한 보이스 목록 반환
+        voices = get_available_voices()
+        custom_voice_ids = config_manager.get("custom_voice_ids", [])
+        if not isinstance(custom_voice_ids, list):
+            custom_voice_ids = []
+        return jsonify({
+            "voices": voices,
+            "custom_voice_ids": custom_voice_ids
+        })
+    
+    elif request.method == "POST":
+        # 보이스 ID 추가
+        data = request.get_json(silent=True) or {}
+        voice_id = (data.get("voice_id") or "").strip()
+        
+        if not voice_id:
+            return jsonify({"error": "보이스 ID가 필요합니다."}), 400
+        
+        # 중복 확인
+        custom_voice_ids = config_manager.get("custom_voice_ids", [])
+        if not isinstance(custom_voice_ids, list):
+            custom_voice_ids = []
+        
+        if voice_id in custom_voice_ids:
+            return jsonify({"error": "이미 추가된 보이스 ID입니다."}), 400
+        
+        # 기본 보이스 ID와 중복 확인
+        if voice_id in ELEVENLABS_VOICE_IDS:
+            return jsonify({"error": "기본 보이스 ID입니다."}), 400
+        
+        # 추가
+        custom_voice_ids.append(voice_id)
+        config_manager.set("custom_voice_ids", custom_voice_ids)
+        
+        # 캐시 무효화
+        global _cached_voice_list
+        _cached_voice_list = None
+        
+        return jsonify({"status": "ok", "message": "보이스 ID가 추가되었습니다."})
+    
+    elif request.method == "DELETE":
+        # 보이스 ID 삭제
+        voice_id = request.args.get("voice_id", "").strip()
+        
+        if not voice_id:
+            return jsonify({"error": "보이스 ID가 필요합니다."}), 400
+        
+        custom_voice_ids = config_manager.get("custom_voice_ids", [])
+        if not isinstance(custom_voice_ids, list):
+            custom_voice_ids = []
+        
+        if voice_id not in custom_voice_ids:
+            return jsonify({"error": "사용자 정의 보이스 ID가 아닙니다."}), 400
+        
+        # 삭제
+        custom_voice_ids.remove(voice_id)
+        config_manager.set("custom_voice_ids", custom_voice_ids)
+        
+        # 캐시 무효화
+        global _cached_voice_list
+        _cached_voice_list = None
+        
+        return jsonify({"status": "ok", "message": "보이스 ID가 삭제되었습니다."})
 
 
 @app.route("/api/select_download_folder", methods=["POST"])

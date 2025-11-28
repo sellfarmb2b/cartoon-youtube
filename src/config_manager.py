@@ -21,6 +21,7 @@ class ConfigManager:
             "elevenlabs_api_key": "",
             "openai_api_key": "",
             "download_folder_path": "",
+            "custom_voice_ids": [],  # 사용자 정의 보이스 ID 목록
         }
 
         self.config_dir = user_data_dir(self.app_name, self.app_author)
@@ -40,11 +41,16 @@ class ConfigManager:
                 with open(self.config_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     if isinstance(data, dict):
-                        self._settings.update({
-                            key: (value or "")
-                            for key, value in data.items()
-                            if key in self._settings
-                        })
+                        for key, value in data.items():
+                            if key in self._settings:
+                                # custom_voice_ids는 리스트로 유지
+                                if key == "custom_voice_ids":
+                                    if isinstance(value, list):
+                                        self._settings[key] = value
+                                    else:
+                                        self._settings[key] = []
+                                else:
+                                    self._settings[key] = (value or "")
             except Exception:
                 # If the file is corrupted, we keep defaults
                 pass
