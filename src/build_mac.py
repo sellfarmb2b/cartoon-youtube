@@ -53,6 +53,7 @@ def build_mac():
         "--onefile",
         # --noconsole 제거 (터미널 창이 보여야 진행 상황을 알 수 있음)
         "--add-data=src/version.json:src",
+        "--exclude-module=tkinter",  # tkinter 제외 (macOS에서 모듈 없음 오류 방지)
         "src/launcher.py"
     ]
     print(f"명령: {' '.join(launcher_cmd)}")
