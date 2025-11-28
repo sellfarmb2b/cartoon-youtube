@@ -3142,6 +3142,8 @@ def api_settings():
 @app.route("/api/voices", methods=["GET", "POST", "DELETE"])
 def api_voices():
     """보이스 ID 관리 API"""
+    global _cached_voice_list  # 함수 시작 부분에 global 선언
+    
     if request.method == "GET":
         # 현재 사용 가능한 보이스 목록 반환
         voices = get_available_voices()
@@ -3178,7 +3180,6 @@ def api_voices():
         config_manager.set("custom_voice_ids", custom_voice_ids)
         
         # 캐시 무효화
-        global _cached_voice_list
         _cached_voice_list = None
         
         return jsonify({"status": "ok", "message": "보이스 ID가 추가되었습니다."})
@@ -3202,7 +3203,6 @@ def api_voices():
         config_manager.set("custom_voice_ids", custom_voice_ids)
         
         # 캐시 무효화
-        global _cached_voice_list
         _cached_voice_list = None
         
         return jsonify({"status": "ok", "message": "보이스 ID가 삭제되었습니다."})
