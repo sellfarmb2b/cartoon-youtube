@@ -27,12 +27,12 @@ jobs:
     # 런처 빌드
     - name: Build Launcher
       run: |
-        pyinstaller --name=Launcher --onefile --add-data "src/version.json:src" --exclude-module=tkinter src/launcher.py
+        pyinstaller --name=Launcher --onefile --add-data "src/version.json:src" --exclude-module=tkinter --hidden-import=pyexpat --hidden-import=xml.parsers.expat src/launcher.py
 
     # 메인 앱 빌드 (데이터 포함)
     - name: Build YouTubeMaker
       run: |
-        pyinstaller --onedir --name=YouTubeMaker --noconsole --add-data "src/templates:src/templates" --add-data "src/static:src/static" --add-data "bin/mac/ffmpeg:bin/mac" --hidden-import=requests --hidden-import=ffmpeg --hidden-import=PIL --hidden-import=PIL.Image --hidden-import=PIL.ImageOps --hidden-import=mutagen --hidden-import=mutagen.mp3 --hidden-import=elevenlabs --hidden-import=elevenlabs.client --hidden-import=replicate --hidden-import=openai --hidden-import=pywebview --hidden-import=appdirs --hidden-import=webbrowser --hidden-import=socket --hidden-import=threading --hidden-import=concurrent.futures --hidden-import=uuid --exclude-module=tkinter --exclude-module=matplotlib --exclude-module=scipy --exclude-module=pandas src/app.py
+        pyinstaller --onedir --name=YouTubeMaker --noconsole --add-data "src/templates:src/templates" --add-data "src/static:src/static" --add-data "bin/mac/ffmpeg:bin/mac" --hidden-import=requests --hidden-import=ffmpeg --hidden-import=PIL --hidden-import=PIL.Image --hidden-import=PIL.ImageOps --hidden-import=mutagen --hidden-import=mutagen.mp3 --hidden-import=elevenlabs --hidden-import=elevenlabs.client --hidden-import=replicate --hidden-import=openai --hidden-import=pywebview --hidden-import=appdirs --hidden-import=webbrowser --hidden-import=socket --hidden-import=threading --hidden-import=concurrent.futures --hidden-import=uuid --hidden-import=pyexpat --hidden-import=xml.parsers.expat --hidden-import=xml.parsers --hidden-import=xml --exclude-module=tkinter --exclude-module=matplotlib --exclude-module=scipy --exclude-module=pandas src/app.py
 
     # Launcher를 YouTubeMaker 폴더로 이동
     - name: Move Launcher to YouTubeMaker folder

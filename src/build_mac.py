@@ -54,6 +54,8 @@ def build_mac():
         # --noconsole 제거 (터미널 창이 보여야 진행 상황을 알 수 있음)
         "--add-data=src/version.json:src",
         "--exclude-module=tkinter",  # tkinter 제외 (macOS에서 모듈 없음 오류 방지)
+        "--hidden-import=pyexpat",  # XML 파싱 모듈 포함
+        "--hidden-import=xml.parsers.expat",
         "src/launcher.py"
     ]
     print(f"명령: {' '.join(launcher_cmd)}")
@@ -92,6 +94,10 @@ def build_mac():
         "--hidden-import=threading",
         "--hidden-import=concurrent.futures",
         "--hidden-import=uuid",
+        "--hidden-import=pyexpat",  # XML 파싱 모듈 포함
+        "--hidden-import=xml.parsers.expat",
+        "--hidden-import=xml.parsers",
+        "--hidden-import=xml",
         "--exclude-module=tkinter",
         "--exclude-module=matplotlib",
         "--exclude-module=scipy",
