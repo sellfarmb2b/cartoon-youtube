@@ -468,9 +468,11 @@ def enforce_animation2_prompt(prompt: str, fallback_context: str = "") -> str:
     - 풍부하고 상세한 배경, 역동적인 조명
     """
     base_style = (
-        "A vibrant, fully rendered 2D animated illustration in a high-quality explainer video aesthetic. "
+        "A vibrant, flat 2D animated illustration in a high-quality comic book art style. "
         "The character's physical base is the exact white stickman figure with a simple circular head, "
-        "minimalist black dot eyes, and clean white stick body with bold black outlines and cel-shading."
+        "minimalist black dot eyes, and clean white stick body with very bold black outlines and hard-edged cel-shading. "
+        "Ensure absolutely no 3D rendering, photorealism, volumetric lighting, or gradient shadows; "
+        "the image must look completely two-dimensional and hand-drawn."
     )
     
     character_details = (
