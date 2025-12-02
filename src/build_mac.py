@@ -86,6 +86,7 @@ def build_mac():
         "--hidden-import=elevenlabs",
         "--hidden-import=elevenlabs.client",
         "--hidden-import=replicate",
+        "--collect-all=replicate",  # replicate 패키지의 모든 서브모듈과 메타데이터 포함
         "--hidden-import=openai",
         "--hidden-import=pywebview",
         "--hidden-import=appdirs",

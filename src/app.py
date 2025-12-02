@@ -23,7 +23,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 import ffmpeg
 import webview
-import replicate
+# replicate는 조건부 import (실제 사용 시에만 import)
+try:
+    import replicate
+except ImportError:
+    replicate = None
 from flask import (
     Flask,
     render_template,
@@ -4101,6 +4105,10 @@ def generate_video_from_image(image_path: str, output_path: str, prompt: str = "
         print(f"[비디오 생성] 프롬프트: {prompt[:100] if prompt else '없음'}...")
         
         # Replicate 클라이언트 초기화
+        if replicate is None:
+            print("[비디오 생성] replicate 모듈을 사용할 수 없습니다.")
+            return False
+        
         client = replicate.Client(api_token=api_token)
         
         # wan-video/wan-2.2-i2v-fast 모델 실행
