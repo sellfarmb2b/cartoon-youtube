@@ -853,6 +853,10 @@
                     row.appendChild(imageCell);
 
                     const actionCell = document.createElement('td');
+                    const actionDiv = document.createElement('div');
+                    actionDiv.style.display = 'flex';
+                    actionDiv.style.gap = '8px';
+                    
                     const regenBtn = document.createElement('button');
                     regenBtn.type = 'button';
                     regenBtn.textContent = '재생성';
@@ -861,12 +865,65 @@
                     if (!currentJobId) {
                         regenBtn.disabled = true;
                     }
-                    actionCell.appendChild(regenBtn);
+                    actionDiv.appendChild(regenBtn);
+                    
+                    const videoBtn = document.createElement('button');
+                    videoBtn.type = 'button';
+                    videoBtn.textContent = '비디오 생성';
+                    videoBtn.dataset.index = item.index;
+                    videoBtn.className = 'video-button';
+                    videoBtn.style.background = '#10b981';
+                    videoBtn.style.color = 'white';
+                    if (!currentJobId) {
+                        videoBtn.disabled = true;
+                    }
+                    actionDiv.appendChild(videoBtn);
+                    
+                    actionCell.appendChild(actionDiv);
                     row.appendChild(actionCell);
 
                     promptTableBody.appendChild(row);
                 });
                 bindRegenerateButtons();
+                bindVideoButtons();
+            }
+
+            function bindVideoButtons() {
+                document.querySelectorAll('.video-button').forEach(btn => {
+                    btn.addEventListener('click', async (event) => {
+                        const index = parseInt(event.currentTarget.dataset.index, 10);
+                        if (!currentJobId || !index) {
+                            setStatus('먼저 프롬프트와 이미지를 준비하세요.', 'error');
+                            return;
+                        }
+                        const button = event.currentTarget;
+                        const originalText = button.textContent;
+                        button.disabled = true;
+                        button.textContent = '생성 중...';
+                        setStatus(`${index}번 이미지 비디오 변환 중...`, 'info');
+
+                        try {
+                            const response = await fetch('/generate_video_from_image', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ job_id: currentJobId, scene_index: index })
+                            });
+                            if (!response.ok) {
+                                const errorData = await response.json().catch(() => ({}));
+                                const msg = errorData.error || '비디오 생성에 실패했습니다.';
+                                throw new Error(msg);
+                            }
+                            const data = await response.json();
+                            setStatus(`${index}번 이미지가 비디오로 변환되었습니다.`, 'success');
+                        } catch (error) {
+                            console.error('비디오 생성 오류:', error);
+                            setStatus(error.message || '비디오 생성 중 오류가 발생했습니다.', 'error');
+                        } finally {
+                            button.disabled = false;
+                            button.textContent = originalText;
+                        }
+                    });
+                });
             }
 
             function bindRegenerateButtons() {

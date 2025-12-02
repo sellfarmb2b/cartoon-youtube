@@ -23,6 +23,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 import ffmpeg
 import webview
+import replicate
 from flask import (
     Flask,
     render_template,
@@ -2078,8 +2079,14 @@ def create_video(
     for idx, scene in enumerate(scene_data_with_timestamps, 1):
         scene_id = scene.get('scene_id')
         image_path = scene.get("image_file")
+        video_path = scene.get("video_file")  # 비디오 파일 경로 (있으면 사용)
         print(f"[씬 처리 시작] {idx}/{len(scene_data_with_timestamps)} - scene_{scene_id}")
         print(f"[이미지 확인] scene_{scene_id}: 원본 경로={image_path}")
+        if video_path:
+            print(f"[비디오 확인] scene_{scene_id}: 비디오 파일 경로={video_path}")
+        
+        # 비디오 파일이 있으면 우선 사용
+        has_video = video_path and os.path.exists(video_path)
         
         # 이미지 파일 존재 및 유효성 검증
         image_valid = False
@@ -2170,24 +2177,53 @@ def create_video(
             else:
                 print(f"[경고] scene_{scene_id}: 자막 추출 실패 또는 파일 없음")
             
-            # 비디오 스트림 생성 (기본 스케일)
-            # 이미지를 먼저 1920x1080으로 스케일
-            # 이미지 형식을 명시적으로 지정하여 안정적인 입력 보장
+            # 비디오 스트림 생성
+            # 비디오 파일이 있으면 우선 사용, 없으면 이미지 사용
             try:
-                # 이미지 파일이 실제로 존재하고 읽을 수 있는지 확인
-                if not os.path.exists(image_path):
-                    raise FileNotFoundError(f"이미지 파일이 존재하지 않습니다: {image_path}")
-                
-                # PIL로 이미지 크기 확인
-                with Image.open(image_path) as img:
-                    img_width, img_height = img.size
-                    print(f"[이미지 확인] scene_{scene_id}: 이미지 크기 {img_width}x{img_height}")
-                
-                # FFmpeg 입력: PNG 형식 명시적으로 지정
-                base_stream = (
-                    ffmpeg.input(image_path, format='image2', loop=1, t=duration, framerate=VIDEO_FPS)
-                    .filter("scale", 1920, 1080)
-                )
+                if has_video:
+                    # 비디오 파일 사용
+                    print(f"[비디오 사용] scene_{scene_id}: 비디오 파일 사용, TTS 길이에 맞게 조정 (duration={duration:.2f}초)")
+                    
+                    # 비디오 파일의 실제 길이 확인
+                    try:
+                        probe = ffmpeg.probe(video_path)
+                        video_duration = float(probe['streams'][0]['duration'])
+                        print(f"[비디오 정보] scene_{scene_id}: 비디오 원본 길이={video_duration:.2f}초, 필요한 길이={duration:.2f}초")
+                    except Exception as probe_exc:
+                        print(f"[경고] scene_{scene_id}: 비디오 정보 확인 실패, duration 사용: {probe_exc}")
+                        video_duration = duration
+                    
+                    # 비디오 입력
+                    video_input = ffmpeg.input(video_path)
+                    
+                    # TTS 길이에 맞게 비디오 조정
+                    if video_duration >= duration:
+                        # 비디오가 더 길면 자르기
+                        base_stream = video_input.filter("trim", duration=duration).filter("setpts", "PTS-STARTPTS")
+                        print(f"[비디오 조정] scene_{scene_id}: 비디오 자르기 ({video_duration:.2f}초 -> {duration:.2f}초)")
+                    else:
+                        # 비디오가 더 짧으면 반복 (loop)
+                        loop_count = math.ceil(duration / video_duration)
+                        base_stream = video_input.filter("loop", loop=loop_count, size=32767).filter("trim", duration=duration)
+                        print(f"[비디오 조정] scene_{scene_id}: 비디오 반복 ({video_duration:.2f}초 x {loop_count}회 -> {duration:.2f}초)")
+                    
+                    # 스케일 조정 (1920x1080으로 통일)
+                    base_stream = base_stream.filter("scale", 1920, 1080)
+                else:
+                    # 이미지 파일 사용 (기존 로직)
+                    if not os.path.exists(image_path):
+                        raise FileNotFoundError(f"이미지 파일이 존재하지 않습니다: {image_path}")
+                    
+                    # PIL로 이미지 크기 확인
+                    with Image.open(image_path) as img:
+                        img_width, img_height = img.size
+                        print(f"[이미지 확인] scene_{scene_id}: 이미지 크기 {img_width}x{img_height}")
+                    
+                    # FFmpeg 입력: PNG 형식 명시적으로 지정
+                    base_stream = (
+                        ffmpeg.input(image_path, format='image2', loop=1, t=duration, framerate=VIDEO_FPS)
+                        .filter("scale", 1920, 1080)
+                    )
             except Exception as img_exc:
                 print(f"[오류] scene_{scene_id}: 이미지 로드 실패: {img_exc}")
                 import traceback
@@ -2754,6 +2790,19 @@ def run_generation_job(
             chunk_scene_data_with_timestamps, chunk_duration = calculate_timestamps(
                 chunk_scene_data, progress_cb=lambda msg: progress(f"[청크 {chunk_idx}] {msg}")
             )
+            
+            # 비디오 파일 정보 추가 (job_data에서 가져오기)
+            with jobs_lock:
+                job_data = jobs.get(job_id)
+                if job_data is not None:
+                    video_files = job_data.get("video_files") or {}
+                    for scene in chunk_scene_data_with_timestamps:
+                        scene_id = scene.get('scene_id')
+                        if scene_id in video_files:
+                            video_path = video_files[scene_id]
+                            if os.path.exists(video_path):
+                                scene["video_file"] = video_path
+                                print(f"[비디오 추가] scene_{scene_id}: 비디오 파일 추가됨 - {video_path}")
             
             # 청크별 오디오 파일 빠른 체크
             print(f"\n[체크] 청크 {chunk_idx} 오디오 파일 확인:")
@@ -4017,6 +4066,166 @@ def api_regenerate_image():
     rel_path = os.path.relpath(abs_path, STATIC_FOLDER)
     image_url = url_for("static", filename=rel_path.replace(os.sep, "/")) + f"?v={int(time.time())}"
     return jsonify({"job_id": job_id, "scene_index": scene_index, "image_url": image_url})
+
+
+def generate_video_from_image(image_path: str, output_path: str, prompt: str = "", replicate_api_key: Optional[str] = None) -> bool:
+    """
+    이미지를 비디오로 변환하는 함수 (wan-video/wan-2.2-i2v-fast 모델 사용)
+    
+    Args:
+        image_path: 입력 이미지 파일 경로
+        output_path: 출력 비디오 파일 경로
+        prompt: 비디오 생성 프롬프트 (선택사항)
+        replicate_api_key: Replicate API 키 (선택사항, 없으면 전역 변수 사용)
+    
+    Returns:
+        bool: 성공 여부
+    """
+    try:
+        if not os.path.exists(image_path):
+            print(f"[비디오 생성] 이미지 파일이 존재하지 않습니다: {image_path}")
+            return False
+        
+        # API 키 확인
+        api_token = replicate_api_key or REPLICATE_API_TOKEN
+        if not api_token:
+            print("[비디오 생성] Replicate API 키가 설정되지 않았습니다.")
+            return False
+        
+        # 이미지를 URL로 변환 (로컬 파일이므로 업로드 필요)
+        # Replicate는 URL을 받으므로, 이미지를 임시로 서버에 호스팅하거나
+        # 직접 파일을 업로드해야 합니다.
+        # 여기서는 이미지 파일을 열어서 replicate에 전달합니다.
+        
+        print(f"[비디오 생성] 시작: {image_path} -> {output_path}")
+        print(f"[비디오 생성] 프롬프트: {prompt[:100] if prompt else '없음'}...")
+        
+        # Replicate 클라이언트 초기화
+        client = replicate.Client(api_token=api_token)
+        
+        # wan-video/wan-2.2-i2v-fast 모델 실행
+        # Replicate는 파일 경로를 직접 받을 수 있습니다
+        input_data = {
+            "image": open(image_path, "rb"),
+        }
+        
+        # 프롬프트가 있으면 추가
+        if prompt and prompt.strip():
+            input_data["prompt"] = prompt.strip()
+        
+        print(f"[비디오 생성] Replicate API 호출 중...")
+        try:
+            output = client.run(
+                "wan-video/wan-2.2-i2v-fast",
+                input=input_data
+            )
+            
+            # 출력 파일 다운로드
+            print(f"[비디오 생성] 비디오 다운로드 중...")
+            # Replicate 출력은 일반적으로 URL 문자열 또는 파일 객체입니다
+            if isinstance(output, str):
+                # URL 문자열인 경우
+                video_url = output
+                response = requests.get(video_url, timeout=300)
+                response.raise_for_status()
+                with open(output_path, "wb") as f:
+                    f.write(response.content)
+            elif hasattr(output, 'read'):
+                # 파일 객체인 경우
+                with open(output_path, "wb") as f:
+                    for chunk in output:
+                        f.write(chunk)
+            elif isinstance(output, (list, tuple)) and len(output) > 0:
+                # 리스트인 경우 (첫 번째 요소가 URL)
+                video_url = output[0]
+                if isinstance(video_url, str) and video_url.startswith("http"):
+                    response = requests.get(video_url, timeout=300)
+                    response.raise_for_status()
+                    with open(output_path, "wb") as f:
+                        f.write(response.content)
+                else:
+                    print(f"[비디오 생성] 예상치 못한 출력 형식: {type(output)}")
+                    return False
+            else:
+                print(f"[비디오 생성] 예상치 못한 출력 형식: {type(output)}, 값: {output}")
+                return False
+        finally:
+            # 파일 객체 닫기
+            if "image" in input_data and hasattr(input_data["image"], "close"):
+                input_data["image"].close()
+            
+            if not os.path.exists(output_path):
+                print(f"[비디오 생성] 출력 파일이 생성되지 않았습니다: {output_path}")
+                return False
+            
+            file_size = os.path.getsize(output_path)
+            print(f"[비디오 생성] 완료: {output_path} ({file_size} bytes)")
+            return True
+            
+    except Exception as exc:
+        print(f"[비디오 생성] 오류 발생: {exc}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+@app.route("/generate_video_from_image", methods=["POST"])
+def api_generate_video_from_image():
+    """이미지를 비디오로 변환하는 API 엔드포인트"""
+    data = request.get_json(silent=True) or {}
+    job_id = (data.get("job_id") or "").strip()
+    scene_index = data.get("scene_index")
+    prompt = (data.get("prompt") or "").strip()  # 비디오 생성 프롬프트 (선택사항)
+    replicate_api_key = data.get("replicate_api_key") or None
+    
+    if not job_id or not isinstance(scene_index, int) or scene_index < 1:
+        return jsonify({"error": "job_id와 scene_index가 필요합니다."}), 400
+    
+    job = get_job(job_id)
+    if not job:
+        return jsonify({"error": "작업을 찾을 수 없습니다."}), 404
+    
+    # 이미지 파일 경로 확인
+    image_files = job.get("image_files") or {}
+    image_path = image_files.get(scene_index)
+    
+    if not image_path or not os.path.exists(image_path):
+        return jsonify({"error": f"{scene_index}번 이미지를 찾을 수 없습니다."}), 404
+    
+    # 비디오 출력 경로
+    assets_folder = os.path.join(ASSETS_BASE_FOLDER, job_id)
+    os.makedirs(assets_folder, exist_ok=True)
+    video_filename = os.path.join(assets_folder, f"scene_{scene_index}_video.mp4")
+    
+    # 프롬프트가 없으면 기본 프롬프트 사용
+    if not prompt:
+        prompts = job.get("prompts") or []
+        if scene_index <= len(prompts):
+            prompt = prompts[scene_index - 1]
+        else:
+            prompt = "A smooth, cinematic video transition with the character in motion."
+    
+    # 비디오 생성
+    success = generate_video_from_image(image_path, video_filename, prompt=prompt, replicate_api_key=replicate_api_key)
+    
+    if not success or not os.path.exists(video_filename):
+        return jsonify({"error": "비디오 생성에 실패했습니다."}), 500
+    
+    # 작업 데이터에 비디오 파일 경로 저장
+    abs_path = os.path.abspath(video_filename)
+    with jobs_lock:
+        job_data = jobs.get(job_id)
+        if job_data is not None:
+            video_files = job_data.get("video_files") or {}
+            video_files[scene_index] = abs_path
+            job_data["video_files"] = video_files
+    
+    return jsonify({
+        "job_id": job_id,
+        "scene_index": scene_index,
+        "video_path": abs_path,
+        "message": "비디오가 생성되었습니다."
+    })
 
 
 @app.route("/check_replicate_api")
