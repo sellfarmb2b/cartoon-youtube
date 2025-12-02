@@ -460,10 +460,59 @@ def enforce_realistic_prompt(prompt: str, fallback_context: str = "") -> str:
     return prompt
 
 
+def enforce_animation2_prompt(prompt: str, fallback_context: str = "") -> str:
+    """
+    애니메이션 모드2: 고품질 익스플레인어 비디오 스타일의 스틱맨 캐릭터
+    - 참조 이미지(image_6.png)와 동일한 기본 스틱맨 형태 유지
+    - 스타일화된 카툰 의상/액세서리 착용 가능
+    - 풍부하고 상세한 배경, 역동적인 조명
+    """
+    base_style = (
+        "A vibrant, fully rendered 2D animated illustration in a high-quality explainer video aesthetic. "
+        "The character's physical base is the exact white stickman figure with a simple circular head, "
+        "minimalist black dot eyes, and clean white stick body with bold black outlines and cel-shading."
+    )
+    
+    character_details = (
+        "The character is in an expressive, dynamic pose appropriate for the scene. "
+        "The character can be wearing stylized cartoon clothing, costumes, or accessories that fit the theme of the environment. "
+        "Any clothing must match the simple, bold-line cartoon aesthetic of the stickman, avoiding overly complex or realistic textures."
+    )
+    
+    environment_lighting = (
+        "The background is a rich, detailed, and colorful stylized cartoon environment "
+        "(e.g., a bustling futuristic market, a pirate ship deck, a magical forest) filled with relevant objects. "
+        "The entire frame is filled, with NO blank or simple background regions. "
+        "The scene features dynamic, dramatic lighting with strong highlights and shadows that enhance the 2D cartoon feel."
+    )
+    
+    constraints = (
+        "Base Character Consistency: The underlying stickman form (head shape, eyes, body type) must match the reference style. "
+        "No Realistic Anatomy: Do not add realistic human features, muscles, or photorealistic clothing textures. "
+        "Stick to the simple cartoon style."
+    )
+    
+    prompt = (prompt or "").strip()
+    if not prompt:
+        prompt = fallback_context or "a scene"
+    
+    # stickman 언급이 없으면 추가
+    if "stickman" not in prompt.lower():
+        prompt = f"stickman character {fallback_context}, {prompt}".strip(", ")
+    
+    full_prompt = (
+        f"{prompt}, {base_style}, {character_details}, {environment_lighting}, {constraints}"
+    )
+    
+    return full_prompt
+
+
 def enforce_prompt_by_mode(prompt: str, fallback_context: str = "", mode: str = "animation") -> str:
     mode = (mode or "animation").lower()
     if mode == "realistic":
         return enforce_realistic_prompt(prompt, fallback_context)
+    elif mode == "animation2":
+        return enforce_animation2_prompt(prompt, fallback_context)
     return enforce_stickman_prompt(prompt, fallback_context)
 
 
@@ -738,6 +787,17 @@ def call_openai_for_prompts(offset: int, sentences: List[str], mode: str = "anim
             " Mention subjects, actions, facial expressions, body language, environment, lighting, and camera framing."
             " Avoid abstract emotions or quoting dialogue. Write in English only."
             " Do not include stylistic keywords like 'hyperrealistic'; focus only on the scene description."
+        )
+    elif mode == "animation2":
+        style_instruction = (
+            "Create a vibrant, fully rendered 2D animated illustration in a high-quality explainer video aesthetic. "
+            "The character's physical base is the exact white stickman figure with a simple circular head, "
+            "minimalist black dot eyes, and clean white stick body with bold black outlines and cel-shading. "
+            "The character can be wearing stylized cartoon clothing, costumes, or accessories that fit the theme. "
+            "The background should be a rich, detailed, and colorful stylized cartoon environment filled with relevant objects. "
+            "The entire frame must be filled with NO blank or simple background regions. "
+            "Include dynamic, dramatic lighting with strong highlights and shadows. "
+            "Maintain base character consistency - stick to the simple cartoon style, no realistic anatomy."
         )
     else:
         style_instruction = "Stick to a stickman cartoon, vibrant 2D illustration style."
@@ -1206,16 +1266,18 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
         if prompt_text:
             base_prompt = enforce_prompt_by_mode(prompt_text, fallback_context=fallback_context, mode=mode)
         else:
-            default_prompt = (
-                "A mysterious scene involving a historic landmark attracting curiosity"
-                if mode == "realistic"
-                else "stickman presenting data in a colorful studio"
-            )
+            if mode == "realistic":
+                default_prompt = "A mysterious scene involving a historic landmark attracting curiosity"
+            elif mode == "animation2":
+                default_prompt = "stickman character in a vibrant detailed scene"
+            else:
+                default_prompt = "stickman presenting data in a colorful studio"
             base_prompt = enforce_prompt_by_mode(default_prompt, fallback_context="default context", mode=mode)
 
         if mode == "realistic":
             negative_prompt = REALISTIC_NEGATIVE_PROMPT
         else:
+            # animation과 animation2는 동일한 네거티브 프롬프트 사용
             negative_prompt = (
                 "realistic human, detailed human skin, photograph, 3d render, blank white background, line-art only, text, watermark"
             )

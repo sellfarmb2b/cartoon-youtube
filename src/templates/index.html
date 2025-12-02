@@ -113,6 +113,7 @@
 
         <div class="mode-tabs">
             <button type="button" class="mode-tab active" data-mode="animation">애니메이션</button>
+            <button type="button" class="mode-tab" data-mode="animation2">애니메이션2</button>
             <button type="button" class="mode-tab" data-mode="realistic">실사화</button>
         </div>
 
@@ -943,7 +944,13 @@
                     if (currentMode === newMode) return;
                     currentMode = newMode;
                     setActiveModeTab();
-                    setStatus(`${newMode === 'realistic' ? '실사화' : '애니메이션'} 모드로 전환되었습니다. 프롬프트를 다시 생성하세요.`, 'info');
+                    let modeName = '애니메이션';
+                    if (newMode === 'realistic') {
+                        modeName = '실사화';
+                    } else if (newMode === 'animation2') {
+                        modeName = '애니메이션2';
+                    }
+                    setStatus(`${modeName} 모드로 전환되었습니다. 프롬프트를 다시 생성하세요.`, 'info');
                     if (pollingInterval) {
                         clearInterval(pollingInterval);
                         pollingInterval = null;
