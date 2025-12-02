@@ -459,6 +459,38 @@ def enforce_realistic_prompt(prompt: str, fallback_context: str = "") -> str:
     prompt = ensure_english_text((prompt or "").strip())
     if not prompt:
         prompt = fallback_context or "Detailed cinematic scene"
+    
+    # 실사화 모드에서는 스틱맨 관련 키워드 제거
+    prompt_lower = prompt.lower()
+    # 스틱맨 관련 키워드 제거
+    if "stickman" in prompt_lower:
+        # "stickman character", "stickman scene" 등의 패턴 제거
+        prompt = re.sub(r'\bstickman\s+character\s*', '', prompt, flags=re.IGNORECASE)
+        prompt = re.sub(r'\bstickman\s+scene\s*', '', prompt, flags=re.IGNORECASE)
+        prompt = re.sub(r'\bstickman\s*', '', prompt, flags=re.IGNORECASE)
+        prompt = prompt.strip()
+        # 쉼표나 공백 정리
+        prompt = re.sub(r'\s*,\s*,', ',', prompt)  # 연속된 쉼표 제거
+        prompt = re.sub(r'^\s*,\s*', '', prompt)  # 시작 쉼표 제거
+        prompt = re.sub(r'\s*,\s*$', '', prompt)  # 끝 쉼표 제거
+        prompt = prompt.strip()
+    
+    # 애니메이션 관련 키워드 제거
+    animation_keywords = [
+        'cartoon', 'illustration', '2d', 'animated', 'drawing', 'sketch',
+        'vibrant 2d', 'explainer video', 'cel-shading', 'bold lines'
+    ]
+    for keyword in animation_keywords:
+        prompt = re.sub(rf'\b{re.escape(keyword)}\s*', '', prompt, flags=re.IGNORECASE)
+        prompt = prompt.strip()
+        prompt = re.sub(r'\s*,\s*,', ',', prompt)
+        prompt = re.sub(r'^\s*,\s*', '', prompt)
+        prompt = re.sub(r'\s*,\s*$', '', prompt)
+        prompt = prompt.strip()
+    
+    if not prompt:
+        prompt = fallback_context or "Detailed cinematic scene"
+    
     if not prompt.lower().startswith(("a ", "the ")):
         prompt = prompt[0].upper() + prompt[1:]
     prompt = f"{REALISTIC_STYLE_WRAPPER}, {prompt}"
