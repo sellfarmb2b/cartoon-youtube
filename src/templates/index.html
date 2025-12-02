@@ -115,6 +115,13 @@
             <button type="button" class="mode-tab active" data-mode="animation">애니메이션</button>
             <button type="button" class="mode-tab" data-mode="animation2">애니메이션2</button>
             <button type="button" class="mode-tab" data-mode="realistic">실사화</button>
+            <button type="button" class="mode-tab" data-mode="custom">커스텀</button>
+        </div>
+
+        <div id="customPromptSection" style="display: none; margin-top: 12px; padding: 12px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+            <label for="customStylePrompt" style="display: block; margin-bottom: 8px; font-weight: 600; color: #1f2937;">커스텀 스타일 프롬프트</label>
+            <textarea id="customStylePrompt" rows="4" placeholder="예: A vibrant 2D cartoon style with bold colors, simple characters, and dynamic backgrounds..." style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-family: inherit; font-size: 14px; resize: vertical;"></textarea>
+            <p style="margin-top: 8px; color: #6b7280; font-size: 13px;">입력한 프롬프트가 기본 스타일 요소로 적용됩니다. 각 이미지 생성 시 이 스타일이 자동으로 포함됩니다.</p>
         </div>
 
         <div class="preview-controls">
@@ -905,6 +912,12 @@
                 modeTabs.forEach(tab => {
                     tab.classList.toggle('active', tab.dataset.mode === currentMode);
                 });
+                
+                // 커스텀 모드 선택 시 프롬프트 입력 필드 표시/숨김
+                const customPromptSection = document.getElementById('customPromptSection');
+                if (customPromptSection) {
+                    customPromptSection.style.display = currentMode === 'custom' ? 'block' : 'none';
+                }
             }
 
             function resetProgressPanel() {
@@ -949,8 +962,10 @@
                         modeName = '실사화';
                     } else if (newMode === 'animation2') {
                         modeName = '애니메이션2';
+                    } else if (newMode === 'custom') {
+                        modeName = '커스텀';
                     }
-                    setStatus(`${modeName} 모드로 전환되었습니다. 프롬프트를 다시 생성하세요.`, 'info');
+                    setStatus(`${modeName} 모드로 전환되었습니다. ${newMode === 'custom' ? '커스텀 스타일 프롬프트를 입력하세요.' : '프롬프트를 다시 생성하세요.'}`, 'info');
                     if (pollingInterval) {
                         clearInterval(pollingInterval);
                         pollingInterval = null;
@@ -1151,6 +1166,9 @@
                         hasElevenlabsKey: !!elevenlabsApiKey
                     });
                     
+                    const customStylePromptInput = document.getElementById('customStylePrompt');
+                    const customStylePrompt = (customStylePromptInput && currentMode === 'custom') ? customStylePromptInput.value.trim() : '';
+                    
                     const response = await fetch('/generate_images_direct', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -1159,6 +1177,7 @@
                             sentences: sentences,
                             prompts: userPrompts,
                             mode: currentMode,
+                            custom_style_prompt: customStylePrompt,
                             test_mode: isTestMode,
                             replicate_api_key: replicateApiKey,
                             elevenlabs_api_key: elevenlabsApiKey
@@ -1616,11 +1635,15 @@
                 const replicateApiKey = (settingsState.replicate_api_key || '').trim() || null;
                 const elevenlabsApiKey = (settingsState.elevenlabs_api_key || '').trim() || null;
                 
+                const customStylePromptInput = document.getElementById('customStylePrompt');
+                const customStylePrompt = (customStylePromptInput && currentMode === 'custom') ? customStylePromptInput.value.trim() : '';
+                
                 const payload = {
                     job_id: currentJobId,
                     char_limit: charLimitInput.value,
                     voice_id: voiceSelect.value,
                     mode: currentMode,
+                    custom_style_prompt: customStylePrompt,
                     include_subtitles: includeSubtitles,
                     replicate_api_key: replicateApiKey,
                     elevenlabs_api_key: elevenlabsApiKey

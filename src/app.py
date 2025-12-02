@@ -507,12 +507,34 @@ def enforce_animation2_prompt(prompt: str, fallback_context: str = "") -> str:
     return full_prompt
 
 
-def enforce_prompt_by_mode(prompt: str, fallback_context: str = "", mode: str = "animation") -> str:
+def enforce_custom_prompt(prompt: str, custom_style_prompt: str = "", fallback_context: str = "") -> str:
+    """
+    커스텀 모드: 사용자가 입력한 스타일 프롬프트를 기본 스타일 요소로 적용
+    """
+    prompt = (prompt or "").strip()
+    if not prompt:
+        prompt = fallback_context or "a scene"
+    
+    # 커스텀 스타일 프롬프트가 있으면 적용
+    if custom_style_prompt and custom_style_prompt.strip():
+        custom_style = custom_style_prompt.strip()
+        # 사용자 프롬프트와 커스텀 스타일을 결합
+        full_prompt = f"{prompt}, {custom_style}"
+    else:
+        # 커스텀 스타일이 없으면 기본 프롬프트만 사용
+        full_prompt = prompt
+    
+    return full_prompt
+
+
+def enforce_prompt_by_mode(prompt: str, fallback_context: str = "", mode: str = "animation", custom_style_prompt: str = "") -> str:
     mode = (mode or "animation").lower()
     if mode == "realistic":
         return enforce_realistic_prompt(prompt, fallback_context)
     elif mode == "animation2":
         return enforce_animation2_prompt(prompt, fallback_context)
+    elif mode == "custom":
+        return enforce_custom_prompt(prompt, custom_style_prompt, fallback_context)
     return enforce_stickman_prompt(prompt, fallback_context)
 
 
@@ -1010,7 +1032,7 @@ def generate_semantic_segments(text: str, max_segments: int = 4) -> List[str]:
         return fallback
 
 
-def generate_visual_prompts(sentences: List[str], mode: str = "animation", progress_cb=None, original_script: str = None) -> List[str]:
+def generate_visual_prompts(sentences: List[str], mode: str = "animation", progress_cb=None, original_script: str = None, custom_style_prompt: str = "") -> List[str]:
     mode = (mode or "animation").lower()
     total = len(sentences)
     if progress_cb:
@@ -1068,7 +1090,7 @@ def generate_visual_prompts(sentences: List[str], mode: str = "animation", progr
             if mode == "realistic" and focus_sentence:
                 base_prompt = f"{base_prompt}. Focus on: {focus_sentence}"
             prompts[global_idx] = enforce_prompt_by_mode(
-                base_prompt, fallback_context=f"based on '{focus_sentence[:50]}'", mode=mode
+                base_prompt, fallback_context=f"based on '{focus_sentence[:50]}'", mode=mode, custom_style_prompt=custom_style_prompt
             )
 
     if total <= OPENAI_PROMPT_BATCH_SIZE:
@@ -1246,7 +1268,7 @@ def save_image_bytes_as_png(content: bytes, filename: str, target_size=(1280, 76
             f.write(content)
 
 
-def generate_image(prompt_text: str, filename: str, mode: str = "animation", replicate_api_key: Optional[str] = None) -> bool:
+def generate_image(prompt_text: str, filename: str, mode: str = "animation", replicate_api_key: Optional[str] = None, custom_style_prompt: str = "") -> bool:
     """이미지 생성 함수 - Windows 환경 디버깅 강화"""
     print("=" * 80)
     print("=== [DEBUG] 이미지 생성 요청 받음 ===")
@@ -1264,7 +1286,7 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
         mode = (mode or "animation").lower()
         fallback_context = "scene description"
         if prompt_text:
-            base_prompt = enforce_prompt_by_mode(prompt_text, fallback_context=fallback_context, mode=mode)
+            base_prompt = enforce_prompt_by_mode(prompt_text, fallback_context=fallback_context, mode=mode, custom_style_prompt=custom_style_prompt)
         else:
             if mode == "realistic":
                 default_prompt = "A mysterious scene involving a historic landmark attracting curiosity"
@@ -1272,7 +1294,7 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                 default_prompt = "stickman character in a vibrant detailed scene"
             else:
                 default_prompt = "stickman presenting data in a colorful studio"
-            base_prompt = enforce_prompt_by_mode(default_prompt, fallback_context="default context", mode=mode)
+            base_prompt = enforce_prompt_by_mode(default_prompt, fallback_context="default context", mode=mode, custom_style_prompt=custom_style_prompt)
 
         if mode == "realistic":
             negative_prompt = REALISTIC_NEGATIVE_PROMPT
@@ -1651,12 +1673,13 @@ def generate_assets(
     scene_offset: int = 0,
     replicate_api_key: Optional[str] = None,
     elevenlabs_api_key: Optional[str] = None,
+    custom_style_prompt: str = "",
 ):
     print(f"\n[generate_assets 시작] scene_offset={scene_offset}, 문장 개수={len(sentences)}, assets_folder={assets_folder}")
     print(f"  예상 scene_id 범위: {scene_offset + 1} ~ {scene_offset + len(sentences)}")
     cleanup_assets_folder(assets_folder)
     os.makedirs(assets_folder, exist_ok=True)
-    image_prompts = prompts_override or generate_visual_prompts(sentences, mode=mode, progress_cb=progress_cb, original_script=original_script)
+    image_prompts = prompts_override or generate_visual_prompts(sentences, mode=mode, progress_cb=progress_cb, original_script=original_script, custom_style_prompt=custom_style_prompt)
     existing_images = existing_images or {}
     results = {}
 
@@ -1687,7 +1710,7 @@ def generate_assets(
             shutil.copy(img_path, image_file)
             image_generated = True
         else:
-            image_generated = generate_image(prompt, image_file, mode=mode, replicate_api_key=replicate_api_key)
+            image_generated = generate_image(prompt, image_file, mode=mode, replicate_api_key=replicate_api_key, custom_style_prompt=custom_style_prompt)
 
         semantic_segments = generate_semantic_segments(text)
 
@@ -2618,6 +2641,7 @@ def run_generation_job(
     include_subtitles=True,
     replicate_api_key=None,
     elevenlabs_api_key=None,
+    custom_style_prompt="",
 ):
     print("=" * 80)
     print("=== [DEBUG] 영상 생성 작업 시작 ===")
@@ -2718,6 +2742,7 @@ def run_generation_job(
                 scene_offset=sentence_offset,  # 전체 인덱스가 연속되도록 offset 전달
                 replicate_api_key=replicate_api_key,
                 elevenlabs_api_key=elevenlabs_api_key,
+                custom_style_prompt=custom_style_prompt,
             )
             if not chunk_scene_data:
                 raise RuntimeError(f"청크 {chunk_idx} 자산 생성에 실패했습니다.")
@@ -3368,6 +3393,7 @@ def start_job():
     char_limit_raw = str(payload.get("char_limit") or "").strip()
     voice_id = (payload.get("voice_id") or "").strip()
     mode = (payload.get("mode") or "animation").strip().lower()
+    custom_style_prompt = (payload.get("custom_style_prompt") or "").strip()  # 커스텀 모드 스타일 프롬프트
     include_subtitles = payload.get("include_subtitles", True)  # 기본값은 True (자막 포함)
     # API 키 (사용자가 입력한 경우 사용, 없으면 기본값 사용)
     replicate_api_key = payload.get("replicate_api_key") or None
@@ -3423,7 +3449,7 @@ def start_job():
 
     thread = threading.Thread(
         target=run_generation_job,
-        args=(job_id, script_text, char_limit, voice_id, prompts_override, existing_images, mode, sentences_override, include_subtitles, replicate_api_key, elevenlabs_api_key),
+        args=(job_id, script_text, char_limit, voice_id, prompts_override, existing_images, mode, sentences_override, include_subtitles, replicate_api_key, elevenlabs_api_key, custom_style_prompt),
         daemon=True,
     )
     thread.start()
@@ -3436,6 +3462,7 @@ def api_generate_prompts():
     data = request.get_json(silent=True) or {}
     script_text = (data.get("script_text") or "").strip()
     mode = (data.get("mode") or "animation").strip().lower()
+    custom_style_prompt = (data.get("custom_style_prompt") or "").strip()  # 커스텀 모드 스타일 프롬프트
     user_prompts = data.get("user_prompts")  # 사용자가 입력한 프롬프트 리스트
     
     if not script_text:
@@ -3476,7 +3503,8 @@ def api_generate_prompts():
                         prompts.append(enforce_prompt_by_mode(
                             user_prompt.strip(),
                             fallback_context=f"based on '{sentence[:50]}'",
-                            mode=mode
+                            mode=mode,
+                            custom_style_prompt=custom_style_prompt
                         ))
                     else:
                         # 사용자 입력이 없으면 자동 생성
@@ -3514,7 +3542,8 @@ def api_generate_prompts():
                         sentences_to_generate,
                         mode=mode,
                         progress_cb=progress_callback,
-                        original_script=script_text
+                        original_script=script_text,
+                        custom_style_prompt=custom_style_prompt
                     )
                     
                     # 자동 생성된 프롬프트를 원래 위치에 삽입
@@ -3555,7 +3584,7 @@ def api_generate_prompts():
                             job_data["current_stage"] = f"프롬프트 생성 중... ({message})"
                             job_data["progress"].append(message)
                 
-                prompts = generate_visual_prompts(sentences, mode=mode, progress_cb=progress_callback, original_script=script_text)
+                prompts = generate_visual_prompts(sentences, mode=mode, progress_cb=progress_callback, original_script=script_text, custom_style_prompt=custom_style_prompt)
                 
                 with jobs_lock:
                     job_data = jobs.get(job_id)
@@ -3750,6 +3779,7 @@ def api_generate_images_direct():
     sentences = data.get("sentences") or []
     prompts = data.get("prompts") or []
     mode = (data.get("mode") or "animation").strip().lower()
+    custom_style_prompt = (data.get("custom_style_prompt") or "").strip()  # 커스텀 모드 스타일 프롬프트
     test_mode = data.get("test_mode", False)
     # API 키 (사용자가 입력한 경우 사용, 없으면 기본값 사용)
     replicate_api_key = data.get("replicate_api_key") or None
@@ -3849,7 +3879,7 @@ def api_generate_images_direct():
                         # 이미지 생성 실행
                         log_debug(f"[이미지 생성] {idx}번 이미지 생성 함수 호출 시작")
                         try:
-                            success = generate_image(prompt, image_filename, mode=mode, replicate_api_key=replicate_api_key)
+                            success = generate_image(prompt, image_filename, mode=mode, replicate_api_key=replicate_api_key, custom_style_prompt=custom_style_prompt)
                             log_debug(f"[이미지 생성] {idx}번 generate_image 반환값: {success}")
                         except Exception as gen_exc:
                             log_error(f"[이미지 생성] {idx}번 generate_image 예외 발생", exc_info=gen_exc)
