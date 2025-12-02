@@ -34,8 +34,18 @@
         th { background:#f3f4f6; color:#1f2937; font-weight:700; }
         pre { white-space: pre-wrap; word-break: break-word; margin:0; font-family: inherit; }
         .img-placeholder { color:#9ca3af; font-style:italic; }
-        img.prompt-img { max-width:180px; border-radius:10px; box-shadow:0 6px 12px rgba(15,23,42,0.15); }
+        img.prompt-img { max-width:180px; border-radius:10px; box-shadow:0 6px 12px rgba(15,23,42,0.15); cursor:pointer; transition:transform 0.2s ease; }
+        img.prompt-img:hover { transform:scale(1.05); }
         #progressPanel { display:none; }
+        /* 미리보기 모달 스타일 */
+        .preview-modal { position:fixed; inset:0; background:rgba(15,23,42,0.9); display:none; align-items:center; justify-content:center; z-index:10001; padding:20px; }
+        .preview-modal.active { display:flex; }
+        .preview-modal-content { position:relative; max-width:90vw; max-height:90vh; background:#000; border-radius:12px; overflow:hidden; box-shadow:0 25px 50px rgba(0,0,0,0.5); }
+        .preview-modal-content img { max-width:100%; max-height:90vh; display:block; margin:0 auto; }
+        .preview-modal-content video { max-width:100%; max-height:90vh; display:block; }
+        .preview-close { position:absolute; top:10px; right:10px; background:rgba(0,0,0,0.7); border:none; color:#fff; font-size:28px; width:40px; height:40px; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; z-index:10; transition:background 0.2s ease; }
+        .preview-close:hover { background:rgba(0,0,0,0.9); }
+        .preview-title { position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.7); color:#fff; padding:8px 16px; border-radius:6px; font-size:14px; font-weight:600; z-index:10; }
         #progressPanel ul { list-style:none; padding-left:0; margin-top:12px; max-height:220px; overflow-y:auto; }
         #progressPanel li { padding:8px 0; border-bottom:1px solid #e5e7eb; font-size:14px; color:#4b5563; }
         progress { width:100%; height:16px; border-radius:999px; background:#e0e7ff; overflow:hidden; }
@@ -170,11 +180,15 @@
         {% if video_filename %}
         <div class="card">
             <h2 style="margin-top:0; color:#1f2937;">🎉 영상 생성 완료!</h2>
-            <p>아래 링크를 눌러 다운로드하세요.</p>
+            <p>아래 버튼을 눌러 미리보기하거나 다운로드하세요.</p>
             {% set video_job_id = video_filename.replace('final_video_', '').replace('.mp4', '') %}
-            <a href="/download_video/{{ video_job_id }}" style="display:inline-block; margin-top:10px;">
-                <button type="button">{{ video_filename }} 다운로드</button>
-            </a>
+            {% set video_url = url_for('static', filename=video_filename) %}
+            <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
+                <button type="button" onclick="showVideoPreview('{{ video_url }}', '생성된 영상 미리보기')" style="background:#8b5cf6;">영상 미리보기</button>
+                <a href="/download_video/{{ video_job_id }}" style="display:inline-block;">
+                    <button type="button">{{ video_filename }} 다운로드</button>
+                </a>
+            </div>
         </div>
         {% endif %}
     </div>
@@ -224,31 +238,65 @@
     </div>
 </div>
 
-<div id="stageModal">
-    <div class="stage-modal-content">
-        <h3>작업 진행 상태</h3>
-        <ul class="stage-list">
-            <li class="stage-item pending" data-stage="1" data-stage-key="자산 생성">
-                <span>1. 자산 생성</span>
-                <span class="status-dot"></span>
-            </li>
-            <li class="stage-item pending" data-stage="2" data-stage-key="타임스탬프 계산">
-                <span>2. 타임스탬프 계산</span>
-                <span class="status-dot"></span>
-            </li>
-            <li class="stage-item pending" data-stage="3" data-stage-key="영상 합성">
-                <span>3. 영상 합성</span>
-                <span class="status-dot"></span>
-            </li>
-        </ul>
-        <div class="stage-progress-track">
-            <div class="stage-progress-bar" id="stageProgressBar"></div>
+    <div id="stageModal">
+        <div class="stage-modal-content">
+            <h3>작업 진행 상태</h3>
+            <ul class="stage-list">
+                <li class="stage-item pending" data-stage="1" data-stage-key="자산 생성">
+                    <span>1. 자산 생성</span>
+                    <span class="status-dot"></span>
+                </li>
+                <li class="stage-item pending" data-stage="2" data-stage-key="타임스탬프 계산">
+                    <span>2. 타임스탬프 계산</span>
+                    <span class="status-dot"></span>
+                </li>
+                <li class="stage-item pending" data-stage="3" data-stage-key="영상 합성">
+                    <span>3. 영상 합성</span>
+                    <span class="status-dot"></span>
+                </li>
+            </ul>
+            <div class="stage-progress-track">
+                <div class="stage-progress-bar" id="stageProgressBar"></div>
+            </div>
+            <button type="button" class="stage-close" id="stageCloseBtn">닫기</button>
         </div>
-        <button type="button" class="stage-close" id="stageCloseBtn">닫기</button>
     </div>
-</div>
+
+    <!-- 이미지/동영상 미리보기 모달 -->
+    <div id="previewModal" class="preview-modal">
+        <div class="preview-modal-content">
+            <button type="button" class="preview-close" id="previewCloseBtn" aria-label="닫기">&times;</button>
+            <div class="preview-title" id="previewTitle"></div>
+            <div id="previewContent"></div>
+        </div>
+    </div>
 
 <script>
+        // 이미지/동영상 미리보기 함수 (전역 스코프)
+        function showImagePreview(imageUrl, title = '이미지 미리보기') {
+            const previewModal = document.getElementById('previewModal');
+            const previewContent = document.getElementById('previewContent');
+            const previewTitle = document.getElementById('previewTitle');
+            
+            if (!previewModal || !previewContent) return;
+            
+            previewTitle.textContent = title;
+            previewContent.innerHTML = `<img src="${imageUrl}" alt="${title}" style="max-width:100%; max-height:90vh; display:block; margin:0 auto;">`;
+            previewModal.classList.add('active');
+        }
+        
+        function showVideoPreview(videoUrl, title = '동영상 미리보기') {
+            const previewModal = document.getElementById('previewModal');
+            const previewContent = document.getElementById('previewContent');
+            const previewTitle = document.getElementById('previewTitle');
+            
+            if (!previewModal || !previewContent) return;
+            
+            previewTitle.textContent = title;
+            previewContent.innerHTML = `<video controls autoplay style="max-width:100%; max-height:90vh; display:block; margin:0 auto;"><source src="${videoUrl}" type="video/mp4">브라우저가 비디오 태그를 지원하지 않습니다.</video>`;
+            previewModal.classList.add('active');
+        }
+        
         // 비디오 파일 다운로드 함수 (전역 스코프)
         async function downloadVideo(jobId) {
             try {
@@ -316,6 +364,8 @@
             const closeSettingsBtn = document.getElementById('closeSettingsBtn');
             const cancelSettingsBtn = document.getElementById('cancelSettingsBtn');
             const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+            const previewModal = document.getElementById('previewModal');
+            const previewCloseBtn = document.getElementById('previewCloseBtn');
             const settingsReplicateInput = document.getElementById('settingsReplicateKey');
             const settingsElevenlabsInput = document.getElementById('settingsElevenlabsKey');
             const settingsOpenaiInput = document.getElementById('settingsOpenaiKey');
@@ -843,6 +893,10 @@
                         img.src = imageUrl;
                         img.alt = `Scene ${item.index}`;
                         img.className = 'prompt-img';
+                        img.style.cursor = 'pointer';
+                        img.addEventListener('click', () => {
+                            showImagePreview(imageUrl, `Scene ${item.index} 이미지`);
+                        });
                         imageCell.appendChild(img);
                     } else {
                         const span = document.createElement('span');
@@ -1762,11 +1816,15 @@
                                 progressMessage.textContent = '🎉 영상이 성공적으로 생성되었습니다.';
                                 stageModal.classList.add('stage-complete');
                                 stageCloseBtn.style.display = 'block';
+                                const videoPreviewUrl = data.video_url;
                                 resultContainer.innerHTML = `
                                     <div class="card">
                                         <h2 style="margin-top:0; color:#1f2937;">🎉 영상 생성 완료!</h2>
-                                        <p>아래 버튼을 눌러 다운로드하세요.</p>
+                                        <p>아래 버튼을 눌러 다운로드하거나 미리보기하세요.</p>
                                         <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
+                                            <button type="button" onclick="showVideoPreview('${videoPreviewUrl}', '생성된 영상 미리보기')" style="background:#8b5cf6;">
+                                                영상 미리보기
+                                            </button>
                                             <button type="button" onclick="downloadVideo('${jobId}')">영상 다운로드</button>
                                             <button type="button" onclick="window.location.href='/download_images/${jobId}'" style="background:#10b981;">
                                                 일괄 사진 다운로드
@@ -1911,7 +1969,28 @@
                 if (event.key === 'Escape' && settingsModal && settingsModal.classList.contains('active')) {
                     closeSettingsModal();
                 }
+                if (event.key === 'Escape' && previewModal && previewModal.classList.contains('active')) {
+                    previewModal.classList.remove('active');
+                }
             });
+
+            // 미리보기 모달 닫기 이벤트
+            if (previewCloseBtn) {
+                previewCloseBtn.addEventListener('click', () => {
+                    if (previewModal) {
+                        previewModal.classList.remove('active');
+                    }
+                });
+            }
+
+            // 미리보기 모달 배경 클릭 시 닫기
+            if (previewModal) {
+                previewModal.addEventListener('click', (event) => {
+                    if (event.target === previewModal) {
+                        previewModal.classList.remove('active');
+                    }
+                });
+            }
 
             loadSettings();
         });
