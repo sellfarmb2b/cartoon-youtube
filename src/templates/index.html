@@ -96,7 +96,10 @@
                 <h1 style="margin:0;">셀팜 AI 애니메이션 메이커</h1>
                 <button type="button" id="testModeBtn" style="background:#10b981; padding:8px 16px; font-size:14px;">테스트</button>
             </div>
-            <button type="button" id="openSettingsBtn" class="settings-button" title="API 키 설정">⚙️ 설정</button>
+            <div style="display:flex; align-items:center; gap:12px;">
+                <button type="button" id="restartBtn" style="background:#ef4444; padding:8px 16px; font-size:14px; font-weight:600;" title="모든 작업을 초기화하고 처음부터 시작합니다 (API 키는 보존됩니다)">🔄 재시작</button>
+                <button type="button" id="openSettingsBtn" class="settings-button" title="API 키 설정">⚙️ 설정</button>
+            </div>
         </div>
         <p>대본을 입력하고 원하는 스타일을 선택한 뒤, 단계별로 프롬프트 → 이미지 → 영상을 생성하세요.</p>
 
@@ -1093,6 +1096,91 @@
                     resultContainer.innerHTML = '';
                 });
             });
+
+            // 재시작 버튼
+            const restartBtn = document.getElementById('restartBtn');
+            if (restartBtn) {
+                restartBtn.addEventListener('click', function() {
+                    if (confirm('모든 작업을 초기화하고 처음부터 시작하시겠습니까?\n\n(API 키는 보존됩니다)')) {
+                        // pollingInterval 정리
+                        if (pollingInterval) {
+                            clearInterval(pollingInterval);
+                            pollingInterval = null;
+                        }
+                        
+                        // 상태 변수 초기화
+                        currentJobId = null;
+                        promptItems = [];
+                        imageItems = {};
+                        isTestMode = false;
+                        
+                        // UI 초기화
+                        scriptInput.value = '';
+                        promptInputSection.style.display = 'none';
+                        promptInputs.innerHTML = '';
+                        promptSection.style.display = 'none';
+                        promptTableBody.innerHTML = '';
+                        resultContainer.innerHTML = '';
+                        progressPanel.style.display = 'none';
+                        progressBar.value = 0;
+                        progressMessage.textContent = '';
+                        progressLog.innerHTML = '';
+                        statusMessage.style.display = 'none';
+                        statusMessage.textContent = '';
+                        previewText.value = '';
+                        previewAudio.src = '';
+                        previewAudio.style.display = 'none';
+                        previewStatus.textContent = '';
+                        
+                        // 커스텀 프롬프트 초기화
+                        const customStylePromptInput = document.getElementById('customStylePrompt');
+                        if (customStylePromptInput) {
+                            customStylePromptInput.value = '';
+                        }
+                        
+                        // 버튼 상태 초기화
+                        generateImagesBtn.disabled = true;
+                        generateImagesBtn.textContent = '2단계: 이미지 생성';
+                        generateVideoBtn.disabled = true;
+                        generateVideoBtn.textContent = '3단계: 영상 생성';
+                        
+                        // 테스트 모드 버튼 초기화
+                        if (testModeBtn) {
+                            testModeBtn.style.background = '#10b981';
+                            testModeBtn.textContent = '테스트';
+                        }
+                        
+                        // 모드 탭 초기화 (애니메이션 모드로)
+                        currentMode = 'animation';
+                        modeTabs.forEach(tab => {
+                            tab.classList.toggle('active', tab.dataset.mode === 'animation');
+                        });
+                        const customPromptSection = document.getElementById('customPromptSection');
+                        if (customPromptSection) {
+                            customPromptSection.style.display = 'none';
+                        }
+                        
+                        // 스테이지 모달 초기화
+                        if (stageModal) {
+                            stageModal.classList.remove('active', 'stage-complete', 'stage-error');
+                            stageItems.forEach(item => {
+                                item.classList.remove('completed', 'active', 'error');
+                            });
+                            if (stageProgressBar) {
+                                stageProgressBar.style.width = '0%';
+                            }
+                            if (stageCloseBtn) {
+                                stageCloseBtn.style.display = 'none';
+                            }
+                        }
+                        
+                        setStatus('모든 작업이 초기화되었습니다. 처음부터 시작할 수 있습니다.', 'success');
+                        
+                        // 스크롤을 맨 위로
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }
+                });
+            }
 
             // 테스트 모드 버튼
             const testModeBtn = document.getElementById('testModeBtn');
