@@ -3946,14 +3946,6 @@ def api_generate_images_direct():
     assets_folder = os.path.join(ASSETS_BASE_FOLDER, job_id)
     os.makedirs(assets_folder, exist_ok=True)
     
-    # 이미지 생성이 이미 진행 중인지 확인 (같은 job_id에 대해)
-    with jobs_lock:
-        job_data = jobs.get(job_id)
-        if job_data and job_data.get("status") == "running" and job_data.get("current_stage") == "이미지 생성 중":
-            # 이미 생성 중이면 기존 job_id 반환
-            print(f"[API] 경고: job_id {job_id}에 대한 이미지 생성이 이미 진행 중입니다.")
-            return jsonify({"job_id": job_id, "status": "already_running", "message": "이미지 생성이 이미 진행 중입니다."})
-    
     def generate_images_with_progress():
         print("=" * 80)
         print("=== [DEBUG] 이미지 생성 시작 ===")
