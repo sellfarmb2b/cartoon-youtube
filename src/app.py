@@ -505,11 +505,9 @@ def enforce_animation2_prompt(prompt: str, fallback_context: str = "") -> str:
     - 풍부하고 상세한 배경, 역동적인 조명
     """
     base_style = (
-        "A vibrant, flat 2D animated illustration in a high-quality comic book art style. "
-        "The character's physical base is the exact white stickman figure with a simple circular head, "
-        "minimalist black dot eyes, and clean white stick body with very bold black outlines and hard-edged cel-shading. "
-        "Ensure absolutely no 3D rendering, photorealism, volumetric lighting, or gradient shadows; "
-        "the image must look completely two-dimensional and hand-drawn."
+        "Flat 2D vector illustration, minimal vector art, white stickman figure with simple circular head, "
+        "minimalist black dot eyes, thick bold black outlines, unshaded, flat solid colors, cel-shaded, "
+        "simple line art, comic book inking style, completely flat, no shadows, no gradients, no depth."
     )
     
     character_details = (
@@ -1337,8 +1335,14 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
 
         if mode == "realistic":
             negative_prompt = REALISTIC_NEGATIVE_PROMPT
+        elif mode == "animation2":
+            # 애니메이션2 모드 전용 네거티브 프롬프트
+            negative_prompt = (
+                "3d, realistic, photorealistic, cgi, render, blender, volumetric lighting, gradient, shadow, depth, "
+                "fuzzy, blurred, texture, detail, oil painting, water color"
+            )
         else:
-            # animation과 animation2는 동일한 네거티브 프롬프트 사용
+            # animation 모드는 기존 네거티브 프롬프트 사용
             negative_prompt = (
                 "realistic human, detailed human skin, photograph, 3d render, blank white background, line-art only, text, watermark"
             )
