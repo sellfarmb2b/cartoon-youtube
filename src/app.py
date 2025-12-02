@@ -4435,8 +4435,10 @@ def static_files(filename):
         return response, 404
     
     # 비디오 파일인 경우 다운로드로 처리
+    # 중요: 이 엔드포인트는 다운로드만 수행하며, 이미지 생성이나 다른 작업을 트리거하지 않습니다.
     if filename.endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm')):
         print(f"[다운로드] 비디오 파일 다운로드: {filename} (경로: {file_path})")
+        print(f"[다운로드] 주의: 이 엔드포인트는 이미지 생성을 절대 트리거하지 않습니다.")
         try:
             # 다운로드 폴더 경로 확인 및 파일 복사
             download_folder_path = config_manager.get("download_folder_path", "").strip()
@@ -4449,6 +4451,7 @@ def static_files(filename):
                     print(f"[경고] 다운로드 폴더로 복사 실패: {copy_error}")
             
             # send_file을 사용하여 명시적으로 다운로드 설정 (재생 방지)
+            # 중요: 이 엔드포인트는 이미지 생성을 절대 트리거하지 않습니다.
             response = send_file(
                 file_path,
                 mimetype='application/octet-stream',  # video/mp4 대신 octet-stream 사용하여 재생 방지
@@ -4458,6 +4461,7 @@ def static_files(filename):
             # Content-Disposition 헤더 명시적으로 설정
             response.headers['Content-Disposition'] = f'attachment; filename="{os.path.basename(filename)}"'
             response.headers['Content-Type'] = 'application/octet-stream'
+            print(f"[다운로드] 파일 전송 완료: {filename}")
             return response
         except Exception as e:
             print(f"[다운로드 오류] 파일 전송 실패: {e}")
@@ -4644,16 +4648,24 @@ def api_debug_log():
 
 @app.route("/download_video/<job_id>")
 def download_video(job_id):
-    """생성된 최종 비디오 파일 다운로드"""
+    """생성된 최종 비디오 파일 다운로드
+    
+    중요: 이 엔드포인트는 다운로드만 수행하며, 이미지 생성이나 다른 작업을 트리거하지 않습니다.
+    """
+    print(f"[다운로드] 비디오 다운로드 요청: job_id={job_id}")
+    print(f"[다운로드] 주의: 이 엔드포인트는 이미지 생성을 절대 트리거하지 않습니다.")
     try:
         _, _, video_file = get_job_paths(job_id)
         if not os.path.exists(video_file):
+            print(f"[다운로드 오류] 영상 파일을 찾을 수 없습니다: {video_file}")
             return jsonify({"error": "영상 파일을 찾을 수 없습니다."}), 404
 
         if os.path.getsize(video_file) == 0:
+            print(f"[다운로드 오류] 영상 파일이 비어 있습니다: {video_file}")
             return jsonify({"error": "영상 파일이 비어 있습니다."}), 404
 
         download_name = os.path.basename(video_file)
+        print(f"[다운로드] 파일 다운로드 시작: {download_name} (크기: {os.path.getsize(video_file)} bytes)")
         
         # 다운로드 폴더 경로 확인 및 파일 복사
         download_folder_path = config_manager.get("download_folder_path", "").strip()
@@ -4666,6 +4678,7 @@ def download_video(job_id):
                 print(f"[경고] 다운로드 폴더로 복사 실패: {copy_error}")
         
         # 다운로드만 되도록 명시적으로 설정
+        # 중요: 이 엔드포인트는 이미지 생성을 절대 트리거하지 않습니다.
         response = send_file(
             video_file,
             mimetype="application/octet-stream",  # video/mp4 대신 octet-stream 사용하여 재생 방지
@@ -4675,6 +4688,7 @@ def download_video(job_id):
         # Content-Disposition 헤더 명시적으로 설정 (재생 방지)
         response.headers['Content-Disposition'] = f'attachment; filename="{download_name}"'
         response.headers['Content-Type'] = 'application/octet-stream'
+        print(f"[다운로드] 파일 전송 완료: {download_name}")
         return response
     except Exception as e:
         print(f"[다운로드 오류] 비디오 파일 다운로드 실패: {e}")
