@@ -3909,6 +3909,7 @@ def api_generate_images_direct():
     ).hexdigest()
     
     current_time = time.time()
+    global _recent_image_requests
     with _recent_requests_lock:
         if request_hash in _recent_image_requests:
             last_request_time = _recent_image_requests[request_hash]
