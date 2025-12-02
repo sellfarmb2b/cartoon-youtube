@@ -1748,12 +1748,20 @@ def generate_assets(
             progress_cb(f"{scene_num}번 씬 이미지 생성 중...")
 
         # existing_images는 전체 인덱스를 사용하므로 그대로 사용
-        img_path = existing_images.get(scene_num)
-        if img_path and os.path.exists(img_path):
-            shutil.copy(img_path, image_file)
+        # 이미지가 이미 존재하는지 먼저 확인 (중복 생성 방지)
+        if os.path.exists(image_file):
+            print(f"[이미지 확인] scene_{scene_num}: 이미지가 이미 존재함 - {image_file} (크기: {os.path.getsize(image_file)} bytes)")
             image_generated = True
         else:
-            image_generated = generate_image(prompt, image_file, mode=mode, replicate_api_key=replicate_api_key, custom_style_prompt=custom_style_prompt)
+            # existing_images에서 이미지 경로 확인
+            img_path = existing_images.get(scene_num)
+            if img_path and os.path.exists(img_path):
+                print(f"[이미지 복사] scene_{scene_num}: existing_images에서 이미지 복사 - {img_path} -> {image_file}")
+                shutil.copy(img_path, image_file)
+                image_generated = True
+            else:
+                print(f"[이미지 생성] scene_{scene_num}: 새 이미지 생성 시작 - {image_file}")
+                image_generated = generate_image(prompt, image_file, mode=mode, replicate_api_key=replicate_api_key, custom_style_prompt=custom_style_prompt)
 
         semantic_segments = generate_semantic_segments(text)
 
