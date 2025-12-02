@@ -2666,6 +2666,9 @@ def create_video(
 
 
 jobs_lock = threading.Lock()
+# 중복 요청 방지를 위한 딕셔너리 (요청 해시 -> 마지막 요청 시간)
+_recent_image_requests = {}
+_recent_requests_lock = threading.Lock()
 jobs: Dict[str, Dict[str, Any]] = {}
 
 
@@ -3873,6 +3876,11 @@ def api_generate_images():
 @app.route("/generate_images_direct", methods=["POST"])
 def api_generate_images_direct():
     """프롬프트 생성 단계를 건너뛰고 바로 이미지 생성"""
+    print("=" * 80)
+    print("=== [API] /generate_images_direct 요청 받음 ===")
+    print(f"=== [API] 요청 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===")
+    print("=" * 80)
+    
     data = request.get_json(silent=True) or {}
     script_text = (data.get("script_text") or "").strip()
     sentences = data.get("sentences") or []
@@ -3884,13 +3892,39 @@ def api_generate_images_direct():
     replicate_api_key = data.get("replicate_api_key") or None
     elevenlabs_api_key = data.get("elevenlabs_api_key") or None
     
+    print(f"[API] 요청 파라미터: sentences={len(sentences)}, prompts={len(prompts)}, mode={mode}, test_mode={test_mode}")
+    
     if not script_text or not sentences or not prompts:
+        print("[API] 오류: 대본, 문장, 프롬프트가 모두 필요합니다.")
         return jsonify({"error": "대본, 문장, 프롬프트가 모두 필요합니다."}), 400
     
     if len(sentences) != len(prompts):
+        print(f"[API] 오류: 문장({len(sentences)})과 프롬프트({len(prompts)})의 개수가 일치하지 않습니다.")
         return jsonify({"error": "문장과 프롬프트의 개수가 일치하지 않습니다."}), 400
     
+    # 중복 요청 방지: 같은 요청이 5초 이내에 들어오면 무시
+    import hashlib
+    request_hash = hashlib.md5(
+        (script_text + str(sentences) + str(prompts) + mode).encode('utf-8')
+    ).hexdigest()
+    
+    current_time = time.time()
+    with _recent_requests_lock:
+        if request_hash in _recent_image_requests:
+            last_request_time = _recent_image_requests[request_hash]
+            time_since_last = current_time - last_request_time
+            if time_since_last < 5.0:  # 5초 이내 중복 요청
+                print(f"[API] 중복 요청 감지: {time_since_last:.2f}초 전 동일한 요청이 있었습니다. 무시합니다.")
+                return jsonify({"error": "중복 요청입니다. 잠시 후 다시 시도해주세요."}), 429
+        _recent_image_requests[request_hash] = current_time
+        # 오래된 요청 기록 정리 (1분 이상 된 것)
+        _recent_image_requests = {
+            k: v for k, v in _recent_image_requests.items() 
+            if current_time - v < 60.0
+        }
+    
     job_id = create_job_record()
+    print(f"[API] 새 job_id 생성: {job_id}")
     
     # 진행도 초기화
     with jobs_lock:
@@ -3910,6 +3944,14 @@ def api_generate_images_direct():
     
     assets_folder = os.path.join(ASSETS_BASE_FOLDER, job_id)
     os.makedirs(assets_folder, exist_ok=True)
+    
+    # 이미지 생성이 이미 진행 중인지 확인 (같은 job_id에 대해)
+    with jobs_lock:
+        job_data = jobs.get(job_id)
+        if job_data and job_data.get("status") == "running" and job_data.get("current_stage") == "이미지 생성 중":
+            # 이미 생성 중이면 기존 job_id 반환
+            print(f"[API] 경고: job_id {job_id}에 대한 이미지 생성이 이미 진행 중입니다.")
+            return jsonify({"job_id": job_id, "status": "already_running", "message": "이미지 생성이 이미 진행 중입니다."})
     
     def generate_images_with_progress():
         print("=" * 80)

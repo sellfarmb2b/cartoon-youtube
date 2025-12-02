@@ -1234,8 +1234,17 @@
 
             // 프롬프트 생성 버튼 제거됨 - 대본 입력 시 자동으로 패턴 감지 및 분류
 
+            // 이미지 생성 중복 호출 방지를 위한 플래그
+            let isGeneratingImages = false;
+            
             generateImagesBtn.addEventListener('click', async () => {
                 console.log('[이미지 생성] 버튼 클릭됨');
+                
+                // 중복 호출 방지: 이미 생성 중이면 무시
+                if (isGeneratingImages) {
+                    console.warn('[이미지 생성] 이미 생성 중입니다. 중복 호출을 무시합니다.');
+                    return;
+                }
                 
                 // 버튼이 disabled 상태인지 확인
                 if (generateImagesBtn.disabled) {
@@ -1244,12 +1253,20 @@
                     return;
                 }
                 
+                // 즉시 플래그 설정 및 버튼 비활성화 (중복 클릭 방지)
+                isGeneratingImages = true;
+                generateImagesBtn.disabled = true;
+                generateImagesBtn.textContent = '생성 중...';
+                
                 const scriptText = scriptInput.value.trim();
                 console.log('[이미지 생성] 대본 길이:', scriptText.length);
                 
                 if (!scriptText) {
                     console.warn('[이미지 생성] 대본이 비어있습니다.');
                     setStatus('대본을 입력해 주세요.', 'error');
+                    isGeneratingImages = false;
+                    generateImagesBtn.disabled = false;
+                    generateImagesBtn.textContent = '2단계: 이미지 생성';
                     return;
                 }
                 
@@ -1263,6 +1280,9 @@
                 if (promptInputElements.length === 0) {
                     console.warn('[이미지 생성] 프롬프트 입력 요소를 찾을 수 없습니다.');
                     setStatus('대본을 입력하고 패턴이 감지될 때까지 기다려주세요.', 'error');
+                    isGeneratingImages = false;
+                    generateImagesBtn.disabled = false;
+                    generateImagesBtn.textContent = '2단계: 이미지 생성';
                     return;
                 }
                 
@@ -1316,6 +1336,9 @@
                 if (sentences.length === 0) {
                     console.error('[이미지 생성] 문장을 찾을 수 없습니다.');
                     setStatus('문장을 찾을 수 없습니다.', 'error');
+                    isGeneratingImages = false;
+                    generateImagesBtn.disabled = false;
+                    generateImagesBtn.textContent = '2단계: 이미지 생성';
                     return;
                 }
                 
@@ -1324,14 +1347,15 @@
                 if (hasEmptyPrompts) {
                     console.error('[이미지 생성] 빈 프롬프트가 있습니다.');
                     setStatus('모든 문장에 영어 프롬프트를 입력해주세요.', 'error');
+                    isGeneratingImages = false;
+                    generateImagesBtn.disabled = false;
+                    generateImagesBtn.textContent = '2단계: 이미지 생성';
                     return;
                 }
                 
                 console.log('[이미지 생성] 검증 완료, 이미지 생성 시작');
                 
-                // 기존 코드 제거하고 새로 작성
-                generateImagesBtn.disabled = true;
-                generateImagesBtn.textContent = '생성 중...';
+                // 버튼 상태는 이미 위에서 설정됨 (중복 호출 방지를 위해)
                 generateVideoBtn.disabled = true;
                 imageItems = {};
                 promptItems = sentences.map((sentence, idx) => ({
@@ -1452,6 +1476,7 @@
                                 }
                                 renderPromptRows();
                                 
+                                isGeneratingImages = false;
                                 generateImagesBtn.disabled = false;
                                 generateImagesBtn.textContent = '이미지 생성';
                                 generateVideoBtn.disabled = false;
@@ -1489,6 +1514,7 @@
                                     })
                                     .catch(err => console.error('로그 정보 조회 실패:', err));
                                 
+                                isGeneratingImages = false;
                                 generateImagesBtn.disabled = false;
                                 generateImagesBtn.textContent = '이미지 생성';
                             } else if (statusData.status === 'running' || statusData.status === 'processing') {
@@ -1521,6 +1547,7 @@
                         clearInterval(pollingInterval);
                         pollingInterval = null;
                     }
+                    isGeneratingImages = false;
                     generateImagesBtn.disabled = false;
                     generateImagesBtn.textContent = '이미지 생성';
                 }
