@@ -1305,7 +1305,7 @@ def save_image_bytes_as_png(content: bytes, filename: str, target_size=(1280, 76
             f.write(content)
 
 
-def generate_image(prompt_text: str, filename: str, mode: str = "animation", replicate_api_key: Optional[str] = None, custom_style_prompt: str = "") -> bool:
+def generate_image(prompt_text: str, filename: str, mode: str = "animation", replicate_api_key: Optional[str] = None, custom_style_prompt: str = "", use_banana_model: bool = False) -> bool:
     """이미지 생성 함수 - Windows 환경 디버깅 강화"""
     print("=" * 80)
     print("=== [DEBUG] 이미지 생성 요청 받음 ===")
@@ -1385,7 +1385,21 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                     "negative_prompt": negative_prompt,
                     "aspect_ratio": "16:9",
                 }
-                if mode == "realistic":
+                # 바나나 모델 체크박스가 체크된 경우 google/nano-banana-pro 사용
+                if use_banana_model:
+                    # google/nano-banana-pro 모델 사용
+                    # 프롬프트는 그대로 사용 (각 모델의 프롬프트 유지)
+                    replicate_input.update({
+                        "prompt": base_prompt,  # 프롬프트 유지
+                        "negative_prompt": negative_prompt,
+                        "aspect_ratio": "16:9",
+                    })
+                    model_owner = "google"
+                    model_name = "nano-banana-pro"
+                    request_url = f"https://api.replicate.com/v1/models/{model_owner}/{model_name}/predictions"
+                    body = {"input": replicate_input}
+                    print(f"[바나나 모델] google/nano-banana-pro 사용 - 프롬프트: {base_prompt[:100]}...")
+                elif mode == "realistic":
                     # flux-schnell 모델 파라미터 (docs/cog-flux-main 참고)
                     # - num_inference_steps: 최대 4, 기본값 4 (SchnellPredictor 참고)
                     # - guidance_scale: 지원하지 않음 (제거)
@@ -3888,11 +3902,12 @@ def api_generate_images_direct():
     mode = (data.get("mode") or "animation").strip().lower()
     custom_style_prompt = (data.get("custom_style_prompt") or "").strip()  # 커스텀 모드 스타일 프롬프트
     test_mode = data.get("test_mode", False)
+    banana_model_flags = data.get("banana_model_flags") or []  # 체크박스 상태 배열
     # API 키 (사용자가 입력한 경우 사용, 없으면 기본값 사용)
     replicate_api_key = data.get("replicate_api_key") or None
     elevenlabs_api_key = data.get("elevenlabs_api_key") or None
     
-    print(f"[API] 요청 파라미터: sentences={len(sentences)}, prompts={len(prompts)}, mode={mode}, test_mode={test_mode}")
+    print(f"[API] 요청 파라미터: sentences={len(sentences)}, prompts={len(prompts)}, mode={mode}, test_mode={test_mode}, banana_flags={len(banana_model_flags)}")
     
     if not script_text or not sentences or not prompts:
         print("[API] 오류: 대본, 문장, 프롬프트가 모두 필요합니다.")
@@ -3971,17 +3986,21 @@ def api_generate_images_direct():
             
             for idx, (sentence, prompt) in enumerate(zip(sentences, prompts), start=1):
                 try:
+                    # 체크박스 상태 확인 (인덱스는 0부터 시작)
+                    use_banana_model = (idx - 1 < len(banana_model_flags) and banana_model_flags[idx - 1]) if banana_model_flags else False
+                    
                     # 진행도 업데이트 (시작)
                     progress_pct = int(((idx - 1) / total) * 100)
                     with jobs_lock:
                         job_data = jobs.get(job_id)
                         if job_data is not None:
+                            model_name = "google/nano-banana-pro" if use_banana_model else mode
                             job_data["stage_progress"] = progress_pct
                             job_data["current_stage"] = f"이미지 생성 중... ({idx}/{total})"
-                            job_data["progress"].append(f"{idx}번 이미지 생성 시작...")
+                            job_data["progress"].append(f"{idx}번 이미지 생성 시작... (모델: {model_name})")
                             job_data["status"] = "running"  # 상태를 명시적으로 running으로 설정
                     
-                    log_debug(f"[이미지 생성] {idx}/{total} 시작 - 프롬프트: {prompt[:50]}...")
+                    log_debug(f"[이미지 생성] {idx}/{total} 시작 - 프롬프트: {prompt[:50]}..., 바나나 모델: {use_banana_model}")
                     
                     # Windows 경로 처리 개선
                     image_filename = os.path.join(assets_folder, f"scene_{idx}_image.png")
@@ -4013,7 +4032,7 @@ def api_generate_images_direct():
                         # 이미지 생성 실행
                         log_debug(f"[이미지 생성] {idx}번 이미지 생성 함수 호출 시작")
                         try:
-                            success = generate_image(prompt, image_filename, mode=mode, replicate_api_key=replicate_api_key, custom_style_prompt=custom_style_prompt)
+                            success = generate_image(prompt, image_filename, mode=mode, replicate_api_key=replicate_api_key, custom_style_prompt=custom_style_prompt, use_banana_model=use_banana_model)
                             log_debug(f"[이미지 생성] {idx}번 generate_image 반환값: {success}")
                         except Exception as gen_exc:
                             log_error(f"[이미지 생성] {idx}번 generate_image 예외 발생", exc_info=gen_exc)

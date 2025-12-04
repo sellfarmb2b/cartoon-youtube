@@ -641,12 +641,31 @@
                     itemDiv.style.borderRadius = '8px';
                     itemDiv.style.border = '1px solid #e5e7eb';
                     
+                    // 체크박스와 라벨을 포함하는 컨테이너
+                    const labelContainer = document.createElement('div');
+                    labelContainer.style.display = 'flex';
+                    labelContainer.style.alignItems = 'center';
+                    labelContainer.style.gap = '8px';
+                    labelContainer.style.marginBottom = '6px';
+                    
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.id = `banana-checkbox-${index}`;
+                    checkbox.dataset.index = index;
+                    checkbox.className = 'banana-checkbox';
+                    
                     const sentenceLabel = document.createElement('label');
-                    sentenceLabel.textContent = `문장 ${index + 1}:`;
-                    sentenceLabel.style.display = 'block';
+                    sentenceLabel.htmlFor = `banana-checkbox-${index}`;
+                    sentenceLabel.style.display = 'flex';
+                    sentenceLabel.style.alignItems = 'center';
+                    sentenceLabel.style.gap = '6px';
                     sentenceLabel.style.fontWeight = '600';
-                    sentenceLabel.style.marginBottom = '6px';
                     sentenceLabel.style.color = '#1f2937';
+                    sentenceLabel.style.cursor = 'pointer';
+                    sentenceLabel.innerHTML = `문장 ${index + 1}: <span>🍌</span>`;
+                    
+                    labelContainer.appendChild(checkbox);
+                    labelContainer.appendChild(sentenceLabel);
                     
                     const sentenceText = document.createElement('div');
                     sentenceText.textContent = sentence;
@@ -676,7 +695,7 @@
                         promptInput.value = existingValues[index];
                     }
                     
-                    itemDiv.appendChild(sentenceLabel);
+                    itemDiv.appendChild(labelContainer);
                     itemDiv.appendChild(sentenceText);
                     itemDiv.appendChild(promptInput);
                     promptInputs.appendChild(itemDiv);
@@ -741,12 +760,31 @@
                             itemDiv.style.borderRadius = '8px';
                             itemDiv.style.border = '1px solid #e5e7eb';
                             
+                            // 체크박스와 라벨을 포함하는 컨테이너
+                            const labelContainer = document.createElement('div');
+                            labelContainer.style.display = 'flex';
+                            labelContainer.style.alignItems = 'center';
+                            labelContainer.style.gap = '8px';
+                            labelContainer.style.marginBottom = '6px';
+                            
+                            const checkbox = document.createElement('input');
+                            checkbox.type = 'checkbox';
+                            checkbox.id = `banana-checkbox-${index}`;
+                            checkbox.dataset.index = index;
+                            checkbox.className = 'banana-checkbox';
+                            
                             const sentenceLabel = document.createElement('label');
-                            sentenceLabel.textContent = `문장 ${index + 1}:`;
-                            sentenceLabel.style.display = 'block';
+                            sentenceLabel.htmlFor = `banana-checkbox-${index}`;
+                            sentenceLabel.style.display = 'flex';
+                            sentenceLabel.style.alignItems = 'center';
+                            sentenceLabel.style.gap = '6px';
                             sentenceLabel.style.fontWeight = '600';
-                            sentenceLabel.style.marginBottom = '6px';
                             sentenceLabel.style.color = '#1f2937';
+                            sentenceLabel.style.cursor = 'pointer';
+                            sentenceLabel.innerHTML = `문장 ${index + 1}: <span>🍌</span>`;
+                            
+                            labelContainer.appendChild(checkbox);
+                            labelContainer.appendChild(sentenceLabel);
                             
                             const sentenceText = document.createElement('div');
                             sentenceText.textContent = item.sentence;
@@ -772,7 +810,7 @@
                             promptInput.style.resize = 'vertical';
                             promptInput.style.fontFamily = 'inherit';
                             
-                            itemDiv.appendChild(sentenceLabel);
+                            itemDiv.appendChild(labelContainer);
                             itemDiv.appendChild(sentenceText);
                             itemDiv.appendChild(promptInput);
                             promptInputs.appendChild(itemDiv);
@@ -1291,6 +1329,8 @@
                     return parseInt(a.dataset.index, 10) - parseInt(b.dataset.index, 10);
                 });
                 
+                const bananaModelFlags = []; // 체크박스 상태 저장
+                
                 sortedInputs.forEach(input => {
                     const index = parseInt(input.dataset.index, 10);
                     const prompt = input.value.trim();
@@ -1300,6 +1340,11 @@
                         console.warn(`인덱스 ${index}: itemDiv를 찾을 수 없습니다.`);
                         return;
                     }
+                    
+                    // 체크박스 상태 확인
+                    const checkbox = itemDiv.querySelector(`.banana-checkbox[data-index="${index}"]`);
+                    const isBananaModel = checkbox ? checkbox.checked : false;
+                    bananaModelFlags.push(isBananaModel);
                     
                     // 더 안정적인 방법으로 문장 찾기
                     let sentence = '';
@@ -1403,7 +1448,8 @@
                             custom_style_prompt: customStylePrompt,
                             test_mode: isTestMode,
                             replicate_api_key: replicateApiKey,
-                            elevenlabs_api_key: elevenlabsApiKey
+                            elevenlabs_api_key: elevenlabsApiKey,
+                            banana_model_flags: bananaModelFlags
                         })
                     });
                     if (!response.ok) {
