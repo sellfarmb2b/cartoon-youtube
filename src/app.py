@@ -600,6 +600,60 @@ def enforce_animation2_prompt(prompt: str, fallback_context: str = "") -> str:
     return full_prompt
 
 
+def enforce_pop_art_prompt(prompt: str, fallback_context: str = "") -> str:
+    """
+    애니메이션 모드3: 미국 코믹스/팝아트 스타일 (첨부 이미지 스타일)
+    - 특징: 굵은 검은색 외곽선, 과장된 표정(캐리커처), 집중선 및 팝아트 효과
+    - 스틱맨 제약을 제거하고, 인물의 표정과 역동성에 집중
+    """
+    
+    # 1. 베이스 스타일: 미국 만화책, 팝아트, 굵은 선 강조
+    base_style = (
+        "Western American comic book style, pop art, thick bold black outlines, heavy inking, "
+        "energetic vector illustration, vivid colors, high contrast, 4k resolution, "
+        "comic boom effect style, flat colors but detailed line work."
+    )
+    
+    # 2. 캐릭터 디테일: 과장된 표정과 행동 묘사 (스틱맨 제약 제거 -> 캐리커처 스타일)
+    character_details = (
+        "The character is depicted in an expressive caricature style. "
+        "Focus on dramatic facial expressions like jaw dropping, eyes popping out, screaming, or shocked. "
+        "The character creates a strong visual impact with exaggerated emotions. "
+        "Clothing is stylized with bold lines and solid colors (e.g., business suits, costumes)."
+    )
+    
+    # 3. 배경 및 조명: 집중선, 연기, 빛 폭발 효과
+    environment_lighting = (
+        "Background features dynamic speed lines, comic style smoke clouds, "
+        "and impact effects (boom, crash visual styles). "
+        "Dramatic lighting with blinding bursts of light or strong directional shadows. "
+        "Floating elements like coins, dust, or debris to add dynamism."
+    )
+    
+    # 4. 제약 사항: 실사 느낌 배제, 3D 렌더링 배제
+    constraints = (
+        "No Photorealism: Do not create realistic photos, 3D renders, or oil painting styles. "
+        "Ensure all outlines are crisp, thick, and black. "
+        "No blurry or watercolor effects. Maintain the comic book aesthetic."
+    )
+    
+    prompt = (prompt or "").strip()
+    if not prompt:
+        prompt = fallback_context or "a dramatic scene"
+    
+    # [변경점] 'stickman' 강제 로직을 제거했습니다. 
+    # 만약 기존 '스틱맨' 캐릭터를 유지하면서 스타일만 바꾸고 싶다면 
+    # 아래 주석을 해제하고 프롬프트에 'stickman version of...'를 추가하세요.
+    # if "stickman" not in prompt.lower():
+    #     prompt = f"stickman character {fallback_context}, {prompt}".strip(", ")
+    
+    full_prompt = (
+        f"{prompt}, {base_style}, {character_details}, {environment_lighting}, {constraints}"
+    )
+    
+    return full_prompt
+
+
 def enforce_custom_prompt(prompt: str, custom_style_prompt: str = "", fallback_context: str = "") -> str:
     """
     커스텀 모드: 사용자가 입력한 스타일 프롬프트를 기본 스타일 요소로 적용
@@ -628,6 +682,8 @@ def enforce_prompt_by_mode(prompt: str, fallback_context: str = "", mode: str = 
         return enforce_realistic_prompt(prompt, fallback_context)
     elif mode == "animation2":
         return enforce_animation2_prompt(prompt, fallback_context)
+    elif mode == "animation3":
+        return enforce_pop_art_prompt(prompt, fallback_context)
     elif mode == "custom":
         return enforce_custom_prompt(prompt, custom_style_prompt, fallback_context)
     return enforce_stickman_prompt(prompt, fallback_context)
@@ -915,6 +971,17 @@ def call_openai_for_prompts(offset: int, sentences: List[str], mode: str = "anim
             "The entire frame must be filled with NO blank or simple background regions. "
             "Include dynamic, dramatic lighting with strong highlights and shadows. "
             "Maintain base character consistency - stick to the simple cartoon style, no realistic anatomy."
+        )
+    elif mode == "animation3":
+        style_instruction = (
+            "Create a Western American comic book style, pop art illustration with thick bold black outlines and heavy inking. "
+            "The character should be depicted in an expressive caricature style with dramatic facial expressions "
+            "(jaw dropping, eyes popping out, screaming, or shocked). "
+            "Focus on exaggerated emotions and strong visual impact. "
+            "The background should feature dynamic speed lines, comic style smoke clouds, and impact effects (boom, crash visual styles). "
+            "Include dramatic lighting with blinding bursts of light or strong directional shadows. "
+            "Add floating elements like coins, dust, or debris to add dynamism. "
+            "No photorealistic styles, 3D renders, or oil painting styles. Maintain crisp, thick, black outlines and comic book aesthetic."
         )
     else:
         style_instruction = "Stick to a stickman cartoon, vibrant 2D illustration style."
@@ -1437,6 +1504,8 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                 default_prompt = "A mysterious scene involving a historic landmark attracting curiosity"
             elif mode == "animation2":
                 default_prompt = "stickman character in a vibrant detailed scene"
+            elif mode == "animation3":
+                default_prompt = "a dramatic scene with expressive character"
             else:
                 default_prompt = "stickman presenting data in a colorful studio"
             base_prompt = enforce_prompt_by_mode(default_prompt, fallback_context="default context", mode=mode, custom_style_prompt=custom_style_prompt)
@@ -1451,6 +1520,12 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
             negative_prompt = (
                 "3d, realistic, photorealistic, cgi, render, blender, volumetric lighting, gradient, shadow, depth, "
                 "fuzzy, blurred, texture, detail, oil painting, water color"
+            )
+        elif mode == "animation3":
+            # 애니메이션3 모드 전용 네거티브 프롬프트 (팝아트/코믹스 스타일)
+            negative_prompt = (
+                "photorealistic, 3d render, realistic photo, oil painting, watercolor, blurry, "
+                "soft edges, gradient shadows, realistic human anatomy, detailed skin texture"
             )
         else:
             # animation 모드는 기존 네거티브 프롬프트 사용
