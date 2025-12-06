@@ -863,24 +863,68 @@ def call_openai_for_prompts(offset: int, sentences: List[str], mode: str = "anim
 
     for attempt in range(max_retries):
         try:
-            system_content = (
-                "You are an AI Art Director & Visual Prompt Engineer specializing in script visualization. "
-                "Your task is to convert Korean script sentences into detailed English image generation prompts."
-                f" {style_instruction}"
-            )
-            
-            if context_info:
-                system_content += (
-                    "\n\nIMPORTANT: Use the provided [CONTEXT] information to understand the scene's setting, "
-                    "characters, mood, and style. Each sentence should be converted considering this context "
-                    "to create consistent and contextually accurate visual prompts."
+            # 실사화 모드(realistic)일 때만 새로운 시스템 프롬프트와 temperature 0.2 사용
+            if mode == "realistic":
+                system_content = """[YOUR ROLE]
+당신은 '스크립트-투-이미지 프롬프트 전문 엔지니어'이자 '시각적 연속성 감독(Visual Continuity Director)'입니다.
+당신의 임무는 사용자가 제공하는 대본(Script)을 받아 시각화하되, 단순한 장면 묘사를 넘어 **영화적 연속성(Continuity)**과 **캐릭터/장소의 일관성(Consistency)**이 완벽하게 유지되는 이미지 생성 프롬프트를 작성하는 것입니다.
+
+[CRITICAL: VISUAL CONSISTENCY & CONTINUITY]
+이 섹션은 인물과 장소의 모양이 바뀌는 환각(Hallucination)을 방지하기 위한 절대 규칙입니다.
+
+1. **비주얼 앵커(Visual Anchor) 설정**: 작업을 시작하기 전, 대본 전체를 분석하여 주요 인물과 장소에 대한 고정된 시각적 정의(Visual Definition)를 수립하십시오.
+   * 예: '민수' = "Korean man in his 30s, wearing a brown trench coat, glasses, short black hair."
+   * 이 정의된 묘사는 해당 인물이 등장하는 *모든* 프롬프트에 토씨 하나 틀리지 않고 반복적으로 포함되어야 합니다. 단순히 "He"나 "The man"으로 퉁치지 마십시오.
+2. **장소 고정 (Location Locking)**: 대본에서 장소 이동이 명시되지 않는 한, 배경 묘사(예: "messy bedroom with blue wallpapers")는 모든 프롬프트에서 동일하게 유지되어야 합니다.
+3. **행동의 연속성**: 이전 문장에서 인물이 앉아 있었다면, 일어난다는 지문이 없는 한 다음 프롬프트에서도 앉아 있어야 합니다. 문맥의 흐름을 논리적으로 연결하십시오.
+
+[CRITICAL: COMPLETENESS PROTOCOL]
+* **전체 출력 의무**: 대본의 첫 문장부터 마지막 문장까지 하나도 빠뜨리지 마십시오.
+* **요약 금지**: "이하 생략", "동일한 스타일" 등의 요약은 엄격히 금지됩니다.
+* **분할 출력 대응**: 답변 길이가 토큰 제한에 도달할 것 같으면, 반드시 [한국어 번역]-[영어 이미지 프롬프트] 세트가 끝나는 지점에서 멈추고 **"[...계속하려면 '계속'이라고 말해주세요]"**라고 명시하십시오. 문장 중간에서 자르지 마십시오.
+
+[CRITICAL: FORMATTING PROTOCOL - 태그 엄수]
+* **[영어 이미지 프롬프트]** 태그는 변형(예: prompt, 프롬pt 등) 없이 정확히 대괄호를 포함하여 **[영어 이미지 프롬프트]**로만 출력해야 합니다.
+* 결과물은 반드시 JSON 형식으로 출력해야 합니다. 각 문장에 대해 {"sentence_index": 번호, "prompt": "영어 프롬프트"} 형식의 객체를 배열로 반환하세요.
+
+[WORKFLOW & RULES]
+1. 입력 정제 및 분석 (Pre-computation): 타임스탬프 제거, 스타일 래퍼 선정, 비주얼 앵커 확정.
+2. 순차적 출력: 각 문장별 [한국어 번역] 및 [영어 이미지 프롬프트] 생성.
+   - 영어 프롬프트 구조: [Style Wrapper] + [Visual Anchor] + [Current Action] + [Visual Details]
+
+[OUTPUT FORMAT]
+반드시 JSON 형식으로 출력하세요:
+{
+  "items": [
+    {"sentence_index": 1, "prompt": "영어 이미지 프롬프트"},
+    {"sentence_index": 2, "prompt": "영어 이미지 프롬프트"},
+    ...
+  ]
+}
+IMPORTANT: Ensure all JSON strings are properly escaped and closed. Avoid unescaped quotes or newlines in string values."""
+                
+                temperature = 0.2  # 실사화 모드: 창의성보다 규칙 준수
+            else:
+                # 다른 모드: 기존 시스템 프롬프트 유지
+                system_content = (
+                    "You are an AI Art Director & Visual Prompt Engineer specializing in script visualization. "
+                    "Your task is to convert Korean script sentences into detailed English image generation prompts."
+                    f" {style_instruction}"
                 )
-            
-            system_content += (
-                "\n\nReturn JSON describing prompts for each sentence. "
-                "IMPORTANT: Ensure all JSON strings are properly escaped and closed. "
-                "Avoid unescaped quotes or newlines in string values."
-            )
+                
+                if context_info:
+                    system_content += (
+                        "\n\nIMPORTANT: Use the provided [CONTEXT] information to understand the scene's setting, "
+                        "characters, mood, and style. Each sentence should be converted considering this context "
+                        "to create consistent and contextually accurate visual prompts."
+                    )
+                
+                system_content += (
+                    "\n\nReturn JSON describing prompts for each sentence. "
+                    "IMPORTANT: Ensure all JSON strings are properly escaped and closed. "
+                    "Avoid unescaped quotes or newlines in string values."
+                )
+                temperature = 0.7  # 다른 모드: 기존 temperature 유지
             
             user_content = "[SCRIPT LINES - Sentences to Convert]\n" + script_blocks
             if context_info:
@@ -903,7 +947,7 @@ def call_openai_for_prompts(offset: int, sentences: List[str], mode: str = "anim
                         },
                     ],
                     "response_format": {"type": "json_object"},
-                    "temperature": 0.7,
+                    "temperature": temperature,
                     "max_tokens": 2000,
                 },
                 timeout=90,
