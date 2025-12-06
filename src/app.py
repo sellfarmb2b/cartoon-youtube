@@ -1493,12 +1493,12 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
 
                 print("=== [DEBUG] Replicate API 요청 전송 중 ===")
                 print(f"=== [DEBUG] 프롬프트: {base_prompt[:200]}... ===")
-                print(f"=== [DEBUG] Negative 프롬프트: {negative_prompt[:200]}... ===")
+                print(f"=== [DEBUG] Negative 프롬프트: {negative_prompt[:200] if negative_prompt else 'None'}... ===")
                 print(f"=== [DEBUG] 요청 URL: {request_url} ===")
                 print(f"=== [DEBUG] 요청 본문: {json.dumps(body, indent=2, ensure_ascii=False)} ===")
                 log_debug(f"[generate_image] Replicate API 요청 전송 중...")
                 log_debug(f"[generate_image] 프롬프트: {base_prompt[:200]}...")
-                log_debug(f"[generate_image] Negative 프롬프트: {negative_prompt[:200]}...")
+                log_debug(f"[generate_image] Negative 프롬프트: {negative_prompt[:200] if negative_prompt else 'None'}...")
                 log_debug(f"[generate_image] 요청 URL: {request_url}")
                 log_debug(f"[generate_image] 요청 본문: {json.dumps(body, indent=2, ensure_ascii=False)}")
                 
