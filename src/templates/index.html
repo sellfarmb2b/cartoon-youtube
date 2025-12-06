@@ -109,7 +109,7 @@
         <div id="promptInputSection" style="display:none; margin-top:20px;">
             <label>문장별 영어 프롬프트 입력 (선택사항)</label>
             <p style="color:#6b7280; font-size:14px; margin:6px 0 12px;">각 문장에 대한 영어 프롬프트를 직접 입력하거나, 아래 '1단계: 프롬프트 생성' 버튼을 눌러 자동 생성할 수 있습니다.</p>
-            <button type="button" id="selectAllBananaBtn" style="display:none; margin-bottom:12px; padding:8px 16px; background-color:#fbbf24; color:#1f2937; border:none; border-radius:6px; cursor:pointer; font-weight:600; font-size:14px; transition:background-color 0.2s;" onmouseover="this.style.backgroundColor='#f59e0b'" onmouseout="this.style.backgroundColor='#fbbf24'">🍌 나노바나나 전체선택</button>
+            <button type="button" id="selectAllBananaBtn" style="display:none; margin-bottom:12px; padding:8px 16px; background-color:#fbbf24; color:#1f2937; border:none; border-radius:6px; cursor:pointer; font-weight:600; font-size:14px; transition:all 0.2s ease;" onmouseover="this.style.backgroundColor='#f59e0b'" onmouseout="this.style.backgroundColor='#fbbf24'">🍌 나노바나나 전체선택</button>
             <div id="promptInputs" style="max-height:400px; overflow-y:auto; border:1px solid #d1d5db; border-radius:8px; padding:12px; background:#f9fafb;"></div>
         </div>
 
@@ -664,6 +664,11 @@
                     checkbox.id = `banana-checkbox-${index}`;
                     checkbox.dataset.index = index;
                     checkbox.className = 'banana-checkbox';
+                    checkbox.style.width = '20px';
+                    checkbox.style.height = '20px';
+                    checkbox.style.cursor = 'pointer';
+                    checkbox.style.accentColor = '#fbbf24';
+                    checkbox.style.transition = 'transform 0.15s ease';
                     
                     const sentenceLabel = document.createElement('label');
                     sentenceLabel.htmlFor = `banana-checkbox-${index}`;
@@ -726,13 +731,26 @@
                         // 모든 체크박스가 체크되어 있는지 확인
                         const allChecked = Array.from(checkboxes).every(cb => cb.checked);
                         
-                        // 전체선택 또는 전체해제
-                        checkboxes.forEach(checkbox => {
-                            checkbox.checked = !allChecked;
+                        // 전체선택 또는 전체해제 (시각적 피드백을 위해 하나씩 처리)
+                        checkboxes.forEach((checkbox, idx) => {
+                            setTimeout(() => {
+                                checkbox.checked = !allChecked;
+                                // 체크 상태 변경 시각적 피드백
+                                checkbox.style.transform = 'scale(1.2)';
+                                setTimeout(() => {
+                                    checkbox.style.transform = 'scale(1)';
+                                }, 150);
+                            }, idx * 20); // 순차적으로 체크되도록 약간의 지연 추가
                         });
                         
                         // 버튼 텍스트 업데이트
                         selectAllBananaBtn.textContent = allChecked ? '🍌 나노바나나 전체선택' : '🍌 나노바나나 전체해제';
+                        
+                        // 버튼 클릭 피드백
+                        selectAllBananaBtn.style.transform = 'scale(0.95)';
+                        setTimeout(() => {
+                            selectAllBananaBtn.style.transform = 'scale(1)';
+                        }, 150);
                     });
                 }
             });
@@ -815,6 +833,11 @@
                             checkbox.id = `banana-checkbox-${index}`;
                             checkbox.dataset.index = index;
                             checkbox.className = 'banana-checkbox';
+                            checkbox.style.width = '20px';
+                            checkbox.style.height = '20px';
+                            checkbox.style.cursor = 'pointer';
+                            checkbox.style.accentColor = '#fbbf24';
+                            checkbox.style.transition = 'transform 0.15s ease';
                             
                             const sentenceLabel = document.createElement('label');
                             sentenceLabel.htmlFor = `banana-checkbox-${index}`;
