@@ -128,6 +128,7 @@
             <button type="button" class="mode-tab active" data-mode="animation">애니메이션</button>
             <button type="button" class="mode-tab" data-mode="animation2">애니메이션2</button>
             <button type="button" class="mode-tab" data-mode="realistic">실사화</button>
+            <button type="button" class="mode-tab" data-mode="realistic2">실사화2</button>
             <button type="button" class="mode-tab" data-mode="custom">커스텀</button>
         </div>
 
@@ -1112,6 +1113,8 @@
                     let modeName = '애니메이션';
                     if (newMode === 'realistic') {
                         modeName = '실사화';
+                    } else if (newMode === 'realistic2') {
+                        modeName = '실사화2';
                     } else if (newMode === 'animation2') {
                         modeName = '애니메이션2';
                     } else if (newMode === 'custom') {

@@ -566,7 +566,7 @@ def enforce_custom_prompt(prompt: str, custom_style_prompt: str = "", fallback_c
 
 def enforce_prompt_by_mode(prompt: str, fallback_context: str = "", mode: str = "animation", custom_style_prompt: str = "") -> str:
     mode = (mode or "animation").lower()
-    if mode == "realistic":
+    if mode == "realistic" or mode == "realistic2":
         return enforce_realistic_prompt(prompt, fallback_context)
     elif mode == "animation2":
         return enforce_animation2_prompt(prompt, fallback_context)
@@ -578,7 +578,7 @@ def enforce_prompt_by_mode(prompt: str, fallback_context: str = "", mode: str = 
 def build_fallback_prompt(sentence: str, mode: str) -> str:
     sentence = ensure_english_text(sentence or "")
     description = sentence if sentence else "unnamed scene"
-    if mode == "realistic":
+    if mode == "realistic" or mode == "realistic2":
         base = f"A detailed cinematic depiction of {description}"
     else:
         base = f"Stickman scene illustrating {description}"
@@ -840,7 +840,7 @@ def call_openai_for_prompts(offset: int, sentences: List[str], mode: str = "anim
         if context_parts:
             context_info = "\n\n[CONTEXT - Scene Information]\n" + "\n".join(context_parts) + "\n"
     
-    if mode == "realistic":
+    if mode == "realistic" or mode == "realistic2":
         style_instruction = (
             "For each sentence, convert it into a concrete, visually descriptive scene that could be captured in a photograph."
             " Mention subjects, actions, facial expressions, body language, environment, lighting, and camera framing."
@@ -863,8 +863,8 @@ def call_openai_for_prompts(offset: int, sentences: List[str], mode: str = "anim
 
     for attempt in range(max_retries):
         try:
-            # 실사화 모드(realistic)일 때만 새로운 시스템 프롬프트와 temperature 0.2 사용
-            if mode == "realistic":
+            # 실사화 모드(realistic, realistic2)일 때만 새로운 시스템 프롬프트와 temperature 0.2 사용
+            if mode == "realistic" or mode == "realistic2":
                 system_content = """[YOUR ROLE]
 당신은 '스크립트-투-이미지 프롬프트 전문 엔지니어'이자 '시각적 연속성 감독(Visual Continuity Director)'입니다.
 당신의 임무는 사용자가 제공하는 대본(Script)을 받아 시각화하되, 단순한 장면 묘사를 넘어 **영화적 연속성(Continuity)**과 **캐릭터/장소의 일관성(Consistency)**이 완벽하게 유지되는 이미지 생성 프롬프트를 작성하는 것입니다.
@@ -1168,7 +1168,7 @@ def generate_visual_prompts(sentences: List[str], mode: str = "animation", progr
                 continue
             base_prompt = ensure_english_text(raw_prompt.strip())
             focus_sentence = ensure_english_text(sentence.strip())
-            if mode == "realistic" and focus_sentence:
+            if (mode == "realistic" or mode == "realistic2") and focus_sentence:
                 base_prompt = f"{base_prompt}. Focus on: {focus_sentence}"
             prompts[global_idx] = enforce_prompt_by_mode(
                 base_prompt, fallback_context=f"based on '{focus_sentence[:50]}'", mode=mode, custom_style_prompt=custom_style_prompt
@@ -1369,7 +1369,7 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
         if prompt_text:
             base_prompt = enforce_prompt_by_mode(prompt_text, fallback_context=fallback_context, mode=mode, custom_style_prompt=custom_style_prompt)
         else:
-            if mode == "realistic":
+            if mode == "realistic" or mode == "realistic2":
                 default_prompt = "A mysterious scene involving a historic landmark attracting curiosity"
             elif mode == "animation2":
                 default_prompt = "stickman character in a vibrant detailed scene"
@@ -1377,7 +1377,10 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                 default_prompt = "stickman presenting data in a colorful studio"
             base_prompt = enforce_prompt_by_mode(default_prompt, fallback_context="default context", mode=mode, custom_style_prompt=custom_style_prompt)
 
-        if mode == "realistic":
+        if mode == "realistic2":
+            # google/imagen-4-fast는 negative_prompt를 지원하지 않음
+            negative_prompt = None
+        elif mode == "realistic":
             negative_prompt = REALISTIC_NEGATIVE_PROMPT
         elif mode == "animation2":
             # 애니메이션2 모드 전용 네거티브 프롬프트
@@ -1424,11 +1427,13 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                     "Authorization": f"Token {api_token}",
                     "Content-Type": "application/json",
                 }
+                # negative_prompt가 None이 아닌 경우에만 포함
                 replicate_input = {
                     "prompt": base_prompt,
-                    "negative_prompt": negative_prompt,
                     "aspect_ratio": "16:9",
                 }
+                if negative_prompt is not None:
+                    replicate_input["negative_prompt"] = negative_prompt
                 # 바나나 모델 체크박스가 체크된 경우 google/nano-banana-pro 사용
                 if use_banana_model:
                     # google/nano-banana-pro 모델 사용
@@ -1443,6 +1448,18 @@ def generate_image(prompt_text: str, filename: str, mode: str = "animation", rep
                     request_url = f"https://api.replicate.com/v1/models/{model_owner}/{model_name}/predictions"
                     body = {"input": replicate_input}
                     print(f"[바나나 모델] google/nano-banana-pro 사용 - 프롬프트: {base_prompt[:100]}...")
+                elif mode == "realistic2":
+                    # google/imagen-4-fast 모델 사용 (negative_prompt 미지원)
+                    replicate_input = {
+                        "prompt": base_prompt,
+                        "aspect_ratio": "16:9",
+                        "safety_filter_level": "block_only_high",
+                    }
+                    model_owner = "google"
+                    model_name = "imagen-4-fast"
+                    request_url = f"https://api.replicate.com/v1/models/{model_owner}/{model_name}/predictions"
+                    body = {"input": replicate_input}
+                    print(f"[실사화2 모델] google/imagen-4-fast 사용 - 프롬프트: {base_prompt[:100]}...")
                 elif mode == "realistic":
                     # flux-schnell 모델 파라미터 (docs/cog-flux-main 참고)
                     # - num_inference_steps: 최대 4, 기본값 4 (SchnellPredictor 참고)
