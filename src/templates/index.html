@@ -109,6 +109,7 @@
         <div id="promptInputSection" style="display:none; margin-top:20px;">
             <label>문장별 영어 프롬프트 입력 (선택사항)</label>
             <p style="color:#6b7280; font-size:14px; margin:6px 0 12px;">각 문장에 대한 영어 프롬프트를 직접 입력하거나, 아래 '1단계: 프롬프트 생성' 버튼을 눌러 자동 생성할 수 있습니다.</p>
+            <button type="button" id="selectAllBananaBtn" style="display:none; margin-bottom:12px; padding:8px 16px; background-color:#fbbf24; color:#1f2937; border:none; border-radius:6px; cursor:pointer; font-weight:600; font-size:14px; transition:background-color 0.2s;" onmouseover="this.style.backgroundColor='#f59e0b'" onmouseout="this.style.backgroundColor='#fbbf24'">🍌 나노바나나 전체선택</button>
             <div id="promptInputs" style="max-height:400px; overflow-y:auto; border:1px solid #d1d5db; border-radius:8px; padding:12px; background:#f9fafb;"></div>
         </div>
 
@@ -614,13 +615,21 @@
                     return;
                 }
                 
+                const selectAllBananaBtn = document.getElementById('selectAllBananaBtn');
+                
                 if (!sentences || sentences.length === 0) {
                     promptInputSection.style.display = 'none';
                     promptInputs.innerHTML = '';
+                    if (selectAllBananaBtn) {
+                        selectAllBananaBtn.style.display = 'none';
+                    }
                     return;
                 }
                 
                 promptInputSection.style.display = 'block';
+                if (selectAllBananaBtn) {
+                    selectAllBananaBtn.style.display = 'block';
+                }
                 
                 // 기존 입력값 저장
                 const existingValues = {};
@@ -703,6 +712,30 @@
                 });
             }
             
+            // 나노바나나 전체선택 버튼 이벤트 리스너
+            document.addEventListener('DOMContentLoaded', function() {
+                const selectAllBananaBtn = document.getElementById('selectAllBananaBtn');
+                if (selectAllBananaBtn) {
+                    selectAllBananaBtn.addEventListener('click', function() {
+                        const checkboxes = document.querySelectorAll('.banana-checkbox');
+                        if (checkboxes.length === 0) {
+                            return;
+                        }
+                        
+                        // 모든 체크박스가 체크되어 있는지 확인
+                        const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+                        
+                        // 전체선택 또는 전체해제
+                        checkboxes.forEach(checkbox => {
+                            checkbox.checked = !allChecked;
+                        });
+                        
+                        // 버튼 텍스트 업데이트
+                        selectAllBananaBtn.textContent = allChecked ? '🍌 나노바나나 전체선택' : '🍌 나노바나나 전체해제';
+                    });
+                }
+            });
+            
             // 패턴 기반 대본 파싱 함수 (한국어 번역 + 영어 프롬프트 형식)
             function parseScriptWithPrompts(scriptText) {
                 const results = [];
@@ -739,9 +772,14 @@
             if (scriptInput && promptInputSection && promptInputs) {
                 scriptInput.addEventListener('input', () => {
                     const scriptText = scriptInput.value.trim();
+                    const selectAllBananaBtn = document.getElementById('selectAllBananaBtn');
+                    
                     if (!scriptText) {
                         promptInputSection.style.display = 'none';
                         promptInputs.innerHTML = '';
+                        if (selectAllBananaBtn) {
+                            selectAllBananaBtn.style.display = 'none';
+                        }
                         return;
                     }
                     
@@ -751,6 +789,9 @@
                     if (parsedResults && parsedResults.length > 0) {
                         // 패턴이 감지된 경우: 한국어 문장과 영어 프롬프트를 함께 표시
                         promptInputSection.style.display = 'block';
+                        if (selectAllBananaBtn) {
+                            selectAllBananaBtn.style.display = 'block';
+                        }
                         promptInputs.innerHTML = '';
                         
                         parsedResults.forEach((item, index) => {
@@ -830,6 +871,10 @@
                         if (sentences.length === 0) {
                             promptInputSection.style.display = 'none';
                             promptInputs.innerHTML = '';
+                            const selectAllBananaBtn = document.getElementById('selectAllBananaBtn');
+                            if (selectAllBananaBtn) {
+                                selectAllBananaBtn.style.display = 'none';
+                            }
                             generateImagesBtn.disabled = true;
                             return;
                         }
@@ -1159,6 +1204,10 @@
                         scriptInput.value = '';
                         promptInputSection.style.display = 'none';
                         promptInputs.innerHTML = '';
+                        const selectAllBananaBtn = document.getElementById('selectAllBananaBtn');
+                        if (selectAllBananaBtn) {
+                            selectAllBananaBtn.style.display = 'none';
+                        }
                         promptSection.style.display = 'none';
                         promptTableBody.innerHTML = '';
                         resultContainer.innerHTML = '';
