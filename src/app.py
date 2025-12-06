@@ -818,7 +818,7 @@ def split_script_into_scenes(script_text: str) -> List[Dict[str, Any]]:
     return scenes
 
 
-def call_openai_for_prompts(offset: int, sentences: List[str], mode: str = "animation", scene_context: Dict[str, str] = None, max_retries: int = 3) -> Dict[int, str]:
+def call_openai_for_prompts(offset: int, sentences: List[str], mode: str = "animation", scene_context: Dict[str, str] = None, max_retries: int = 3, openai_api_key: Optional[str] = None) -> Dict[int, str]:
     script_blocks = "\n".join([f"Sentence {offset + idx + 1}: {sentence}" for idx, sentence in enumerate(sentences)])
     mode = (mode or "animation").lower()
     
@@ -863,6 +863,12 @@ def call_openai_for_prompts(offset: int, sentences: List[str], mode: str = "anim
 
     for attempt in range(max_retries):
         try:
+            # OpenAI API 키 확인 (파라미터로 받은 키가 없으면 전역 변수 사용)
+            api_key = openai_api_key or OPENAI_API_KEY
+            if not api_key:
+                print(f"[경고] OpenAI API 키가 없어 프롬프트 생성을 건너뜁니다.")
+                return {}
+            
             # 실사화 모드(realistic, realistic2)일 때만 새로운 시스템 프롬프트와 temperature 0.2 사용
             if mode == "realistic" or mode == "realistic2":
                 system_content = """[YOUR ROLE]
@@ -933,7 +939,7 @@ IMPORTANT: Ensure all JSON strings are properly escaped and closed. Avoid unesca
 
             response = requests.post(
                 "https://api.openai.com/v1/chat/completions",
-                headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                 json={
                     "model": "gpt-4o-mini",
                     "messages": [
@@ -3950,7 +3956,7 @@ def api_generate_images():
 
 @app.route("/generate_images_direct", methods=["POST"])
 def api_generate_images_direct():
-    """프롬프트 생성 단계를 건너뛰고 바로 이미지 생성"""
+    """프롬프트 생성 단계를 건너뛰고 바로 이미지 생성 (단, 실사화 모드는 프롬프트 재생성)"""
     print("=" * 80)
     print("=== [API] /generate_images_direct 요청 받음 ===")
     print(f"=== [API] 요청 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===")
@@ -3967,8 +3973,43 @@ def api_generate_images_direct():
     # API 키 (사용자가 입력한 경우 사용, 없으면 기본값 사용)
     replicate_api_key = data.get("replicate_api_key") or None
     elevenlabs_api_key = data.get("elevenlabs_api_key") or None
+    openai_api_key = data.get("openai_api_key") or None
     
     print(f"[API] 요청 파라미터: sentences={len(sentences)}, prompts={len(prompts)}, mode={mode}, test_mode={test_mode}, banana_flags={len(banana_model_flags)}")
+    
+    # 실사화 모드(realistic, realistic2)일 때는 프롬프트를 재생성해야 함
+    if (mode == "realistic" or mode == "realistic2") and sentences:
+        print(f"[API] 실사화 모드 감지: 프롬프트 재생성 시작 (새로운 시스템 프롬프트 적용)")
+        try:
+            # OpenAI API 키 확인
+            if not openai_api_key:
+                openai_api_key = OPENAI_API_KEY
+            if not openai_api_key:
+                print("[API] 경고: OpenAI API 키가 없어 프롬프트 재생성을 건너뜁니다.")
+            else:
+                # 프롬프트 재생성
+                scene_map = split_script_into_scenes(script_text)
+                scene_context = scene_map[0] if scene_map else None
+                prompts_map = call_openai_for_prompts(0, sentences, mode, scene_context=scene_context, openai_api_key=openai_api_key)
+                
+                # prompts_map을 prompts 리스트로 변환
+                new_prompts = []
+                for idx, sentence in enumerate(sentences, start=1):
+                    new_prompt = prompts_map.get(idx)
+                    if new_prompt:
+                        new_prompts.append(new_prompt)
+                    else:
+                        # 매핑에 없으면 기존 프롬프트 사용 (fallback)
+                        if idx - 1 < len(prompts):
+                            new_prompts.append(prompts[idx - 1])
+                        else:
+                            new_prompts.append("")
+                prompts = new_prompts
+                print(f"[API] 프롬프트 재생성 완료: {len(prompts)}개 프롬프트 생성됨")
+        except Exception as e:
+            print(f"[API] 경고: 프롬프트 재생성 실패, 기존 프롬프트 사용: {e}")
+            import traceback
+            traceback.print_exc()
     
     if not script_text or not sentences or not prompts:
         print("[API] 오류: 대본, 문장, 프롬프트가 모두 필요합니다.")

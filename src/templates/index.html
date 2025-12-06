@@ -1428,13 +1428,15 @@
                     // API 키 읽기
                     const replicateApiKey = (settingsState.replicate_api_key || '').trim() || null;
                     const elevenlabsApiKey = (settingsState.elevenlabs_api_key || '').trim() || null;
+                    const openaiApiKey = (settingsState.openai_api_key || '').trim() || null;
                     
                     console.log('[이미지 생성] API 요청 시작:', {
                         sentencesCount: sentences.length,
                         promptsCount: userPrompts.length,
                         mode: currentMode,
                         hasReplicateKey: !!replicateApiKey,
-                        hasElevenlabsKey: !!elevenlabsApiKey
+                        hasElevenlabsKey: !!elevenlabsApiKey,
+                        hasOpenAIKey: !!openaiApiKey
                     });
                     
                     const customStylePromptInput = document.getElementById('customStylePrompt');
@@ -1452,6 +1454,7 @@
                             test_mode: isTestMode,
                             replicate_api_key: replicateApiKey,
                             elevenlabs_api_key: elevenlabsApiKey,
+                            openai_api_key: openaiApiKey,
                             banana_model_flags: bananaModelFlags
                         })
                     });
