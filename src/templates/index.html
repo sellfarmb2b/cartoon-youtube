@@ -718,40 +718,40 @@
                 });
             }
             
-            // 나노바나나 전체선택 버튼 이벤트 리스너
-            document.addEventListener('DOMContentLoaded', function() {
-                const selectAllBananaBtn = document.getElementById('selectAllBananaBtn');
-                if (selectAllBananaBtn) {
-                    selectAllBananaBtn.addEventListener('click', function() {
-                        const checkboxes = document.querySelectorAll('.banana-checkbox');
-                        if (checkboxes.length === 0) {
-                            return;
-                        }
-                        
-                        // 모든 체크박스가 체크되어 있는지 확인
-                        const allChecked = Array.from(checkboxes).every(cb => cb.checked);
-                        
-                        // 전체선택 또는 전체해제 (시각적 피드백을 위해 하나씩 처리)
-                        checkboxes.forEach((checkbox, idx) => {
-                            setTimeout(() => {
-                                checkbox.checked = !allChecked;
-                                // 체크 상태 변경 시각적 피드백
-                                checkbox.style.transform = 'scale(1.2)';
-                                setTimeout(() => {
-                                    checkbox.style.transform = 'scale(1)';
-                                }, 150);
-                            }, idx * 20); // 순차적으로 체크되도록 약간의 지연 추가
-                        });
-                        
-                        // 버튼 텍스트 업데이트
-                        selectAllBananaBtn.textContent = allChecked ? '🍌 나노바나나 전체선택' : '🍌 나노바나나 전체해제';
-                        
-                        // 버튼 클릭 피드백
-                        selectAllBananaBtn.style.transform = 'scale(0.95)';
+            // 나노바나나 전체선택 버튼 이벤트 리스너 (이벤트 위임 사용)
+            // 동적으로 생성된 버튼에도 작동하도록 document에 이벤트 위임
+            document.addEventListener('click', function(e) {
+                if (e.target && e.target.id === 'selectAllBananaBtn') {
+                    const selectAllBananaBtn = e.target;
+                    const checkboxes = document.querySelectorAll('.banana-checkbox');
+                    if (checkboxes.length === 0) {
+                        console.warn('체크박스를 찾을 수 없습니다.');
+                        return;
+                    }
+                    
+                    // 모든 체크박스가 체크되어 있는지 확인
+                    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+                    
+                    // 전체선택 또는 전체해제 (시각적 피드백을 위해 하나씩 처리)
+                    checkboxes.forEach((checkbox, idx) => {
                         setTimeout(() => {
-                            selectAllBananaBtn.style.transform = 'scale(1)';
-                        }, 150);
+                            checkbox.checked = !allChecked;
+                            // 체크 상태 변경 시각적 피드백
+                            checkbox.style.transform = 'scale(1.2)';
+                            setTimeout(() => {
+                                checkbox.style.transform = 'scale(1)';
+                            }, 150);
+                        }, idx * 20); // 순차적으로 체크되도록 약간의 지연 추가
                     });
+                    
+                    // 버튼 텍스트 업데이트
+                    selectAllBananaBtn.textContent = allChecked ? '🍌 나노바나나 전체선택' : '🍌 나노바나나 전체해제';
+                    
+                    // 버튼 클릭 피드백
+                    selectAllBananaBtn.style.transform = 'scale(0.95)';
+                    setTimeout(() => {
+                        selectAllBananaBtn.style.transform = 'scale(1)';
+                    }, 150);
                 }
             });
             
