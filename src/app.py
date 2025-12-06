@@ -497,6 +497,62 @@ def enforce_realistic_prompt(prompt: str, fallback_context: str = "") -> str:
     return prompt
 
 
+def enforce_realistic2_prompt(prompt: str, fallback_context: str = "") -> str:
+    """
+    실사화2 모드 전용 프롬프트 강화 함수
+    - 스타일 중복 방지: OpenAI에서 이미 스타일 키워드를 포함한 경우 Wrapper를 추가하지 않음
+    - 후처리 안전장치 역할: 스타일이 없을 때만 Wrapper 적용
+    """
+    prompt = ensure_english_text((prompt or "").strip())
+    if not prompt:
+        prompt = fallback_context or "Detailed cinematic scene"
+    
+    # 1. 불필요한 키워드 제거 (Stickman, Cartoon 등) - 기존 로직 유지
+    prompt_lower = prompt.lower()
+    
+    # 스틱맨 관련 키워드 제거
+    if "stickman" in prompt_lower:
+        # "stickman character", "stickman scene" 등의 패턴 제거
+        prompt = re.sub(r'\bstickman\s+character\s*', '', prompt, flags=re.IGNORECASE)
+        prompt = re.sub(r'\bstickman\s+scene\s*', '', prompt, flags=re.IGNORECASE)
+        prompt = re.sub(r'\bstickman\s*', '', prompt, flags=re.IGNORECASE)
+        prompt = prompt.strip()
+    
+    # 애니메이션 관련 키워드 제거
+    animation_keywords = [
+        'cartoon', 'illustration', '2d', 'animated', 'drawing', 'sketch',
+        'vibrant 2d', 'explainer video', 'cel-shading', 'bold lines'
+    ]
+    for keyword in animation_keywords:
+        prompt = re.sub(rf'\b{re.escape(keyword)}\s*', '', prompt, flags=re.IGNORECASE)
+        prompt = prompt.strip()
+    
+    # 불필요한 공백 및 쉼표 정리
+    prompt = prompt.strip()
+    prompt = re.sub(r'\s*,\s*,', ',', prompt)  # 연속된 쉼표 제거
+    prompt = re.sub(r'^\s*,\s*', '', prompt)  # 시작 쉼표 제거
+    prompt = re.sub(r'\s*,\s*$', '', prompt)  # 끝 쉼표 제거
+    prompt = prompt.strip()
+    
+    if not prompt:
+        prompt = fallback_context or "Detailed cinematic scene"
+    
+    # 2. [변경] REALISTIC_STYLE_WRAPPER 스마트 적용
+    # 이미 스타일이 포함되어 있다면 중복 적용 방지
+    style_keywords = ["photorealistic", "cinematic", "hyperrealistic", "photography"]
+    if any(keyword in prompt_lower for keyword in style_keywords):
+        # 스타일은 있지만 화질 키워드가 없으면 보강
+        if "8k" not in prompt_lower and "ultra-detailed" not in prompt_lower:
+            prompt = f"8k, ultra-detailed, {prompt}"
+    else:
+        # 스타일이 없으면 Wrapper 강제 적용
+        if not prompt.lower().startswith(("a ", "the ")):
+            prompt = prompt[0].upper() + prompt[1:]
+        prompt = f"{REALISTIC_STYLE_WRAPPER}, {prompt}"
+    
+    return prompt
+
+
 def enforce_animation2_prompt(prompt: str, fallback_context: str = "") -> str:
     """
     애니메이션 모드2: 고품질 익스플레인어 비디오 스타일의 스틱맨 캐릭터
@@ -566,7 +622,9 @@ def enforce_custom_prompt(prompt: str, custom_style_prompt: str = "", fallback_c
 
 def enforce_prompt_by_mode(prompt: str, fallback_context: str = "", mode: str = "animation", custom_style_prompt: str = "") -> str:
     mode = (mode or "animation").lower()
-    if mode == "realistic" or mode == "realistic2":
+    if mode == "realistic2":
+        return enforce_realistic2_prompt(prompt, fallback_context)
+    elif mode == "realistic":
         return enforce_realistic_prompt(prompt, fallback_context)
     elif mode == "animation2":
         return enforce_animation2_prompt(prompt, fallback_context)
