@@ -2461,7 +2461,8 @@ def create_video(
                     else:
                         # 비디오가 더 짧으면 반복 (loop) 후 정확히 duration에 맞춤
                         # loop 필터는 무한 루프를 생성하므로, 이후 trim으로 정확히 자름
-                        loop_count = math.ceil(duration / video_duration) + 1  # 여유있게 루프
+                        # 루프 카운트를 더 여유있게 설정하여 duration을 정확히 맞춤
+                        loop_count = max(int(math.ceil(duration / video_duration)) + 3, 5)  # 최소 5회, 여유있게 루프
                         base_stream = video_input.filter("loop", loop=loop_count, size=32767).filter("trim", start=0, duration=duration).filter("setpts", "PTS-STARTPTS")
                         print(f"[비디오 조정] scene_{scene_id}: 비디오 반복 후 정확히 자르기 ({video_duration:.2f}초 x {loop_count}회 -> {duration:.2f}초)")
                     
@@ -2560,34 +2561,64 @@ def create_video(
                         scene_video_files.append(scene_video_file)
                         print(f"[DEBUG] scene_{scene_id} 비디오 파일을 리스트에 추가: {os.path.basename(scene_video_file)}")
                     
-                    # 생성된 비디오의 실제 duration 확인
+                    # 생성된 비디오의 실제 duration 확인 및 강제 수정
                     try:
                         probe = ffmpeg.probe(scene_video_file)
                         video_streams = [s for s in probe.get('streams', []) if s.get('codec_type') == 'video']
+                        audio_streams = [s for s in probe.get('streams', []) if s.get('codec_type') == 'audio']
+                        
+                        actual_video_duration = 0
+                        actual_audio_duration = 0
+                        
                         if video_streams:
                             actual_video_duration = float(video_streams[0].get('duration', 0))
-                            if abs(actual_video_duration - duration) > 0.5:  # 0.5초 이상 차이나면 경고
-                                print(f"[경고] scene_{scene_id}: 비디오 duration 불일치! 예상={duration:.2f}초, 실제={actual_video_duration:.2f}초")
-                                # duration이 너무 길면 재인코딩 (정확히 duration에 맞춰 자르기)
-                                if actual_video_duration > duration + 0.5:
-                                    print(f"[수정] scene_{scene_id}: 비디오를 정확한 duration으로 재인코딩 중... (실제: {actual_video_duration:.2f}초 -> 목표: {duration:.2f}초)")
-                                    temp_file = scene_video_file + ".tmp"
-                                    os.rename(scene_video_file, temp_file)
-                                    input_video = ffmpeg.input(temp_file)
-                                    corrected_output = ffmpeg.output(
-                                        input_video['v'].filter('trim', start=0, duration=duration).filter('setpts', 'PTS-STARTPTS'),
-                                        input_video['a'].filter('atrim', start=0, duration=duration).filter('asetpts', 'PTS-STARTPTS'),
-                                        scene_video_file,
-                                        vcodec="libx264",
-                                        acodec="aac",
-                                        pix_fmt="yuv420p",
-                                        t=duration,  # 최종 안전장치
-                                        preset="ultrafast",
-                                        crf="23"
-                                    )
-                                    ffmpeg.run(corrected_output, overwrite_output=True, quiet=True)
-                                    os.remove(temp_file)
-                                    print(f"[수정 완료] scene_{scene_id}: duration 수정됨 ({duration:.2f}초로 정확히 맞춤)")
+                        if audio_streams:
+                            actual_audio_duration = float(audio_streams[0].get('duration', 0))
+                        
+                        # 오디오 duration을 우선 기준으로 사용 (오디오가 있으면)
+                        target_duration = actual_audio_duration if actual_audio_duration > 0 else duration
+                        
+                        # 0.1초 이상 차이나면 재인코딩 (더 엄격한 기준)
+                        duration_diff = abs(actual_video_duration - target_duration)
+                        if duration_diff > 0.1:
+                            print(f"[경고] scene_{scene_id}: 비디오 duration 불일치! 예상={target_duration:.2f}초, 실제 비디오={actual_video_duration:.2f}초, 실제 오디오={actual_audio_duration:.2f}초")
+                            print(f"[수정] scene_{scene_id}: 비디오를 정확한 duration으로 재인코딩 중... (실제: {actual_video_duration:.2f}초 -> 목표: {target_duration:.2f}초)")
+                            temp_file = scene_video_file + ".tmp"
+                            os.rename(scene_video_file, temp_file)
+                            input_video = ffmpeg.input(temp_file)
+                            
+                            # 비디오와 오디오 모두 정확히 target_duration에 맞춤
+                            corrected_video = input_video['v'].filter('trim', start=0, duration=target_duration).filter('setpts', 'PTS-STARTPTS')
+                            corrected_audio = input_video['a'].filter('atrim', start=0, duration=target_duration).filter('asetpts', 'PTS-STARTPTS')
+                            
+                            corrected_output = ffmpeg.output(
+                                corrected_video,
+                                corrected_audio,
+                                scene_video_file,
+                                vcodec="libx264",
+                                acodec="aac",
+                                pix_fmt="yuv420p",
+                                t=target_duration,  # 최종 안전장치
+                                preset="ultrafast",
+                                crf="23"
+                            )
+                            ffmpeg.run(corrected_output, overwrite_output=True, quiet=True)
+                            os.remove(temp_file)
+                            
+                            # 재인코딩 후 다시 확인
+                            try:
+                                verify_probe = ffmpeg.probe(scene_video_file)
+                                verify_video_streams = [s for s in verify_probe.get('streams', []) if s.get('codec_type') == 'video']
+                                if verify_video_streams:
+                                    verify_duration = float(verify_video_streams[0].get('duration', 0))
+                                    if abs(verify_duration - target_duration) <= 0.1:
+                                        print(f"[수정 완료] scene_{scene_id}: duration 수정됨 ({target_duration:.2f}초로 정확히 맞춤, 검증: {verify_duration:.2f}초)")
+                                    else:
+                                        print(f"[경고] scene_{scene_id}: 재인코딩 후에도 duration 불일치 (목표: {target_duration:.2f}초, 실제: {verify_duration:.2f}초)")
+                            except Exception as verify_exc:
+                                print(f"[경고] scene_{scene_id}: 재인코딩 후 duration 검증 실패: {verify_exc}")
+                        else:
+                            print(f"[확인] scene_{scene_id}: duration 정확히 일치 (비디오: {actual_video_duration:.2f}초, 오디오: {actual_audio_duration:.2f}초, 목표: {target_duration:.2f}초)")
                     except Exception as probe_exc:
                         print(f"[경고] scene_{scene_id}: 비디오 duration 확인 실패: {probe_exc}")
                         
