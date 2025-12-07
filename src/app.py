@@ -2453,16 +2453,17 @@ def create_video(
                     # 비디오 입력
                     video_input = ffmpeg.input(video_path)
                     
-                    # TTS 길이에 맞게 비디오 조정
+                    # TTS 길이에 맞게 비디오 조정 (강제로 duration에 맞춤)
                     if video_duration >= duration:
-                        # 비디오가 더 길면 자르기
-                        base_stream = video_input.filter("trim", duration=duration).filter("setpts", "PTS-STARTPTS")
+                        # 비디오가 더 길면 정확히 자르기
+                        base_stream = video_input.filter("trim", start=0, duration=duration).filter("setpts", "PTS-STARTPTS")
                         print(f"[비디오 조정] scene_{scene_id}: 비디오 자르기 ({video_duration:.2f}초 -> {duration:.2f}초)")
                     else:
-                        # 비디오가 더 짧으면 반복 (loop)
-                        loop_count = math.ceil(duration / video_duration)
-                        base_stream = video_input.filter("loop", loop=loop_count, size=32767).filter("trim", duration=duration)
-                        print(f"[비디오 조정] scene_{scene_id}: 비디오 반복 ({video_duration:.2f}초 x {loop_count}회 -> {duration:.2f}초)")
+                        # 비디오가 더 짧으면 반복 (loop) 후 정확히 duration에 맞춤
+                        # loop 필터는 무한 루프를 생성하므로, 이후 trim으로 정확히 자름
+                        loop_count = math.ceil(duration / video_duration) + 1  # 여유있게 루프
+                        base_stream = video_input.filter("loop", loop=loop_count, size=32767).filter("trim", start=0, duration=duration).filter("setpts", "PTS-STARTPTS")
+                        print(f"[비디오 조정] scene_{scene_id}: 비디오 반복 후 정확히 자르기 ({video_duration:.2f}초 x {loop_count}회 -> {duration:.2f}초)")
                     
                     # 스케일 조정 (1920x1080으로 통일)
                     base_stream = base_stream.filter("scale", 1920, 1080)
@@ -2477,9 +2478,12 @@ def create_video(
                         print(f"[이미지 확인] scene_{scene_id}: 이미지 크기 {img_width}x{img_height}")
                     
                     # FFmpeg 입력: PNG 형식 명시적으로 지정
+                    # loop=1은 무한 루프이므로, t=duration으로 제한하고 추가로 trim 필터로 정확히 duration에 맞춤
                     base_stream = (
-                        ffmpeg.input(image_path, format='image2', loop=1, t=duration, framerate=VIDEO_FPS)
+                        ffmpeg.input(image_path, format='image2', loop=1, framerate=VIDEO_FPS)
                         .filter("scale", 1920, 1080)
+                        .filter("trim", start=0, duration=duration)
+                        .filter("setpts", "PTS-STARTPTS")
                     )
             except Exception as img_exc:
                 print(f"[오류] scene_{scene_id}: 이미지 로드 실패: {img_exc}")
@@ -2492,8 +2496,10 @@ def create_video(
                     black_img.save(fallback_image, format="PNG")
                 image_path = fallback_image
                 base_stream = (
-                    ffmpeg.input(image_path, format='image2', loop=1, t=duration, framerate=VIDEO_FPS)
+                    ffmpeg.input(image_path, format='image2', loop=1, framerate=VIDEO_FPS)
                     .filter("scale", 1920, 1080)
+                    .filter("trim", start=0, duration=duration)
+                    .filter("setpts", "PTS-STARTPTS")
                 )
             
             # 자막 적용 (ASS 형식 사용 - 배경 박스가 끊어지지 않음)
@@ -2515,16 +2521,17 @@ def create_video(
                 video_with_subs = base_stream  # 자막 포함 옵션이 꺼져있으면 자막 없이 진행
             
             # 모션 효과 없이 정적 이미지 사용
-            # duration을 명시적으로 제한
-            video_stream = video_with_subs.filter("trim", duration=duration).filter("setpts", "PTS-STARTPTS")
+            # duration을 명시적으로 제한 (이미 base_stream에서 trim이 적용되었지만, 추가 안전장치)
+            video_stream = video_with_subs.filter("trim", start=0, duration=duration).filter("setpts", "PTS-STARTPTS")
             
-            # 오디오 스트림 생성
+            # 오디오 스트림 생성 (duration에 정확히 맞춤)
             if audio_file and os.path.exists(audio_file):
-                audio_stream = ffmpeg.input(audio_file)
+                # 오디오도 정확히 duration에 맞춰서 자름
+                audio_stream = ffmpeg.input(audio_file).filter("atrim", start=0, duration=duration).filter("asetpts", "PTS-STARTPTS")
             else:
                 audio_stream = ffmpeg.input('anullsrc=channel_layout=mono:sample_rate=44100', f='lavfi', t=duration)
             
-            # 개별 씬 비디오 생성 (duration 명시적으로 제한)
+            # 개별 씬 비디오 생성 (duration 명시적으로 제한 - 강제로 정확히 맞춤)
             scene_output = ffmpeg.output(
                 video_stream,
                 audio_stream,
@@ -2532,7 +2539,7 @@ def create_video(
                 vcodec="libx264",
                 acodec="aac",
                 pix_fmt="yuv420p",
-                t=duration,  # duration 명시적으로 제한
+                t=duration,  # duration 명시적으로 제한 (최종 안전장치)
                 **{
                     "preset": "ultrafast",  # 개별 씬은 빠르게 생성
                     "crf": "23",
@@ -2561,26 +2568,26 @@ def create_video(
                             actual_video_duration = float(video_streams[0].get('duration', 0))
                             if abs(actual_video_duration - duration) > 0.5:  # 0.5초 이상 차이나면 경고
                                 print(f"[경고] scene_{scene_id}: 비디오 duration 불일치! 예상={duration:.2f}초, 실제={actual_video_duration:.2f}초")
-                                # duration이 너무 길면 재인코딩 (짧게 자르기)
+                                # duration이 너무 길면 재인코딩 (정확히 duration에 맞춰 자르기)
                                 if actual_video_duration > duration + 0.5:
-                                    print(f"[수정] scene_{scene_id}: 비디오를 정확한 duration으로 재인코딩 중...")
+                                    print(f"[수정] scene_{scene_id}: 비디오를 정확한 duration으로 재인코딩 중... (실제: {actual_video_duration:.2f}초 -> 목표: {duration:.2f}초)")
                                     temp_file = scene_video_file + ".tmp"
                                     os.rename(scene_video_file, temp_file)
                                     input_video = ffmpeg.input(temp_file)
                                     corrected_output = ffmpeg.output(
-                                        input_video['v'].filter('trim', duration=duration),
-                                        input_video['a'].filter('atrim', duration=duration),
+                                        input_video['v'].filter('trim', start=0, duration=duration).filter('setpts', 'PTS-STARTPTS'),
+                                        input_video['a'].filter('atrim', start=0, duration=duration).filter('asetpts', 'PTS-STARTPTS'),
                                         scene_video_file,
                                         vcodec="libx264",
                                         acodec="aac",
                                         pix_fmt="yuv420p",
-                                        t=duration,
+                                        t=duration,  # 최종 안전장치
                                         preset="ultrafast",
                                         crf="23"
                                     )
                                     ffmpeg.run(corrected_output, overwrite_output=True, quiet=True)
                                     os.remove(temp_file)
-                                    print(f"[수정 완료] scene_{scene_id}: duration 수정됨")
+                                    print(f"[수정 완료] scene_{scene_id}: duration 수정됨 ({duration:.2f}초로 정확히 맞춤)")
                     except Exception as probe_exc:
                         print(f"[경고] scene_{scene_id}: 비디오 duration 확인 실패: {probe_exc}")
                         
@@ -2596,10 +2603,12 @@ def create_video(
                 print(f"[재시도] scene_{scene_id} 기본 스트림으로 재시도 중...")
                 try:
                     # 모션 효과 없이 기본 스트림만 사용
-                    # 이미지 형식을 명시적으로 지정
+                    # 이미지 형식을 명시적으로 지정 (루프 후 정확히 duration에 맞춤)
                     simple_stream = (
-                        ffmpeg.input(image_path, format='image2', loop=1, t=duration, framerate=VIDEO_FPS)
+                        ffmpeg.input(image_path, format='image2', loop=1, framerate=VIDEO_FPS)
                         .filter("scale", 1920, 1080)
+                        .filter("trim", start=0, duration=duration)
+                        .filter("setpts", "PTS-STARTPTS")
                     )
                     if include_subtitles and os.path.exists(scene_subtitle_ass) and os.path.getsize(scene_subtitle_ass) > 0:
                         # fallback 경로에서도 subtitle_kwargs 정의
@@ -2610,14 +2619,20 @@ def create_video(
                         simple_with_subs = simple_stream.filter("subtitles", scene_subtitle_ass, **fallback_subtitle_kwargs)
                     else:
                         simple_with_subs = simple_stream
+                    # 오디오도 정확히 duration에 맞춤
+                    if audio_file and os.path.exists(audio_file):
+                        fallback_audio_stream = ffmpeg.input(audio_file).filter("atrim", start=0, duration=duration).filter("asetpts", "PTS-STARTPTS")
+                    else:
+                        fallback_audio_stream = ffmpeg.input('anullsrc=channel_layout=mono:sample_rate=44100', f='lavfi', t=duration)
+                    
                     simple_output = ffmpeg.output(
-                        simple_with_subs,
-                        audio_stream,
+                        simple_with_subs.filter("trim", start=0, duration=duration).filter("setpts", "PTS-STARTPTS"),
+                        fallback_audio_stream,
                         scene_video_file,
                         vcodec="libx264",
                         acodec="aac",
                         pix_fmt="yuv420p",
-                        t=duration,  # duration 명시적으로 제한
+                        t=duration,  # duration 명시적으로 제한 (최종 안전장치)
                         preset="ultrafast",
                         crf="23",
                         threads="0"
