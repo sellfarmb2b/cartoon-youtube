@@ -3785,16 +3785,13 @@ def api_generate_draft_script():
             return jsonify({"error": "Gemini API 키가 설정되지 않았습니다. 설정에서 Gemini API 키를 입력해주세요."}), 500
         
         # 패키지가 없으면 다시 import 시도
+        genai_module = None
         if not GEMINI_AVAILABLE or genai is None:
             try:
                 import google.generativeai as genai_module
                 print(f"[검수 대본 생성] google.generativeai 재import 성공")
                 # API 키 설정
                 genai_module.configure(api_key=GEMINI_API_KEY)
-                # 전역 genai 변수 업데이트
-                import sys
-                sys.modules['google.generativeai'] = genai_module
-                globals()['genai'] = genai_module
             except ImportError as e:
                 error_msg = f"google-generativeai 패키지가 설치되지 않았습니다. pip install google-generativeai를 실행해주세요. ({e})"
                 print(f"[검수 대본 생성] {error_msg}")
@@ -3858,8 +3855,8 @@ D. 아웃트로: [최종 요약 및 CTA]
         
         try:
             full_prompt = f"{system_prompt}\n\n{user_prompt}"
-            # genai 모듈 사용 (전역 또는 로컬)
-            current_genai = genai if GEMINI_AVAILABLE and genai is not None else genai_module if 'genai_module' in locals() else None
+            # genai 모듈 사용 (전역 또는 재import된 모듈)
+            current_genai = genai_module if genai_module is not None else (genai if GEMINI_AVAILABLE and genai is not None else None)
             if current_genai is None:
                 return jsonify({"error": "Gemini API 모듈을 로드할 수 없습니다."}), 500
             model = current_genai.GenerativeModel('gemini-3-pro-preview')
@@ -3980,16 +3977,13 @@ def api_generate_final_script():
             return jsonify({"error": "Gemini API 키가 설정되지 않았습니다. 설정에서 Gemini API 키를 입력해주세요."}), 500
         
         # 패키지가 없으면 다시 import 시도
+        genai_module = None
         if not GEMINI_AVAILABLE or genai is None:
             try:
                 import google.generativeai as genai_module
                 print(f"[최종 대본 생성] google.generativeai 재import 성공")
                 # API 키 설정
                 genai_module.configure(api_key=GEMINI_API_KEY)
-                # 전역 genai 변수 업데이트
-                import sys
-                sys.modules['google.generativeai'] = genai_module
-                globals()['genai'] = genai_module
             except ImportError as e:
                 error_msg = f"google-generativeai 패키지가 설치되지 않았습니다. pip install google-generativeai를 실행해주세요. ({e})"
                 print(f"[최종 대본 생성] {error_msg}")
