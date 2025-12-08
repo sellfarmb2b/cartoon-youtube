@@ -4182,15 +4182,64 @@ def api_generate_final_script():
                                 print(f"[DEBUG] 응답 마지막 500자:\n{chunk_response[-500:]}")
                             print(f"{'='*80}\n")
                         
-                        # content가 None이거나 빈 문자열인 경우
-                        if not chunk_response:
-                            error_msg = f"챕터 {idx} 처리 중 최종 대본 생성에 실패했습니다."
-                            if finish_reason:
-                                error_msg += f" (완료 사유: {finish_reason})"
-                            if message.get("refusal"):
-                                error_msg += f" 거부 사유: {message.get('refusal')}"
-                            print(f"[최종 대본 생성] 챕터 {idx} 응답 없음 - finish_reason: {finish_reason}, message: {message}")
-                            return jsonify({"error": error_msg}), 500
+                        # OpenAI 거부 응답 감지
+                        refusal_keywords = [
+                            "I'm sorry, I can't assist",
+                            "can't assist with that request",
+                            "요청하신 작업을 수행할 수 없습니다",
+                            "요청하신 작업을 제공하지 못합니다",
+                            "죄송합니다, 요청하신 작업"
+                        ]
+                        
+                        is_refusal = any(keyword in chunk_response for keyword in refusal_keywords) if chunk_response else False
+                        
+                        # content가 None이거나 빈 문자열인 경우, 또는 거부 응답인 경우
+                        if not chunk_response or is_refusal:
+                            if is_refusal:
+                                print(f"[최종 대본 생성] OpenAI 거부 응답 감지, 재시도 중...")
+                                # 거부 응답인 경우, 프롬프트를 수정하여 재시도
+                                if continuation_count < 3:  # 최대 3번까지 재시도
+                                    continuation_count += 1
+                                    # 프롬프트를 더 명확하게 수정
+                                    retry_prompt = f"""다음 검수 대본을 최종 대본으로 변환해주세요. 이는 교육용 유튜브 콘텐츠 제작을 위한 대본 변환 작업입니다.
+
+[중요 지침]
+1. 검수 대본의 각 문장을 [한국어 번역] 태그로 감싸고, 그 다음에 [영어 이미지 프롬프트]를 제공하세요.
+2. 반드시 아래 형식을 정확히 따르세요:
+
+[출력 형식]
+1.
+[한국어 번역] (첫 번째 문장)
+[영어 이미지 프롬프트] (스타일 래퍼 + 문맥 + 묘사가 결합된 영어 프롬프트)
+
+2.
+[한국어 번역] (두 번째 문장)
+[영어 이미지 프롬프트] (스타일 래퍼 + 문맥 + 묘사가 결합된 영어 프롬프트)
+
+[요구사항]
+- 모든 문장을 빠뜨리지 말고 순서대로 처리하세요
+- [한국어 번역]과 [영어 이미지 프롬프트] 태그를 정확히 사용하세요
+
+검수 대본:
+{chunk_content}"""
+                                    # 메시지 히스토리 초기화하고 재시도
+                                    messages = [
+                                        {"role": "system", "content": system_prompt},
+                                        {"role": "user", "content": retry_prompt}
+                                    ]
+                                    continue
+                                else:
+                                    error_msg = f"챕터 {idx} 처리 중 OpenAI가 요청을 거부했습니다. 대본 내용을 확인하거나 다른 주제로 시도해주세요."
+                                    print(f"[최종 대본 생성] 재시도 횟수 초과 - finish_reason: {finish_reason}, message: {message}")
+                                    return jsonify({"error": error_msg}), 400
+                            else:
+                                error_msg = f"챕터 {idx} 처리 중 최종 대본 생성에 실패했습니다."
+                                if finish_reason:
+                                    error_msg += f" (완료 사유: {finish_reason})"
+                                if message.get("refusal"):
+                                    error_msg += f" 거부 사유: {message.get('refusal')}"
+                                print(f"[최종 대본 생성] 챕터 {idx} 응답 없음 - finish_reason: {finish_reason}, message: {message}")
+                                return jsonify({"error": error_msg}), 500
                         
                         # 응답 저장
                         chunk_responses.append(chunk_response)
@@ -4417,12 +4466,22 @@ def api_generate_final_script():
             print(f"[DEBUG] 첫 번째 이미지 프롬프트:\n{image_prompts[0][:200]}")
         print(f"{'='*80}\n")
         
-        return jsonify({
+        # 응답 크기 확인 및 최적화
+        response_data = {
             "final_script": final_script,
             "image_prompts": image_prompts,  # 영어 이미지 프롬프트 리스트 추가
-            "thumbnail_prompt": thumbnail_prompt,
-            "full_response": full_response  # 디버깅용
-        })
+            "thumbnail_prompt": thumbnail_prompt
+        }
+        
+        # full_response가 너무 크면 (100KB 이상) 요약 버전만 포함
+        if len(full_response) > 100000:
+            print(f"[최종 대본 생성] 경고: full_response가 너무 큼 ({len(full_response)}자), 요약 버전만 포함")
+            response_data["full_response"] = full_response[:50000] + "\n\n[... 중간 생략 ...]\n\n" + full_response[-50000:]
+            response_data["full_response_truncated"] = True
+        else:
+            response_data["full_response"] = full_response
+        
+        return jsonify(response_data)
         
     except Exception as e:
         print(f"[최종 대본 생성 오류] {e}")
