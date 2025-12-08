@@ -4196,12 +4196,60 @@ def api_generate_final_script():
         print(f"[DEBUG] 전체 응답 처음 2000자:\n{full_response[:2000]}")
         print(f"{'='*80}\n")
         
-        # TTS용 순수 대본 추출 (한국어 번역 부분만 추출)
+        # TTS용 순수 대본 추출 및 영어 이미지 프롬프트 추출
         import re
         final_script_lines = []
+        image_prompts = []  # 영어 이미지 프롬프트 저장
         
-        # 방법 1: [한국어 번역] 태그로 감싸진 내용 추출
-        korean_translations = re.findall(r'\[한국어 번역\]\s*(.+?)(?=\[영어 이미지 프롬프트\]|$|\n\n)', full_response, re.DOTALL)
+        # 방법 1: [한국어 번역]과 [영어 이미지 프롬프트] 쌍으로 추출
+        pairs = re.findall(
+            r'\[한국어 번역\]\s*(.+?)\s*\[영어 이미지 프롬프트\]\s*(.+?)(?=\[한국어 번역\]|$|\n\n\d+\.)',
+            full_response,
+            re.DOTALL
+        )
+        
+        for korean_text, english_prompt in pairs:
+            # 한국어 번역 정제 (TTS용)
+            korean_cleaned = korean_text.strip()
+            korean_cleaned = re.sub(r'\(.*?\)', '', korean_cleaned)  # 괄호 제거
+            korean_cleaned = re.sub(r'\[.*?\]', '', korean_cleaned)  # 대괄호 제거
+            korean_cleaned = korean_cleaned.strip()
+            
+            # 영어 이미지 프롬프트 정제
+            english_cleaned = english_prompt.strip()
+            english_cleaned = re.sub(r'\(.*?\)', '', english_cleaned)  # 괄호 제거
+            english_cleaned = english_cleaned.strip()
+            
+            if korean_cleaned and len(korean_cleaned) > 3:
+                final_script_lines.append(korean_cleaned)
+                if english_cleaned:
+                    image_prompts.append(english_cleaned)
+        
+        # 방법 2: 번호가 있는 형식에서 추출 (1. [한국어 번역] ... [영어 이미지 프롬프트] ...)
+        if not final_script_lines:
+            numbered_pairs = re.findall(
+                r'\d+\.\s*\[한국어 번역\]\s*(.+?)\s*\[영어 이미지 프롬프트\]\s*(.+?)(?=\d+\.\s*\[한국어 번역\]|$)',
+                full_response,
+                re.DOTALL
+            )
+            for korean_text, english_prompt in numbered_pairs:
+                korean_cleaned = korean_text.strip()
+                korean_cleaned = re.sub(r'\(.*?\)', '', korean_cleaned)
+                korean_cleaned = re.sub(r'\[.*?\]', '', korean_cleaned)
+                korean_cleaned = korean_cleaned.strip()
+                
+                english_cleaned = english_prompt.strip()
+                english_cleaned = re.sub(r'\(.*?\)', '', english_cleaned)
+                english_cleaned = english_cleaned.strip()
+                
+                if korean_cleaned and len(korean_cleaned) > 3:
+                    final_script_lines.append(korean_cleaned)
+                    if english_cleaned:
+                        image_prompts.append(english_cleaned)
+        
+        # 방법 3: 한국어 번역만 추출 (fallback)
+        if not final_script_lines:
+            korean_translations = re.findall(r'\[한국어 번역\]\s*(.+?)(?=\[영어 이미지 프롬프트\]|$|\n\n)', full_response, re.DOTALL)
         for trans in korean_translations:
             cleaned = trans.strip()
             # 괄호와 대괄호 제거
