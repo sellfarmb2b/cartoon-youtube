@@ -20,6 +20,7 @@ class ConfigManager:
             "replicate_api_key": "",
             "elevenlabs_api_key": "",
             "openai_api_key": "",
+            "gemini_api_key": "",
             "download_folder_path": "",
             "custom_voice_ids": [],  # 사용자 정의 보이스 ID 목록
         }

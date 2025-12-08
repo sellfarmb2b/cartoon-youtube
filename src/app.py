@@ -63,6 +63,11 @@ from utils import get_ffmpeg_path, get_ffprobe_path, resource_path
 
 config_manager = ConfigManager()
 
+# 전역 API 키 변수 초기화
+ELEVENLABS_API_KEY = ""
+REPLICATE_API_TOKEN = ""
+GEMINI_API_KEY = ""
+
 # 로그 파일 설정 (Windows 환경에서 디버깅용)
 LOG_DIR = os.path.join(os.path.expanduser("~"), "YouTubeMaker_logs")
 os.makedirs(LOG_DIR, exist_ok=True)
