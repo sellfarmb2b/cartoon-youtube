@@ -3778,10 +3778,24 @@ def api_generate_draft_script():
         # 디버깅: API 키 상태 확인
         print(f"[검수 대본 생성] gemini_available: {gemini_available}, GEMINI_API_KEY: {'있음' if GEMINI_API_KEY else '없음'} (길이: {len(GEMINI_API_KEY)})")
         
-        if not gemini_available or not GEMINI_API_KEY:
-            error_msg = f"Gemini API 키가 설정되지 않았습니다. (gemini_available: {gemini_available}, GEMINI_API_KEY 길이: {len(GEMINI_API_KEY)})"
+        # GEMINI_API_KEY가 있으면 사용 (패키지가 없어도 시도)
+        if not GEMINI_API_KEY:
+            error_msg = f"Gemini API 키가 설정되지 않았습니다. (GEMINI_API_KEY 길이: {len(GEMINI_API_KEY)})"
             print(f"[검수 대본 생성] {error_msg}")
             return jsonify({"error": "Gemini API 키가 설정되지 않았습니다. 설정에서 Gemini API 키를 입력해주세요."}), 500
+        
+        # 패키지가 없으면 다시 import 시도
+        current_genai = genai
+        if not GEMINI_AVAILABLE or genai is None:
+            try:
+                import google.generativeai as genai
+                print(f"[검수 대본 생성] google.generativeai 재import 성공")
+                # API 키 설정
+                genai.configure(api_key=GEMINI_API_KEY)
+            except ImportError as e:
+                error_msg = f"google-generativeai 패키지가 설치되지 않았습니다. pip install google-generativeai를 실행해주세요. ({e})"
+                print(f"[검수 대본 생성] {error_msg}")
+                return jsonify({"error": "google-generativeai 패키지가 설치되지 않았습니다. 패키지를 설치한 후 다시 시도해주세요."}), 500
         
         # 검수 대본 프롬프트
         system_prompt = """당신은 '지식 스토리텔러' 전문 유튜브 대본 작가입니다.
@@ -3950,12 +3964,26 @@ def api_generate_final_script():
             return jsonify({"error": "검수 대본을 입력해주세요."}), 400
         
         # 디버깅: API 키 상태 확인
-        print(f"[검수 대본 생성] gemini_available: {gemini_available}, GEMINI_API_KEY: {'있음' if GEMINI_API_KEY else '없음'} (길이: {len(GEMINI_API_KEY)})")
+        print(f"[최종 대본 생성] gemini_available: {gemini_available}, GEMINI_API_KEY: {'있음' if GEMINI_API_KEY else '없음'} (길이: {len(GEMINI_API_KEY)})")
         
-        if not gemini_available or not GEMINI_API_KEY:
-            error_msg = f"Gemini API 키가 설정되지 않았습니다. (gemini_available: {gemini_available}, GEMINI_API_KEY 길이: {len(GEMINI_API_KEY)})"
-            print(f"[검수 대본 생성] {error_msg}")
+        # GEMINI_API_KEY가 있으면 사용 (패키지가 없어도 시도)
+        if not GEMINI_API_KEY:
+            error_msg = f"Gemini API 키가 설정되지 않았습니다. (GEMINI_API_KEY 길이: {len(GEMINI_API_KEY)})"
+            print(f"[최종 대본 생성] {error_msg}")
             return jsonify({"error": "Gemini API 키가 설정되지 않았습니다. 설정에서 Gemini API 키를 입력해주세요."}), 500
+        
+        # 패키지가 없으면 다시 import 시도
+        current_genai = genai
+        if not GEMINI_AVAILABLE or genai is None:
+            try:
+                import google.generativeai as genai
+                print(f"[최종 대본 생성] google.generativeai 재import 성공")
+                # API 키 설정
+                genai.configure(api_key=GEMINI_API_KEY)
+            except ImportError as e:
+                error_msg = f"google-generativeai 패키지가 설치되지 않았습니다. pip install google-generativeai를 실행해주세요. ({e})"
+                print(f"[최종 대본 생성] {error_msg}")
+                return jsonify({"error": "google-generativeai 패키지가 설치되지 않았습니다. 패키지를 설치한 후 다시 시도해주세요."}), 500
         
         # 챕터별로 분리
         chapters = split_draft_script_into_chapters(draft_script)
