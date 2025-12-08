@@ -83,8 +83,17 @@ class ConfigManager:
         changed = False
         with self._lock:
             for key, value in data.items():
-                if key in self._settings:
+                # 기존 키이거나 새로운 키(gemini_api_key 등)도 허용
+                if key in self._settings or key.endswith("_api_key") or key == "download_folder_path" or key == "custom_voice_ids":
+                    # 새로운 키인 경우 기본값 추가
+                    if key not in self._settings:
+                        if key == "custom_voice_ids":
+                            self._settings[key] = []
+                        else:
+                            self._settings[key] = ""
                     normalized = value or ""
+                    if key == "custom_voice_ids":
+                        normalized = value if isinstance(value, list) else []
                     if self._settings.get(key) != normalized:
                         self._settings[key] = normalized
                         changed = True
