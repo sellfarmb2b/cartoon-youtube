@@ -4188,8 +4188,8 @@ def api_generate_final_script():
         
         # 방법 2: 번호가 있는 형식에서 추출 (1. [한국어 번역] ...)
         if not final_script_lines:
-            numbered_pattern = r'\d+\.\s*\[한국어 번역\]\s*(.+?)(?=\[영어 이미지 프롬프트\]|$|\n\n)', re.DOTALL)
-            korean_translations = re.findall(numbered_pattern, full_response)
+            numbered_pattern = r'\d+\.\s*\[한국어 번역\]\s*(.+?)(?=\[영어 이미지 프롬프트\]|$|\n\n)'
+            korean_translations = re.findall(numbered_pattern, full_response, re.DOTALL)
             for trans in korean_translations:
                 cleaned = trans.strip()
                 cleaned = re.sub(r'\(.*?\)', '', cleaned)
