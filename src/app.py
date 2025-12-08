@@ -4268,8 +4268,17 @@ def api_generate_final_script():
         topic = topic_match.group(1).strip() if topic_match else "video content"
         thumbnail_prompt = f"YouTube thumbnail for video about: {topic}. High quality, eye-catching, professional thumbnail design. Bright colors, clear text area, engaging composition. 16:9 aspect ratio."
         
+        # 디버깅: 추출된 이미지 프롬프트 확인
+        print(f"\n{'='*80}")
+        print(f"[최종 대본 생성] 이미지 프롬프트 추출 완료")
+        print(f"[DEBUG] 추출된 이미지 프롬프트 개수: {len(image_prompts)}개")
+        if image_prompts:
+            print(f"[DEBUG] 첫 번째 이미지 프롬프트:\n{image_prompts[0][:200]}")
+        print(f"{'='*80}\n")
+        
         return jsonify({
             "final_script": final_script,
+            "image_prompts": image_prompts,  # 영어 이미지 프롬프트 리스트 추가
             "thumbnail_prompt": thumbnail_prompt,
             "full_response": full_response  # 디버깅용
         })
