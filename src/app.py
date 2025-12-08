@@ -4080,7 +4080,7 @@ def api_generate_final_script():
             
             # 각 청크 처리
             for chunk_idx, chunk_content in enumerate(chunks, 1):
-                user_prompt = f"""다음 검수 대본을 최종 대본으로 변환해주세요.
+                base_user_prompt = f"""다음 검수 대본을 최종 대본으로 변환해주세요.
 
 [중요 지침]
 1. 검수 대본의 언어를 먼저 확인하세요.
@@ -4107,78 +4107,143 @@ def api_generate_final_script():
 {chunk_content}"""
 
                 try:
-                    # 디버깅: 전송되는 프롬프트 확인
-                    print(f"\n{'='*80}")
-                    print(f"[최종 대본 생성] 챕터 {idx} 청크 {chunk_idx} - 프롬프트 전송 시작")
-                    print(f"[DEBUG] system_prompt 길이: {len(system_prompt)}자")
-                    print(f"[DEBUG] system_prompt 처음 500자:\n{system_prompt[:500]}")
-                    print(f"[DEBUG] user_prompt 길이: {len(user_prompt)}자")
-                    print(f"[DEBUG] user_prompt 처음 500자:\n{user_prompt[:500]}")
-                    print(f"{'='*80}\n")
+                    # 여러 번의 요청으로 전체 결과 수집
+                    chunk_responses = []
+                    messages = [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": base_user_prompt}
+                    ]
+                    max_continuations = 10  # 최대 10번까지 계속 요청
+                    continuation_count = 0
                     
-                    response = requests.post(
-                        "https://api.openai.com/v1/chat/completions",
-                        headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
-                        json={
-                            "model": "gpt-4o",
-                            "messages": [
-                                {"role": "system", "content": system_prompt},
-                                {"role": "user", "content": user_prompt}
-                            ],
-                            "temperature": 0.7,
-                            "max_tokens": 16000
-                        },
-                        timeout=180
-                    )
+                    while continuation_count <= max_continuations:
+                        # 디버깅: 전송되는 프롬프트 확인
+                        if continuation_count == 0:
+                            print(f"\n{'='*80}")
+                            print(f"[최종 대본 생성] 챕터 {idx} 청크 {chunk_idx} - 프롬프트 전송 시작")
+                            print(f"[DEBUG] system_prompt 길이: {len(system_prompt)}자")
+                            print(f"[DEBUG] system_prompt 처음 500자:\n{system_prompt[:500]}")
+                            print(f"[DEBUG] user_prompt 길이: {len(messages[-1]['content'])}자")
+                            print(f"[DEBUG] user_prompt 처음 500자:\n{messages[-1]['content'][:500]}")
+                            print(f"{'='*80}\n")
+                        else:
+                            print(f"\n{'='*80}")
+                            print(f"[최종 대본 생성] 챕터 {idx} 청크 {chunk_idx} - 계속 요청 {continuation_count}번째")
+                            print(f"{'='*80}\n")
+                        
+                        response = requests.post(
+                            "https://api.openai.com/v1/chat/completions",
+                            headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+                            json={
+                                "model": "gpt-4o",
+                                "messages": messages,
+                                "temperature": 0.7,
+                                "max_tokens": 16000
+                            },
+                            timeout=180
+                        )
+                        
+                        if response.status_code != 200:
+                            error_text = response.text
+                            print(f"[최종 대본 생성] 챕터 {idx} 청크 {chunk_idx} OpenAI API 오류: {response.status_code} - {error_text}")
+                            try:
+                                error_json = response.json()
+                                error_message = error_json.get("error", {}).get("message", error_text)
+                                return jsonify({"error": f"챕터 {idx} 처리 중 OpenAI API 오류: {error_message}"}), 500
+                            except:
+                                return jsonify({"error": f"챕터 {idx} 처리 중 OpenAI API 오류: {error_text}"}), 500
+                        
+                        result = response.json()
+                        choices = result.get("choices", [])
+                        
+                        if not choices:
+                            return jsonify({"error": f"챕터 {idx} 처리 중 OpenAI API 응답에 결과가 없습니다."}), 500
+                        
+                        choice = choices[0]
+                        finish_reason = choice.get("finish_reason")
+                        
+                        # 콘텐츠 필터링 확인
+                        if finish_reason == "content_filter":
+                            return jsonify({
+                                "error": f"챕터 {idx} 처리 중 콘텐츠 정책 위반으로 인해 대본 생성이 차단되었습니다. 검수 대본의 내용을 수정하거나 다른 주제로 시도해주세요."
+                            }), 400
+                        
+                        message = choice.get("message", {})
+                        chunk_response = message.get("content", "").strip() if message.get("content") else None
+                        
+                        # 디버깅: OpenAI 응답 확인
+                        if chunk_response:
+                            print(f"\n{'='*80}")
+                            print(f"[최종 대본 생성] 챕터 {idx} 청크 {chunk_idx} - OpenAI 응답 받음 (요청 {continuation_count + 1}번째)")
+                            print(f"[DEBUG] 응답 길이: {len(chunk_response)}자")
+                            print(f"[DEBUG] finish_reason: {finish_reason}")
+                            print(f"[DEBUG] 응답 처음 1000자:\n{chunk_response[:1000]}")
+                            if len(chunk_response) > 1000:
+                                print(f"[DEBUG] 응답 마지막 500자:\n{chunk_response[-500:]}")
+                            print(f"{'='*80}\n")
+                        
+                        # content가 None이거나 빈 문자열인 경우
+                        if not chunk_response:
+                            error_msg = f"챕터 {idx} 처리 중 최종 대본 생성에 실패했습니다."
+                            if finish_reason:
+                                error_msg += f" (완료 사유: {finish_reason})"
+                            if message.get("refusal"):
+                                error_msg += f" 거부 사유: {message.get('refusal')}"
+                            print(f"[최종 대본 생성] 챕터 {idx} 응답 없음 - finish_reason: {finish_reason}, message: {message}")
+                            return jsonify({"error": error_msg}), 500
+                        
+                        # 응답 저장
+                        chunk_responses.append(chunk_response)
+                        
+                        # 응답을 메시지 히스토리에 추가
+                        messages.append({"role": "assistant", "content": chunk_response})
+                        
+                        # 응답이 완전한지 확인
+                        # 1. finish_reason이 "stop"이면 완료
+                        # 2. finish_reason이 "length"이면 계속 필요
+                        # 3. 응답에 "계속" 또는 "continue" 키워드가 있으면 계속 필요
+                        needs_continuation = False
+                        
+                        if finish_reason == "length":
+                            needs_continuation = True
+                            print(f"[최종 대본 생성] 토큰 제한 도달, 계속 요청 필요")
+                        elif any(keyword in chunk_response.lower() for keyword in ["계속", "continue", "...계속하려면", "다음 부분"]):
+                            needs_continuation = True
+                            print(f"[최종 대본 생성] 응답에 계속 키워드 감지, 계속 요청 필요")
+                        
+                        # 검수 대본의 모든 문장이 처리되었는지 확인
+                        # 간단한 휴리스틱: 검수 대본의 문장 수와 생성된 번역 수 비교
+                        if not needs_continuation:
+                            # 검수 대본의 문장 수 추정 (마침표, 느낌표, 물음표로 분리)
+                            import re
+                            draft_sentences = re.split(r'[.!?。！？]\s*', chunk_content)
+                            draft_sentences = [s.strip() for s in draft_sentences if s.strip()]
+                            
+                            # 생성된 번역 수 추정
+                            generated_translations = re.findall(r'\[한국어 번역\]', ''.join(chunk_responses))
+                            
+                            if len(generated_translations) < len(draft_sentences) * 0.8:  # 80% 미만이면 계속 필요
+                                needs_continuation = True
+                                print(f"[최종 대본 생성] 문장 수 불일치 (검수: {len(draft_sentences)}개, 생성: {len(generated_translations)}개), 계속 요청 필요")
+                        
+                        if not needs_continuation:
+                            # 완료
+                            print(f"[최종 대본 생성] 챕터 {idx} 청크 {chunk_idx} 완료 (총 {continuation_count + 1}번 요청)")
+                            break
+                        
+                        # 계속 요청
+                        continuation_count += 1
+                        if continuation_count > max_continuations:
+                            print(f"[최종 대본 생성] 경고: 최대 계속 요청 횟수({max_continuations}) 도달, 현재까지 수집된 결과 반환")
+                            break
+                        
+                        # 계속 요청 메시지 추가
+                        continue_prompt = "계속해주세요. 이전 응답의 마지막 부분부터 이어서 모든 남은 문장을 처리해주세요."
+                        messages.append({"role": "user", "content": continue_prompt})
                     
-                    if response.status_code != 200:
-                        error_text = response.text
-                        print(f"[최종 대본 생성] 챕터 {idx} 청크 {chunk_idx} OpenAI API 오류: {response.status_code} - {error_text}")
-                        try:
-                            error_json = response.json()
-                            error_message = error_json.get("error", {}).get("message", error_text)
-                            return jsonify({"error": f"챕터 {idx} 처리 중 OpenAI API 오류: {error_message}"}), 500
-                        except:
-                            return jsonify({"error": f"챕터 {idx} 처리 중 OpenAI API 오류: {error_text}"}), 500
-                    
-                    result = response.json()
-                    choices = result.get("choices", [])
-                    
-                    if not choices:
-                        return jsonify({"error": f"챕터 {idx} 처리 중 OpenAI API 응답에 결과가 없습니다."}), 500
-                    
-                    choice = choices[0]
-                    finish_reason = choice.get("finish_reason")
-                    
-                    # 콘텐츠 필터링 확인
-                    if finish_reason == "content_filter":
-                        return jsonify({
-                            "error": f"챕터 {idx} 처리 중 콘텐츠 정책 위반으로 인해 대본 생성이 차단되었습니다. 검수 대본의 내용을 수정하거나 다른 주제로 시도해주세요."
-                        }), 400
-                    
-                    message = choice.get("message", {})
-                    chunk_response = message.get("content", "").strip() if message.get("content") else None
-                    
-                    # 디버깅: OpenAI 응답 확인
-                    if chunk_response:
-                        print(f"\n{'='*80}")
-                        print(f"[최종 대본 생성] 챕터 {idx} 청크 {chunk_idx} - OpenAI 응답 받음")
-                        print(f"[DEBUG] 응답 길이: {len(chunk_response)}자")
-                        print(f"[DEBUG] finish_reason: {finish_reason}")
-                        print(f"[DEBUG] 응답 처음 1000자:\n{chunk_response[:1000]}")
-                        print(f"{'='*80}\n")
-                    
-                    # content가 None이거나 빈 문자열인 경우
-                    if not chunk_response:
-                        error_msg = f"챕터 {idx} 처리 중 최종 대본 생성에 실패했습니다."
-                        if finish_reason:
-                            error_msg += f" (완료 사유: {finish_reason})"
-                        if message.get("refusal"):
-                            error_msg += f" 거부 사유: {message.get('refusal')}"
-                        print(f"[최종 대본 생성] 챕터 {idx} 응답 없음 - finish_reason: {finish_reason}, message: {message}")
-                        return jsonify({"error": error_msg}), 500
-                    
-                    all_full_responses.append(chunk_response)
+                    # 모든 응답 합치기
+                    chunk_full_response = "\n\n".join(chunk_responses)
+                    all_full_responses.append(chunk_full_response)
                     
                 except Exception as chunk_error:
                     print(f"[최종 대본 생성] 챕터 {idx} 청크 {chunk_idx} 처리 중 오류: {chunk_error}")
