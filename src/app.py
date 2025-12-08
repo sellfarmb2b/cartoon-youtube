@@ -3873,6 +3873,64 @@ D. 아웃트로: [최종 요약 및 CTA]
         return jsonify({"error": f"대본 생성 중 오류가 발생했습니다: {str(e)}"}), 500
 
 
+def split_draft_script_into_chapters(draft_script: str) -> List[Dict[str, str]]:
+    """검수 대본을 챕터별로 분리합니다."""
+    import re
+    chapters = []
+    
+    # 챕터 구분자 패턴: === 챕터 1: [제목] === 또는 === 챕터 1 === 등
+    # 더 유연한 패턴: ===, ====, 챕터, Chapter 등 다양한 형식 지원
+    chapter_pattern = r'={2,}\s*챕터\s*(\d+)[:\s]*(.*?)\s*={2,}'
+    
+    # 챕터 구분자 찾기
+    matches = list(re.finditer(chapter_pattern, draft_script, flags=re.IGNORECASE))
+    
+    if not matches:
+        # 챕터 구분자가 없으면 전체를 하나의 챕터로 처리
+        return [{"chapter_num": 1, "title": "전체", "content": draft_script.strip()}]
+    
+    # 첫 번째 챕터 이전 내용이 있으면 추가
+    first_match = matches[0]
+    if first_match.start() > 0:
+        pre_content = draft_script[:first_match.start()].strip()
+        if pre_content:
+            chapters.append({
+                "chapter_num": 0,
+                "title": "서문",
+                "content": pre_content
+            })
+    
+    # 각 챕터 추출
+    for i, match in enumerate(matches):
+        chapter_num = int(match.group(1))
+        chapter_title = match.group(2).strip() if match.group(2) else f"챕터 {chapter_num}"
+        
+        # 다음 챕터 시작 위치 찾기
+        if i + 1 < len(matches):
+            next_match = matches[i + 1]
+            chapter_content = draft_script[match.end():next_match.start()].strip()
+        else:
+            # 마지막 챕터
+            chapter_content = draft_script[match.end():].strip()
+        
+        if chapter_content:
+            chapters.append({
+                "chapter_num": chapter_num,
+                "title": chapter_title,
+                "content": chapter_content
+            })
+    
+    # 챕터가 없으면 전체를 하나로
+    if not chapters:
+        chapters.append({
+            "chapter_num": 1,
+            "title": "전체",
+            "content": draft_script.strip()
+        })
+    
+    return chapters
+
+
 @app.route("/api/generate_final_script", methods=["POST"])
 def api_generate_final_script():
     """최종 대본 생성 API (TTS용 순수 대본 + 한국어 번역 + 영어 이미지 프롬프트)"""
@@ -3885,6 +3943,13 @@ def api_generate_final_script():
         
         if not OPENAI_API_KEY:
             return jsonify({"error": "OpenAI API 키가 설정되지 않았습니다."}), 500
+        
+        # 챕터별로 분리
+        chapters = split_draft_script_into_chapters(draft_script)
+        print(f"[최종 대본 생성] 총 {len(chapters)}개 챕터로 분리됨")
+        
+        if not chapters:
+            return jsonify({"error": "챕터를 분리할 수 없습니다."}), 400
         
         # 최종 대본 프롬프트
         system_prompt = """[YOUR ROLE]
@@ -3943,7 +4008,49 @@ B. 영어 이미지 프롬프트:
 
 [중요] 최종 대본은 TTS용 순수 텍스트여야 합니다. 괄호나 대괄호를 사용하지 마세요. 자연스럽고 매력적인 대화체로 작성하되, 모든 지시어나 태그는 제거해야 합니다."""
 
-        user_prompt = f"""다음 검수 대본을 최종 대본으로 변환해주세요. 
+        # 각 챕터별로 처리
+        all_final_scripts = []
+        all_full_responses = []
+        
+        for idx, chapter in enumerate(chapters, 1):
+            chapter_content = chapter["content"]
+            chapter_title = chapter.get("title", f"챕터 {chapter['chapter_num']}")
+            
+            print(f"[최종 대본 생성] 챕터 {idx}/{len(chapters)} 처리 중: {chapter_title} (길이: {len(chapter_content)}자)")
+            
+            # 챕터가 너무 길면 더 작은 단위로 분할 (5000자 단위)
+            max_chunk_length = 5000
+            if len(chapter_content) > max_chunk_length:
+                # 문장 단위로 분할
+                sentences = chapter_content.split('。')
+                chunks = []
+                current_chunk = []
+                current_length = 0
+                
+                for sentence in sentences:
+                    sentence = sentence.strip()
+                    if not sentence:
+                        continue
+                    sentence_length = len(sentence)
+                    
+                    if current_length + sentence_length > max_chunk_length and current_chunk:
+                        chunks.append('。'.join(current_chunk) + '。')
+                        current_chunk = [sentence]
+                        current_length = sentence_length
+                    else:
+                        current_chunk.append(sentence)
+                        current_length += sentence_length
+                
+                if current_chunk:
+                    chunks.append('。'.join(current_chunk))
+                
+                print(f"[최종 대본 생성] 챕터 '{chapter_title}'를 {len(chunks)}개 청크로 분할")
+            else:
+                chunks = [chapter_content]
+            
+            # 각 청크 처리
+            for chunk_idx, chunk_content in enumerate(chunks, 1):
+                user_prompt = f"""다음 검수 대본을 최종 대본으로 변환해주세요. 
 
 요구사항:
 1. TTS용 순수 대본 생성 (괄호, 대괄호, 태그 모두 제거)
@@ -3954,60 +4061,72 @@ B. 영어 이미지 프롬프트:
 중요: 검수 대본의 언어를 먼저 확인하고, 한국어인 경우 추가 번역 없이 원본을 정제하여 사용하세요.
 
 검수 대본:
-{draft_script[:5000]}"""  # 너무 긴 경우 앞부분만 사용
+{chunk_content}"""
 
-        response = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
-            json={
-                "model": "gpt-4o",
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                "temperature": 0.7,
-                "max_tokens": 16000
-            },
-            timeout=180
-        )
+                try:
+                    response = requests.post(
+                        "https://api.openai.com/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+                        json={
+                            "model": "gpt-4o",
+                            "messages": [
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": user_prompt}
+                            ],
+                            "temperature": 0.7,
+                            "max_tokens": 16000
+                        },
+                        timeout=180
+                    )
+                    
+                    if response.status_code != 200:
+                        error_text = response.text
+                        print(f"[최종 대본 생성] 챕터 {idx} 청크 {chunk_idx} OpenAI API 오류: {response.status_code} - {error_text}")
+                        try:
+                            error_json = response.json()
+                            error_message = error_json.get("error", {}).get("message", error_text)
+                            return jsonify({"error": f"챕터 {idx} 처리 중 OpenAI API 오류: {error_message}"}), 500
+                        except:
+                            return jsonify({"error": f"챕터 {idx} 처리 중 OpenAI API 오류: {error_text}"}), 500
+                    
+                    result = response.json()
+                    choices = result.get("choices", [])
+                    
+                    if not choices:
+                        return jsonify({"error": f"챕터 {idx} 처리 중 OpenAI API 응답에 결과가 없습니다."}), 500
+                    
+                    choice = choices[0]
+                    finish_reason = choice.get("finish_reason")
+                    
+                    # 콘텐츠 필터링 확인
+                    if finish_reason == "content_filter":
+                        return jsonify({
+                            "error": f"챕터 {idx} 처리 중 콘텐츠 정책 위반으로 인해 대본 생성이 차단되었습니다. 검수 대본의 내용을 수정하거나 다른 주제로 시도해주세요."
+                        }), 400
+                    
+                    message = choice.get("message", {})
+                    chunk_response = message.get("content", "").strip() if message.get("content") else None
+                    
+                    # content가 None이거나 빈 문자열인 경우
+                    if not chunk_response:
+                        error_msg = f"챕터 {idx} 처리 중 최종 대본 생성에 실패했습니다."
+                        if finish_reason:
+                            error_msg += f" (완료 사유: {finish_reason})"
+                        if message.get("refusal"):
+                            error_msg += f" 거부 사유: {message.get('refusal')}"
+                        print(f"[최종 대본 생성] 챕터 {idx} 응답 없음 - finish_reason: {finish_reason}, message: {message}")
+                        return jsonify({"error": error_msg}), 500
+                    
+                    all_full_responses.append(chunk_response)
+                    
+                except Exception as chunk_error:
+                    print(f"[최종 대본 생성] 챕터 {idx} 청크 {chunk_idx} 처리 중 오류: {chunk_error}")
+                    import traceback
+                    traceback.print_exc()
+                    return jsonify({"error": f"챕터 {idx} 처리 중 오류가 발생했습니다: {str(chunk_error)}"}), 500
         
-        if response.status_code != 200:
-            error_text = response.text
-            print(f"[최종 대본 생성] OpenAI API 오류: {response.status_code} - {error_text}")
-            try:
-                error_json = response.json()
-                error_message = error_json.get("error", {}).get("message", error_text)
-                return jsonify({"error": f"OpenAI API 오류: {error_message}"}), 500
-            except:
-                return jsonify({"error": f"OpenAI API 오류: {error_text}"}), 500
-        
-        result = response.json()
-        choices = result.get("choices", [])
-        
-        if not choices:
-            return jsonify({"error": "OpenAI API 응답에 결과가 없습니다."}), 500
-        
-        choice = choices[0]
-        finish_reason = choice.get("finish_reason")
-        
-        # 콘텐츠 필터링 확인
-        if finish_reason == "content_filter":
-            return jsonify({
-                "error": "콘텐츠 정책 위반으로 인해 대본 생성이 차단되었습니다. 검수 대본의 내용을 수정하거나 다른 주제로 시도해주세요."
-            }), 400
-        
-        message = choice.get("message", {})
-        full_response = message.get("content", "").strip() if message.get("content") else None
-        
-        # content가 None이거나 빈 문자열인 경우
-        if not full_response:
-            error_msg = "최종 대본 생성에 실패했습니다."
-            if finish_reason:
-                error_msg += f" (완료 사유: {finish_reason})"
-            if message.get("refusal"):
-                error_msg += f" 거부 사유: {message.get('refusal')}"
-            print(f"[최종 대본 생성] 응답 없음 - finish_reason: {finish_reason}, message: {message}")
-            return jsonify({"error": error_msg}), 500
+        # 모든 챕터의 응답을 합치기
+        full_response = "\n\n".join(all_full_responses)
         
         # TTS용 순수 대본 추출 (한국어 번역 부분만 추출)
         import re
