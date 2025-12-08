@@ -347,7 +347,7 @@ def ensure_english_text(text: str) -> str:
             "https://api.openai.com/v1/chat/completions",
             headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
             json={
-                "model": "gpt-4o-mini",
+                "model": "gpt-4.1-mini",
                 "messages": [
                     {"role": "system", "content": "You are a translator. Translate the text into fluent English."},
                     {"role": "user", "content": text},
@@ -813,7 +813,7 @@ def extract_scene_context(scene_text: str, mode: str = "animation") -> Dict[str,
             "https://api.openai.com/v1/chat/completions",
             headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
             json={
-                "model": "gpt-4o-mini",
+                "model": "gpt-4.1-mini",
                 "messages": [
                     {
                         "role": "system",
@@ -1061,7 +1061,7 @@ IMPORTANT: Ensure all JSON strings are properly escaped and closed. Avoid unesca
                 "https://api.openai.com/v1/chat/completions",
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                 json={
-                    "model": "gpt-4o-mini",
+                    "model": "gpt-4.1-mini",
                     "messages": [
                         {
                             "role": "system",
@@ -1197,7 +1197,7 @@ def generate_semantic_segments(text: str, max_segments: int = 4) -> List[str]:
             "https://api.openai.com/v1/chat/completions",
             headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
             json={
-                "model": "gpt-4o-mini",
+                "model": "gpt-4.1-mini",
                 "messages": [
                     {
                         "role": "system",
@@ -3815,7 +3815,7 @@ D. 아웃트로: [최종 요약 및 CTA]
             "https://api.openai.com/v1/chat/completions",
             headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
             json={
-                "model": "gpt-4o-mini",
+                "model": "gpt-4.1-mini",
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
@@ -4135,7 +4135,7 @@ def api_generate_final_script():
                             "https://api.openai.com/v1/chat/completions",
                             headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
                             json={
-                                "model": "gpt-4o-mini",
+                                "model": "gpt-4.1-mini",
                                 "messages": messages,
                                 "temperature": 0.7,
                                 "max_tokens": 16000
