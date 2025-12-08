@@ -4107,6 +4107,15 @@ def api_generate_final_script():
 {chunk_content}"""
 
                 try:
+                    # 디버깅: 전송되는 프롬프트 확인
+                    print(f"\n{'='*80}")
+                    print(f"[최종 대본 생성] 챕터 {idx} 청크 {chunk_idx} - 프롬프트 전송 시작")
+                    print(f"[DEBUG] system_prompt 길이: {len(system_prompt)}자")
+                    print(f"[DEBUG] system_prompt 처음 500자:\n{system_prompt[:500]}")
+                    print(f"[DEBUG] user_prompt 길이: {len(user_prompt)}자")
+                    print(f"[DEBUG] user_prompt 처음 500자:\n{user_prompt[:500]}")
+                    print(f"{'='*80}\n")
+                    
                     response = requests.post(
                         "https://api.openai.com/v1/chat/completions",
                         headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
@@ -4150,6 +4159,15 @@ def api_generate_final_script():
                     message = choice.get("message", {})
                     chunk_response = message.get("content", "").strip() if message.get("content") else None
                     
+                    # 디버깅: OpenAI 응답 확인
+                    if chunk_response:
+                        print(f"\n{'='*80}")
+                        print(f"[최종 대본 생성] 챕터 {idx} 청크 {chunk_idx} - OpenAI 응답 받음")
+                        print(f"[DEBUG] 응답 길이: {len(chunk_response)}자")
+                        print(f"[DEBUG] finish_reason: {finish_reason}")
+                        print(f"[DEBUG] 응답 처음 1000자:\n{chunk_response[:1000]}")
+                        print(f"{'='*80}\n")
+                    
                     # content가 None이거나 빈 문자열인 경우
                     if not chunk_response:
                         error_msg = f"챕터 {idx} 처리 중 최종 대본 생성에 실패했습니다."
@@ -4170,6 +4188,13 @@ def api_generate_final_script():
         
         # 모든 챕터의 응답을 합치기
         full_response = "\n\n".join(all_full_responses)
+        
+        # 디버깅: 전체 응답 확인
+        print(f"\n{'='*80}")
+        print(f"[최종 대본 생성] 전체 응답 합치기 완료")
+        print(f"[DEBUG] 전체 응답 길이: {len(full_response)}자")
+        print(f"[DEBUG] 전체 응답 처음 2000자:\n{full_response[:2000]}")
+        print(f"{'='*80}\n")
         
         # TTS용 순수 대본 추출 (한국어 번역 부분만 추출)
         import re
@@ -4222,6 +4247,14 @@ def api_generate_final_script():
         final_script = re.sub(r'\(.*?\)', '', final_script)
         final_script = re.sub(r'\n{3,}', '\n\n', final_script)  # 연속된 줄바꿈 정리
         final_script = final_script.strip()
+        
+        # 디버깅: 최종 추출 결과 확인
+        print(f"\n{'='*80}")
+        print(f"[최종 대본 생성] 추출 완료")
+        print(f"[DEBUG] 추출된 한국어 번역 개수: {len(final_script_lines)}개")
+        print(f"[DEBUG] 최종 대본 길이: {len(final_script)}자")
+        print(f"[DEBUG] 최종 대본 처음 1000자:\n{final_script[:1000]}")
+        print(f"{'='*80}\n")
         
         # 최종 대본이 여전히 비어있거나 너무 짧은 경우
         if not final_script or len(final_script.strip()) < 50:
