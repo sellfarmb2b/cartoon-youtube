@@ -2399,7 +2399,18 @@
 
                     applyScriptBtn.disabled = false;
                 } catch (error) {
-                    alert('오류: ' + error.message);
+                    console.error('[최종 대본 생성] 오류:', error);
+                    let errorMessage = '최종 대본 생성 중 오류가 발생했습니다.';
+                    
+                    if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+                        errorMessage = '요청 시간이 초과되었습니다. 대본이 너무 길어서 처리하는 데 시간이 오래 걸립니다. 잠시 후 다시 시도해주세요.';
+                    } else if (error.message) {
+                        errorMessage = error.message;
+                    } else if (error instanceof TypeError && error.message.includes('fetch')) {
+                        errorMessage = '네트워크 오류가 발생했습니다. 인터넷 연결을 확인해주세요.';
+                    }
+                    
+                    alert('오류: ' + errorMessage);
                 } finally {
                     hideAILoading();
                     generateFinalBtn.disabled = false;
