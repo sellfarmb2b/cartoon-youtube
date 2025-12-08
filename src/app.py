@@ -153,6 +153,9 @@ def refresh_service_flags() -> None:
     global replicate_api_available, gemini_available
     replicate_api_available = bool(REPLICATE_API_TOKEN)
     gemini_available = bool(GEMINI_API_KEY) and GEMINI_AVAILABLE
+    
+    # 디버깅: 서비스 플래그 상태 확인
+    print(f"[서비스 플래그] GEMINI_AVAILABLE: {GEMINI_AVAILABLE}, GEMINI_API_KEY: {'있음' if GEMINI_API_KEY else '없음'}, gemini_available: {gemini_available}")
 
 
 refresh_service_flags()
