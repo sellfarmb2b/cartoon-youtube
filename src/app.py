@@ -3750,8 +3750,13 @@ def api_generate_draft_script():
         if not topic:
             return jsonify({"error": "주제/키워드를 입력해주세요."}), 400
         
+        # 디버깅: API 키 상태 확인
+        print(f"[검수 대본 생성] gemini_available: {gemini_available}, GEMINI_API_KEY: {'있음' if GEMINI_API_KEY else '없음'} (길이: {len(GEMINI_API_KEY)})")
+        
         if not gemini_available or not GEMINI_API_KEY:
-            return jsonify({"error": "Gemini API 키가 설정되지 않았습니다."}), 500
+            error_msg = f"Gemini API 키가 설정되지 않았습니다. (gemini_available: {gemini_available}, GEMINI_API_KEY 길이: {len(GEMINI_API_KEY)})"
+            print(f"[검수 대본 생성] {error_msg}")
+            return jsonify({"error": "Gemini API 키가 설정되지 않았습니다. 설정에서 Gemini API 키를 입력해주세요."}), 500
         
         # 검수 대본 프롬프트
         system_prompt = """당신은 '지식 스토리텔러' 전문 유튜브 대본 작가입니다.
@@ -3919,8 +3924,13 @@ def api_generate_final_script():
         if not draft_script:
             return jsonify({"error": "검수 대본을 입력해주세요."}), 400
         
+        # 디버깅: API 키 상태 확인
+        print(f"[검수 대본 생성] gemini_available: {gemini_available}, GEMINI_API_KEY: {'있음' if GEMINI_API_KEY else '없음'} (길이: {len(GEMINI_API_KEY)})")
+        
         if not gemini_available or not GEMINI_API_KEY:
-            return jsonify({"error": "Gemini API 키가 설정되지 않았습니다."}), 500
+            error_msg = f"Gemini API 키가 설정되지 않았습니다. (gemini_available: {gemini_available}, GEMINI_API_KEY 길이: {len(GEMINI_API_KEY)})"
+            print(f"[검수 대본 생성] {error_msg}")
+            return jsonify({"error": "Gemini API 키가 설정되지 않았습니다. 설정에서 Gemini API 키를 입력해주세요."}), 500
         
         # 챕터별로 분리
         chapters = split_draft_script_into_chapters(draft_script)
