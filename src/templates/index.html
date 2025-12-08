@@ -2342,12 +2342,27 @@
                     const response = await fetch('/api/generate_final_script', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ draft_script: draftScript })
+                        body: JSON.stringify({ draft_script: draftScript }),
+                        signal: AbortSignal.timeout(600000) // 10분 타임아웃
                     });
 
-                    const data = await response.json();
                     if (!response.ok) {
-                        throw new Error(data.error || '최종 대본 생성 실패');
+                        let errorMessage = '최종 대본 생성 실패';
+                        try {
+                            const errorData = await response.json();
+                            errorMessage = errorData.error || errorMessage;
+                        } catch (e) {
+                            errorMessage = `서버 오류 (${response.status}): ${response.statusText}`;
+                        }
+                        throw new Error(errorMessage);
+                    }
+
+                    let data;
+                    try {
+                        data = await response.json();
+                    } catch (parseError) {
+                        console.error('[최종 대본 생성] JSON 파싱 오류:', parseError);
+                        throw new Error('서버 응답을 파싱할 수 없습니다. 응답이 너무 크거나 형식이 잘못되었습니다.');
                     }
 
                     finalScriptContent.textContent = data.final_script;
