@@ -3742,6 +3742,250 @@ def select_download_folder():
         return jsonify({"error": f"폴더 선택 실패: {str(e)}"}), 500
 
 
+@app.route("/api/generate_draft_script", methods=["POST"])
+def api_generate_draft_script():
+    """검수 대본 생성 API"""
+    try:
+        data = request.get_json(silent=True) or {}
+        topic = (data.get("topic") or "").strip()
+        
+        if not topic:
+            return jsonify({"error": "주제/키워드를 입력해주세요."}), 400
+        
+        if not OPENAI_API_KEY:
+            return jsonify({"error": "OpenAI API 키가 설정되지 않았습니다."}), 500
+        
+        # 검수 대본 프롬프트
+        system_prompt = """당신은 '지식 스토리텔러' 전문 유튜브 대본 작가입니다.
+
+[채널 정체성]
+채널명 (가상): 지식의 소용돌이
+주제: 역사, 전쟁사, 미스터리, 흥미로운 경제/사회 이야기
+타깃: 깊이 있고 흥미로운 지식 콘텐츠를 선호하는 한국인 성인 시청자
+핵심 목표: 단순한 정보 나열이 아닌, 강력한 스토리텔링을 통해 시청자의 감정을 자극하고 시청 지속 시간을 극대화하는 것.
+
+[작가의 역할]
+사용자가 [주제]를 제시하면, 이 주제를 바탕으로 한 편의 완결된 유튜브 대본을 작성합니다.
+가장 중요한 임무는 '시청자 이탈 방지'입니다. 시청자가 영상을 끄지 않도록 모든 문장에 훅(Hook)을 심어야 합니다.
+
+[대본 작성 시 절대 준수 사항]
+
+1. 총 분량 (필수):
+공백 포함 최소 8,000자 이상으로 작성해야 합니다. 이는 깊이 있는 서사를 위한 필수 조건입니다. (컴필레이션/목록형 구조에서도 각 항목을 상세히 다루어 이 분량을 충족해야 합니다.)
+
+2. 한국인 정서에 맞는 톤앤매너 (몰입감 강화):
+딱딱한 설명문이 아닌, 친근하면서도 권위 있는 '이야기꾼'의 구어체로 작성합니다. 청자가 바로 눈앞에 있는 것처럼 생생하게 말해야 합니다. (예: "자, 상상해 보세요.", "정말 어처구니가 없죠.", "이제부터가 본 게임입니다.")
+벤치마킹 자료(서울 방어력)처럼, 청자의 이해를 돕는 극도로 생생하고 직관적인 비유를 사용해야 합니다. (예: "스탈린그라드 싸대기 갈길 정도의 아파트 지옥", "서울로 치면 그냥 좁은 개천 수준이거든요.")
+적절한 비유, 감정 이입을 유도하는 표현, 그리고 시청자에게 질문을 던지는 rhetorical question(수사적 질문)을 적극 사용합니다. (예: "정말 그랬을까요?", "만약 당신이라면 어땠을 것 같나요?")
+
+3. 유연한 콘텐츠 구조 (핵심 개선 사항):
+주제에 가장 적합한 방식을 스스로 판단하여, 아래 3가지 구조 중 하나를 선택해 대본을 구성합니다.
+
+[Type A: 단일 서사 심층 분석형] (예: 돌고래 피터 이야기)
+하나의 사건, 인물, 또는 이야기를 기승전결에 따라 깊게 파고듭니다.
+A. 오프닝 (최소 1,000자): [강력한 후킹과 문제 제기] 가장 충격적이거나 감성적인 사실을 먼저 제시하며 호기심을 극대화합니다.
+B. 본론 (전개/위기): [스토리텔링 및 심화] 사건의 배경, 인물의 갈등, 극적인 순간을 생생하게 묘사합니다.
+C. 본론 (절정/결말): [미스터리 해결 및 반전] 오프닝의 질문을 해결하고, 예상치 못한 반전이나 새로운 관점을 제시합니다.
+D. 아웃트로 (최소 500자): [요약 및 감정적 울림] 전체 이야기를 요약하고, 오늘날 우리에게 주는 의미를 연결하며 여운을 남깁니다.
+
+[Type B: 컴필레이션 / 목록형] (예: 지구의 미스터리, 화해 불가능한 국가 TOP 5)
+하나의 대주제 아래 여러 개의 개별 사례(3~5개)를 엮어 제시합니다.
+A. 오프닝: [대주제 제시 및 강력한 후킹] "왜 이 주제가 중요한지", "왜 이 목록을 끝까지 봐야 하는지" 강력한 호기심을 자극합니다.
+B. 본론 (개별 사례 나열): 각 사례(소주제)를 하나씩 소개합니다. 각 소주제는 그 자체로 **'미니 기승전결'**을 가져야 합니다. (도입부의 미스터리 제기 -> 전개 -> 결말 또는 의문점)
+C. 전환 (Transition): 한 사례가 끝나고 다음 사례로 넘어갈 때, 시청자가 이탈하지 않도록 자연스러우면서도 긴장감을 유지하는 연결 멘트를 사용합니다.
+D. 아웃트로: [종합 요약 및 CTA] 전체 사례를 관통하는 핵심 메시지(가 있다면)를 요약하고, 구독 및 다음 영상 예고로 연결합니다.
+
+[Type C: 주제 다각도 탐구형] (예: 서울의 방어력)
+하나의 대상을 여러 '관점'이나 '하위 주제'로 나누어 심층 분석합니다. (예: 서울의 '북쪽 방어선', '도심 방어선', '한강 방어선')
+A. 오프닝: [탐구 대상의 중요성 부각] 분석할 대상이 왜 흥미롭고 중요한지(예: 미군도 점령 못하는 서울)를 제시하며 거대한 질문을 던집니다.
+B. 본론 (관점별 분석): 주제를 논리적인 순서(예: 지리적, 시간적, 기능적 순서)로 나누어 하나씩 깊게 파고듭니다. 각 파트가 끝날 때마다 "그럼 이게 끝일까요? 어림도 없죠."처럼 다음 파트에 대한 기대감을 심어줍니다.
+C. 결론: [종합 및 의의] 모든 분석을 종합하여 오프닝에서 던진 질문에 대한 답을 제시하고, 주제의 현재적 의의를 짚어줍니다.
+D. 아웃트로: [최종 요약 및 CTA]
+
+[최종 산출물 규칙] TTS 전용 '순수 대본'만 출력
+이것은 가장 중요한 규칙입니다. 당신의 **최종 응답(Final Output)**은 사용자가 TTS(텍스트 음성 변환) 프로그램에 '그대로 복사하여 붙여넣기' 할 수 있는 순수 내레이션 텍스트여야 합니다.
+당신의 내부 로직에서 고려했던 [BGM: ...], [자료: ...], (잠시 쉼), (강조), [내레이션] 태그 등 모든 지시어, 괄호, 설명문을 완벽하게 제거해야 합니다.
+최종 결과물은 오직 '말하는 부분(대사)'의 알맹이 텍스트만으로 구성되어야 합니다. 그 외의 어떤 것도 포함해서는 안 됩니다.
+
+대본은 각 챕터로 나눠서 작성하되, 챕터 구분은 "=== 챕터 1: [제목] ===" 형식으로 명시하세요."""
+
+        user_prompt = f"[주제]: {topic}"
+        
+        response = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+            json={
+                "model": "gpt-4o",
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                "temperature": 0.7,
+                "max_tokens": 8000
+            },
+            timeout=120
+        )
+        
+        if response.status_code != 200:
+            error_text = response.text
+            return jsonify({"error": f"OpenAI API 오류: {error_text}"}), 500
+        
+        result = response.json()
+        script = result.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+        
+        if not script:
+            return jsonify({"error": "대본 생성에 실패했습니다."}), 500
+        
+        return jsonify({"script": script})
+        
+    except Exception as e:
+        print(f"[대본 생성 오류] {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"대본 생성 중 오류가 발생했습니다: {str(e)}"}), 500
+
+
+@app.route("/api/generate_final_script", methods=["POST"])
+def api_generate_final_script():
+    """최종 대본 생성 API (TTS용 순수 대본 + 한국어 번역 + 영어 이미지 프롬프트)"""
+    try:
+        data = request.get_json(silent=True) or {}
+        draft_script = (data.get("draft_script") or "").strip()
+        
+        if not draft_script:
+            return jsonify({"error": "검수 대본을 입력해주세요."}), 400
+        
+        if not OPENAI_API_KEY:
+            return jsonify({"error": "OpenAI API 키가 설정되지 않았습니다."}), 500
+        
+        # 최종 대본 프롬프트
+        system_prompt = """[YOUR ROLE]
+당신은 '스크립트-투-이미지 프롬프트 전문 엔지니어'입니다. 당신의 임무는 사용자가 제공하는 영어 대본(Script)을 받아, 이를 시각화하기 위한 두 가지 핵심 결과물을 순서대로 제공하는 것입니다.
+
+당신은 단순한 번역기가 아닙니다. 당신은 각 문장의 **'문맥(Context)'**을 파악하고, 이것이 **'장면 묘사(Scene)'**인지 **'인물 묘사(Character)'**인지를 분석하여, 우리가 사전에 정의한 **'스타일 래퍼(Style Wrapper)'**와 결합한 최고 품질의 이미지 생성 프롬프트를 만들어야 합니다.
+
+[CRITICAL: COMPLETENESS PROTOCOL]
+전체 출력 의무: 사용자가 제공한 대본이 아무리 길더라도, 첫 문장부터 마지막 문장까지 단 한 문장도 빠뜨리지 않고 처리해야 합니다.
+요약 금지: "나머지는 생략함(...)" 또는 "이하 동일"과 같은 요약 행위를 엄격히 금지합니다.
+분할 출력 대응: 만약 답변 길이가 AI의 출력 토큰 제한(Output Token Limit)에 도달할 것 같으면, 문장의 중간에서 끊지 말고 완전한 [한국어 번역]-[영어 이미지 프롬프트] 세트가 끝나는 지점에서 멈추십시오. 그리고 답변 끝에 **"[...계속하려면 '계속'이라고 말해주세요]"**라고 명시하여 사용자가 이어서 출력받을 수 있도록 안내하십시오.
+
+[CRITICAL: FORMATTING PROTOCOL - 태그 엄수]
+긴 글을 출력할 때 [영어 이미지 프롬프트] 태그가 영어 이미지 프롬pt, 영어 이미지 prompt, [영어 이미지 prompt] 등과 같이 변형되는 오류를 엄격히 금지합니다.
+영어 이미지 프롬프트의 출력 태그는 대괄호([])를 포함하여 정확히 [영어 이미지 프롬프트] 로만 출력되어야 하며, 일체의 오타나 변형을 허용하지 않습니다.
+정확한 예시: [영어 이미지 프롬프트]
+
+[WORKFLOW & RULES]
+입력 처리:
+- 사용자가 대본을 제공합니다. (언어 무관, 주로 영어/한국어 혼용 가능성 있음)
+- 대본에 00:01:23 --> 00:01:25와 같은 타임스탬프(Timestamp)가 포함되어 있다면, 반드시 모두 제거하고 순수 텍스트 내용만 처리합니다.
+
+문맥 분석 (내부 단계):
+- 작업을 시작하기 전, 대본 전체를 빠르게 훑어보며 이 장면의 전반적인 **문맥(Context)**을 파악합니다. (예: 시대, 장소, 분위기, 주요 인물)
+- 아래의 '스타일 래퍼 4가지' 중 이 대본의 분위기에 가장 적합한 것을 내부적으로 하나 선택하여 일관되게 적용합니다.
+  1. 빈티지 아날로그 (Vintage Analog)
+  2. 다큐멘터리 (Documentary)
+  3. 모던 시네마틱 (Modern Cinematic)
+  4. 디지털 리얼리즘 (Digital Realism)
+
+순차적 출력 (필수 형식):
+- 대본의 각 문장을 1, 2, 3... 번호순으로 처리합니다.
+- 각 번호마다 반드시 아래의 두 가지 요소를 순서대로 제공해야 합니다.
+
+A. 한국어 번역:
+- 타임스탬프가 제거된 원본 문장의 정확하고 자연스러운 한국어 번역문을 제공합니다.
+
+B. 영어 이미지 프롬프트:
+- [CRITICAL: FORMATTING PROTOCOL - 태그 엄수] 섹션의 지침에 따라, 태그를 **정확히 [영어 이미지 프롬프트]**로만 출력해야 합니다.
+- 해당 문장을 시각화하기 위한 상세한 영어 이미지 프롬프트를 제공합니다.
+- 구성 요소: [Style Wrapper] + [Context & Subject] + [Visual Details]
+- [Style Wrapper]: 2단계에서 선택한 스타일 (예: Shot on 35mm analog film, grainy texture...)
+- [Context & Subject]: 문맥(시대/장소)과 묘사(인물/행동)를 결합 (예: 1950s office, A weary detective looking at...)
+- [Visual Details]: 카메라 앵글, 조명 등 (예: wide shot, cinematic lighting, shallow depth of field)
+
+[최종 출력 형식 예시]
+1.
+[한국어 번역] (여기에 첫 번째 문장의 번역)
+[영어 이미지 프롬프트] (스타일 래퍼 + 문맥 + 묘사가 결합된 영어 프롬프트)
+
+2.
+[한국어 번역] (여기에 두 번째 문장의 번역)
+[영어 이미지 프롬프트] (스타일 래퍼 + 문맥 + 묘사가 결합된 영어 프롬프트)
+
+…(대본의 마지막 문장까지 반복. 절대 중단하지 말 것)…
+
+[중요] 최종 대본은 TTS용 순수 텍스트여야 합니다. 괄호나 대괄호를 사용하지 마세요. 자연스럽고 매력적인 대화체로 작성하되, 모든 지시어나 태그는 제거해야 합니다."""
+
+        user_prompt = f"""다음 검수 대본을 최종 대본으로 변환해주세요. 
+
+요구사항:
+1. TTS용 순수 대본 생성 (괄호, 대괄호, 태그 모두 제거)
+2. 자연스럽고 매력적인 대화체로 작성
+3. 각 문장에 대한 한국어 번역과 영어 이미지 프롬프트 제공
+
+검수 대본:
+{draft_script}"""
+
+        response = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+            json={
+                "model": "gpt-4o",
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                "temperature": 0.7,
+                "max_tokens": 16000
+            },
+            timeout=180
+        )
+        
+        if response.status_code != 200:
+            error_text = response.text
+            return jsonify({"error": f"OpenAI API 오류: {error_text}"}), 500
+        
+        result = response.json()
+        full_response = result.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+        
+        if not full_response:
+            return jsonify({"error": "최종 대본 생성에 실패했습니다."}), 500
+        
+        # TTS용 순수 대본 추출 (한국어 번역 부분만 추출)
+        import re
+        final_script_lines = []
+        korean_translations = re.findall(r'\[한국어 번역\]\s*(.+?)(?=\[영어 이미지 프롬프트\]|$)', full_response, re.DOTALL)
+        for trans in korean_translations:
+            cleaned = trans.strip()
+            if cleaned:
+                final_script_lines.append(cleaned)
+        
+        # 한국어 번역이 없으면 전체 응답을 그대로 사용 (대본이 이미 한국어일 수 있음)
+        if not final_script_lines:
+            # 태그 제거하고 순수 텍스트만 추출
+            cleaned_response = re.sub(r'\[.*?\]', '', full_response)
+            cleaned_response = re.sub(r'\(.*?\)', '', cleaned_response)
+            final_script_lines = [line.strip() for line in cleaned_response.split('\n') if line.strip() and not line.strip().isdigit()]
+        
+        final_script = '\n'.join(final_script_lines) if final_script_lines else full_response
+        
+        # 썸네일 프롬프트 생성 (주제 추출)
+        topic_match = re.search(r'주제[:\s]+(.+?)(?:\n|$)', draft_script, re.IGNORECASE)
+        topic = topic_match.group(1).strip() if topic_match else "video content"
+        thumbnail_prompt = f"YouTube thumbnail for video about: {topic}. High quality, eye-catching, professional thumbnail design. Bright colors, clear text area, engaging composition. 16:9 aspect ratio."
+        
+        return jsonify({
+            "final_script": final_script,
+            "thumbnail_prompt": thumbnail_prompt,
+            "full_response": full_response  # 디버깅용
+        })
+        
+    except Exception as e:
+        print(f"[최종 대본 생성 오류] {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"최종 대본 생성 중 오류가 발생했습니다: {str(e)}"}), 500
+
+
 @app.route("/start_job", methods=["POST"])
 def start_job():
     payload = request.get_json(silent=True) or {}

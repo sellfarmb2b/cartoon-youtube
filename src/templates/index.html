@@ -5,6 +5,9 @@
     <title>셀팜 AI 애니메이션 메이커</title>
     <style>
         body { font-family: 'Noto Sans KR', Arial, sans-serif; background:#f5f7fb; margin:0; padding:0; }
+        .app-container { display: flex; min-height: 100vh; }
+        .sidebar { width: 320px; background: #fff; border-right: 1px solid #e5e7eb; padding: 20px; overflow-y: auto; position: fixed; left: 0; top: 0; height: 100vh; box-shadow: 2px 0 8px rgba(0,0,0,0.05); }
+        .main-content { flex: 1; margin-left: 320px; padding: 0; }
         main { max-width: 1000px; margin: 40px auto 60px; padding: 0 20px; }
         h1 { color: #1f2937; margin-bottom: 10px; }
         p { color:#4b5563; }
@@ -81,7 +84,20 @@
         .settings-modal-content input { margin-top:4px; }
         .settings-helper { color:#6b7280; font-size:13px; margin:4px 0 0; }
         .settings-actions { display:flex; justify-content:flex-end; margin-top:20px; gap:10px; }
+        /* 대본 생성 사이드바 스타일 */
+        .script-generator-section { margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1px solid #e5e7eb; }
+        .script-generator-section:last-child { border-bottom: none; }
+        .script-generator-section h3 { margin: 0 0 12px 0; color: #1f2937; font-size: 16px; font-weight: 700; }
+        .script-generator-section textarea { min-height: 120px; font-size: 14px; }
+        .script-generator-section button { width: 100%; margin-top: 12px; }
+        .script-result { margin-top: 16px; padding: 16px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb; max-height: 400px; overflow-y: auto; }
+        .script-result pre { white-space: pre-wrap; word-break: break-word; margin: 0; font-size: 13px; line-height: 1.6; color: #374151; }
+        .script-result h4 { margin: 0 0 8px 0; color: #1f2937; font-size: 14px; font-weight: 600; }
+        .thumbnail-prompt-result { margin-top: 12px; padding: 12px; background: #fef3c7; border-radius: 6px; border: 1px solid #fbbf24; }
+        .thumbnail-prompt-result code { display: block; font-size: 12px; color: #92400e; }
         @media (max-width:768px) {
+            .sidebar { width: 100%; position: relative; height: auto; }
+            .main-content { margin-left: 0; }
             .button-row { flex-direction:column; }
             .preview-controls { flex-direction:column; align-items:stretch; }
             img.prompt-img { width:100%; max-width:none; }
@@ -89,6 +105,52 @@
     </style>
 </head>
 <body>
+<div class="app-container">
+    <!-- 좌측 사이드바: 대본 생성 기능 -->
+    <div class="sidebar">
+        <h2 style="margin: 0 0 24px 0; color: #1f2937; font-size: 20px; font-weight: 700;">📝 대본 생성</h2>
+        
+        <!-- 검수 대본 프롬프트 -->
+        <div class="script-generator-section">
+            <h3>1단계: 검수 대본 생성</h3>
+            <label for="draftTopic" style="font-size: 14px; margin-bottom: 8px;">주제/키워드 입력</label>
+            <input type="text" id="draftTopic" placeholder="예: 스탈린그라드 전투, 워렌 버핏의 투자 철학" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px;">
+            <button type="button" id="generateDraftBtn" style="background: #2563eb; margin-top: 12px;">검수 대본 생성</button>
+            <div id="draftResult" class="script-result" style="display: none;">
+                <h4>생성된 검수 대본:</h4>
+                <pre id="draftScriptContent"></pre>
+                <button type="button" id="copyDraftBtn" style="background: #10b981; margin-top: 8px; font-size: 13px; padding: 8px 12px;">📋 검수 대본 복사</button>
+            </div>
+        </div>
+
+        <!-- 최종 대본 프롬프트 -->
+        <div class="script-generator-section">
+            <h3>2단계: 최종 대본 생성</h3>
+            <label for="finalDraftScript" style="font-size: 14px; margin-bottom: 8px;">검수 대본 입력</label>
+            <textarea id="finalDraftScript" placeholder="1단계에서 생성한 검수 대본을 여기에 붙여넣으세요." style="width: 100%; min-height: 150px; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; resize: vertical;"></textarea>
+            <button type="button" id="generateFinalBtn" style="background: #8b5cf6; margin-top: 12px;">최종 대본 생성</button>
+            <div id="finalResult" class="script-result" style="display: none;">
+                <h4>생성된 최종 대본:</h4>
+                <pre id="finalScriptContent"></pre>
+                <button type="button" id="copyFinalBtn" style="background: #10b981; margin-top: 8px; font-size: 13px; padding: 8px 12px;">📋 최종 대본 복사</button>
+            </div>
+            <div id="thumbnailPromptResult" class="thumbnail-prompt-result" style="display: none;">
+                <h4 style="margin: 0 0 8px 0; color: #92400e; font-size: 13px; font-weight: 600;">썸네일 프롬프트:</h4>
+                <code id="thumbnailPromptContent"></code>
+                <button type="button" id="copyThumbnailBtn" style="background: #f59e0b; color: #fff; margin-top: 8px; font-size: 12px; padding: 6px 10px; width: 100%;">📋 썸네일 프롬프트 복사</button>
+            </div>
+        </div>
+
+        <!-- 대본을 메인 영역으로 전송 -->
+        <div class="script-generator-section">
+            <h3>3단계: 대본 적용</h3>
+            <button type="button" id="applyScriptBtn" style="background: #059669; margin-top: 12px;" disabled>✅ 메인 영역에 대본 적용</button>
+            <p style="margin-top: 8px; color: #6b7280; font-size: 12px; line-height: 1.5;">최종 대본을 생성한 후, 이 버튼을 눌러 메인 영역의 대본 입력란에 자동으로 적용할 수 있습니다.</p>
+        </div>
+    </div>
+
+    <!-- 메인 컨텐츠 영역 -->
+    <div class="main-content">
 <main>
     <div class="card">
         <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px;">
@@ -2103,7 +2165,156 @@
             }
 
             loadSettings();
+
+            // 대본 생성 기능
+            const generateDraftBtn = document.getElementById('generateDraftBtn');
+            const draftTopic = document.getElementById('draftTopic');
+            const draftResult = document.getElementById('draftResult');
+            const draftScriptContent = document.getElementById('draftScriptContent');
+            const copyDraftBtn = document.getElementById('copyDraftBtn');
+            
+            const generateFinalBtn = document.getElementById('generateFinalBtn');
+            const finalDraftScript = document.getElementById('finalDraftScript');
+            const finalResult = document.getElementById('finalResult');
+            const finalScriptContent = document.getElementById('finalScriptContent');
+            const copyFinalBtn = document.getElementById('copyFinalBtn');
+            const thumbnailPromptResult = document.getElementById('thumbnailPromptResult');
+            const thumbnailPromptContent = document.getElementById('thumbnailPromptContent');
+            const copyThumbnailBtn = document.getElementById('copyThumbnailBtn');
+            const applyScriptBtn = document.getElementById('applyScriptBtn');
+
+            // 검수 대본 생성
+            generateDraftBtn.addEventListener('click', async function() {
+                const topic = draftTopic.value.trim();
+                if (!topic) {
+                    alert('주제/키워드를 입력해주세요.');
+                    return;
+                }
+
+                generateDraftBtn.disabled = true;
+                generateDraftBtn.textContent = '생성 중...';
+                draftResult.style.display = 'none';
+
+                try {
+                    const response = await fetch('/api/generate_draft_script', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ topic: topic })
+                    });
+
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.error || '대본 생성 실패');
+                    }
+
+                    draftScriptContent.textContent = data.script;
+                    draftResult.style.display = 'block';
+                    finalDraftScript.value = data.script; // 자동으로 최종 대본 입력란에 채우기
+                } catch (error) {
+                    alert('오류: ' + error.message);
+                } finally {
+                    generateDraftBtn.disabled = false;
+                    generateDraftBtn.textContent = '검수 대본 생성';
+                }
+            });
+
+            // 검수 대본 복사
+            copyDraftBtn.addEventListener('click', function() {
+                navigator.clipboard.writeText(draftScriptContent.textContent).then(() => {
+                    copyDraftBtn.textContent = '✓ 복사됨';
+                    setTimeout(() => {
+                        copyDraftBtn.textContent = '📋 검수 대본 복사';
+                    }, 2000);
+                });
+            });
+
+            // 최종 대본 생성
+            generateFinalBtn.addEventListener('click', async function() {
+                const draftScript = finalDraftScript.value.trim();
+                if (!draftScript) {
+                    alert('검수 대본을 입력해주세요.');
+                    return;
+                }
+
+                generateFinalBtn.disabled = true;
+                generateFinalBtn.textContent = '생성 중...';
+                finalResult.style.display = 'none';
+                thumbnailPromptResult.style.display = 'none';
+
+                try {
+                    const response = await fetch('/api/generate_final_script', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ draft_script: draftScript })
+                    });
+
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.error || '최종 대본 생성 실패');
+                    }
+
+                    finalScriptContent.textContent = data.final_script;
+                    finalResult.style.display = 'block';
+                    
+                    if (data.thumbnail_prompt) {
+                        thumbnailPromptContent.textContent = data.thumbnail_prompt;
+                        thumbnailPromptResult.style.display = 'block';
+                    }
+
+                    applyScriptBtn.disabled = false;
+                } catch (error) {
+                    alert('오류: ' + error.message);
+                } finally {
+                    generateFinalBtn.disabled = false;
+                    generateFinalBtn.textContent = '최종 대본 생성';
+                }
+            });
+
+            // 최종 대본 복사
+            copyFinalBtn.addEventListener('click', function() {
+                navigator.clipboard.writeText(finalScriptContent.textContent).then(() => {
+                    copyFinalBtn.textContent = '✓ 복사됨';
+                    setTimeout(() => {
+                        copyFinalBtn.textContent = '📋 최종 대본 복사';
+                    }, 2000);
+                });
+            });
+
+            // 썸네일 프롬프트 복사
+            copyThumbnailBtn.addEventListener('click', function() {
+                navigator.clipboard.writeText(thumbnailPromptContent.textContent).then(() => {
+                    copyThumbnailBtn.textContent = '✓ 복사됨';
+                    setTimeout(() => {
+                        copyThumbnailBtn.textContent = '📋 썸네일 프롬프트 복사';
+                    }, 2000);
+                });
+            });
+
+            // 메인 영역에 대본 적용
+            applyScriptBtn.addEventListener('click', function() {
+                const finalScript = finalScriptContent.textContent;
+                if (!finalScript) {
+                    alert('최종 대본이 없습니다. 먼저 최종 대본을 생성해주세요.');
+                    return;
+                }
+
+                const scriptInput = document.getElementById('script');
+                scriptInput.value = finalScript;
+                scriptInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                scriptInput.focus();
+                
+                // 시각적 피드백
+                applyScriptBtn.textContent = '✓ 적용됨';
+                applyScriptBtn.style.background = '#10b981';
+                setTimeout(() => {
+                    applyScriptBtn.textContent = '✅ 메인 영역에 대본 적용';
+                    applyScriptBtn.style.background = '#059669';
+                }, 2000);
+            });
         });
     </script>
+    </main>
+    </div>
+</div>
 </body>
 </html>
