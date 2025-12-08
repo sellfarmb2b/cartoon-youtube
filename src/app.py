@@ -4202,29 +4202,69 @@ def api_generate_final_script():
                         # 1. finish_reason이 "stop"이면 완료
                         # 2. finish_reason이 "length"이면 계속 필요
                         # 3. 응답에 "계속" 또는 "continue" 키워드가 있으면 계속 필요
+                        # 4. "이미 모든 문장을 처리했습니다" 같은 응답이 나오면 중단
                         needs_continuation = False
                         
-                        if finish_reason == "length":
+                        # AI가 완료했다고 명시적으로 말하는 경우 확인
+                        completion_keywords = [
+                            "이미 모든 문장을 처리했습니다",
+                            "모든 문장을 처리했습니다",
+                            "추가로 처리할 부분이 없습니다",
+                            "대본의 모든 내용을 처리했습니다",
+                            "모든 내용을 처리했습니다",
+                            "처리할 부분이 없습니다",
+                            "이미 처리했습니다"
+                        ]
+                        
+                        if any(keyword in chunk_response for keyword in completion_keywords):
+                            # 완료 응답이지만, 실제로 번역이 있는지 확인
+                            import re
+                            generated_translations = re.findall(r'\[한국어 번역\]', chunk_response)
+                            if len(generated_translations) == 0:
+                                # 번역이 없고 완료 메시지만 있으면 중단
+                                print(f"[최종 대본 생성] AI가 완료했다고 응답했고 번역이 없음, 중단")
+                                needs_continuation = False
+                            else:
+                                # 번역이 있으면 계속 확인
+                                needs_continuation = False
+                                print(f"[최종 대본 생성] AI가 완료했다고 응답했지만 번역 포함 ({len(generated_translations)}개), 추가 확인")
+                        
+                        if needs_continuation == False and finish_reason == "length":
                             needs_continuation = True
                             print(f"[최종 대본 생성] 토큰 제한 도달, 계속 요청 필요")
-                        elif any(keyword in chunk_response.lower() for keyword in ["계속", "continue", "...계속하려면", "다음 부분"]):
+                        elif needs_continuation == False and any(keyword in chunk_response.lower() for keyword in ["계속", "continue", "...계속하려면", "다음 부분"]):
+                            # "이미 처리했습니다" 같은 완료 메시지가 없고 계속 키워드가 있으면 계속 필요
                             needs_continuation = True
                             print(f"[최종 대본 생성] 응답에 계속 키워드 감지, 계속 요청 필요")
                         
                         # 검수 대본의 모든 문장이 처리되었는지 확인
                         # 간단한 휴리스틱: 검수 대본의 문장 수와 생성된 번역 수 비교
                         if not needs_continuation:
-                            # 검수 대본의 문장 수 추정 (마침표, 느낌표, 물음표로 분리)
                             import re
-                            draft_sentences = re.split(r'[.!?。！？]\s*', chunk_content)
-                            draft_sentences = [s.strip() for s in draft_sentences if s.strip()]
+                            # 검수 대본의 문장 수 추정 (한국어 문장 종결어미와 마침표로 분리)
+                            # 한국어는 마침표만으로는 부정확하므로, 실제 의미 단위로 분리
+                            draft_sentences = re.split(r'[.!?。！？]\s+', chunk_content)
+                            draft_sentences = [s.strip() for s in draft_sentences if s.strip() and len(s.strip()) > 5]  # 너무 짧은 것은 제외
                             
                             # 생성된 번역 수 추정
                             generated_translations = re.findall(r'\[한국어 번역\]', ''.join(chunk_responses))
                             
-                            if len(generated_translations) < len(draft_sentences) * 0.8:  # 80% 미만이면 계속 필요
-                                needs_continuation = True
-                                print(f"[최종 대본 생성] 문장 수 불일치 (검수: {len(draft_sentences)}개, 생성: {len(generated_translations)}개), 계속 요청 필요")
+                            # 문장 수 비교 (더 관대한 기준 사용)
+                            if len(generated_translations) > 0 and len(draft_sentences) > 0:
+                                completion_ratio = len(generated_translations) / len(draft_sentences)
+                                # 70% 이상이면 충분하다고 간주 (한 문장이 여러 번역으로 나뉠 수 있음)
+                                if completion_ratio < 0.7:
+                                    needs_continuation = True
+                                    print(f"[최종 대본 생성] 문장 수 불일치 (검수: {len(draft_sentences)}개, 생성: {len(generated_translations)}개, 비율: {completion_ratio:.2%}), 계속 요청 필요")
+                                else:
+                                    print(f"[최종 대본 생성] 문장 수 충분 (검수: {len(draft_sentences)}개, 생성: {len(generated_translations)}개, 비율: {completion_ratio:.2%}), 완료로 간주")
+                            
+                            # 연속된 같은 응답이 나오면 중단 (무한 루프 방지)
+                            if continuation_count >= 2:
+                                last_responses = chunk_responses[-2:] if len(chunk_responses) >= 2 else chunk_responses
+                                if len(last_responses) == 2 and last_responses[0] == last_responses[1]:
+                                    print(f"[최종 대본 생성] 연속된 같은 응답 감지, 무한 루프 방지를 위해 중단")
+                                    needs_continuation = False
                         
                         if not needs_continuation:
                             # 완료
