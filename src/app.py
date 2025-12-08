@@ -136,13 +136,25 @@ def reload_api_keys() -> None:
     print(f"[API 키 로드] Gemini API 키: {'설정됨' if GEMINI_API_KEY else '없음'} (길이: {len(GEMINI_API_KEY)})")
     print(f"[API 키 로드] settings에서 gemini_api_key: {settings.get('gemini_api_key', 'NOT_FOUND')[:20]}...")
     
-    # Gemini API 설정
-    if GEMINI_AVAILABLE and GEMINI_API_KEY:
+    # Gemini API 설정 (GEMINI_AVAILABLE이 False여도 다시 시도)
+    if GEMINI_API_KEY:
         try:
+            # import가 실패했을 수 있으므로 다시 시도
+            if not GEMINI_AVAILABLE:
+                try:
+                    import google.generativeai as genai
+                    print(f"[API 키 로드] google.generativeai 재import 성공")
+                except ImportError as e:
+                    print(f"[API 키 로드] google.generativeai import 실패: {e}")
+                    print(f"[API 키 로드] pip install google-generativeai를 실행해주세요.")
+                    return
+            
             genai.configure(api_key=GEMINI_API_KEY)
             print(f"[API 키 로드] Gemini API 설정 완료")
         except Exception as e:
             print(f"[API 키 로드] Gemini API 설정 실패: {e}")
+            import traceback
+            traceback.print_exc()
 
 
 reload_api_keys()
@@ -152,7 +164,17 @@ def refresh_service_flags() -> None:
     """Update cached booleans for API availability."""
     global replicate_api_available, gemini_available
     replicate_api_available = bool(REPLICATE_API_TOKEN)
-    gemini_available = bool(GEMINI_API_KEY) and GEMINI_AVAILABLE
+    
+    # GEMINI_AVAILABLE이 False인 경우 다시 확인
+    if not GEMINI_AVAILABLE:
+        try:
+            import google.generativeai as genai
+            # import 성공하면 사용 가능
+            gemini_available = bool(GEMINI_API_KEY)
+        except ImportError:
+            gemini_available = False
+    else:
+        gemini_available = bool(GEMINI_API_KEY) and GEMINI_AVAILABLE
     
     # 디버깅: 서비스 플래그 상태 확인
     print(f"[서비스 플래그] GEMINI_AVAILABLE: {GEMINI_AVAILABLE}, GEMINI_API_KEY: {'있음' if GEMINI_API_KEY else '없음'}, gemini_available: {gemini_available}")
