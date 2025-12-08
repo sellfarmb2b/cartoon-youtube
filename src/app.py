@@ -3828,13 +3828,41 @@ D. 아웃트로: [최종 요약 및 CTA]
         
         if response.status_code != 200:
             error_text = response.text
-            return jsonify({"error": f"OpenAI API 오류: {error_text}"}), 500
+            print(f"[검수 대본 생성] OpenAI API 오류: {response.status_code} - {error_text}")
+            try:
+                error_json = response.json()
+                error_message = error_json.get("error", {}).get("message", error_text)
+                return jsonify({"error": f"OpenAI API 오류: {error_message}"}), 500
+            except:
+                return jsonify({"error": f"OpenAI API 오류: {error_text}"}), 500
         
         result = response.json()
-        script = result.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+        choices = result.get("choices", [])
         
+        if not choices:
+            return jsonify({"error": "OpenAI API 응답에 결과가 없습니다."}), 500
+        
+        choice = choices[0]
+        finish_reason = choice.get("finish_reason")
+        
+        # 콘텐츠 필터링 확인
+        if finish_reason == "content_filter":
+            return jsonify({
+                "error": "콘텐츠 정책 위반으로 인해 대본 생성이 차단되었습니다. 다른 주제로 시도해주세요."
+            }), 400
+        
+        message = choice.get("message", {})
+        script = message.get("content", "").strip() if message.get("content") else None
+        
+        # content가 None이거나 빈 문자열인 경우
         if not script:
-            return jsonify({"error": "대본 생성에 실패했습니다."}), 500
+            error_msg = "대본 생성에 실패했습니다."
+            if finish_reason:
+                error_msg += f" (완료 사유: {finish_reason})"
+            if message.get("refusal"):
+                error_msg += f" 거부 사유: {message.get('refusal')}"
+            print(f"[검수 대본 생성] 응답 없음 - finish_reason: {finish_reason}, message: {message}")
+            return jsonify({"error": error_msg}), 500
         
         return jsonify({"script": script})
         
@@ -3920,10 +3948,13 @@ B. 영어 이미지 프롬프트:
 요구사항:
 1. TTS용 순수 대본 생성 (괄호, 대괄호, 태그 모두 제거)
 2. 자연스럽고 매력적인 대화체로 작성
-3. 각 문장에 대한 한국어 번역과 영어 이미지 프롬프트 제공
+3. 검수 대본이 이미 한국어인 경우, 그대로 사용하되 괄호와 태그만 제거
+4. 검수 대본이 영어인 경우, 각 문장에 대한 한국어 번역과 영어 이미지 프롬프트 제공
+
+중요: 검수 대본의 언어를 먼저 확인하고, 한국어인 경우 추가 번역 없이 원본을 정제하여 사용하세요.
 
 검수 대본:
-{draft_script}"""
+{draft_script[:5000]}"""  # 너무 긴 경우 앞부분만 사용
 
         response = requests.post(
             "https://api.openai.com/v1/chat/completions",
@@ -3942,13 +3973,41 @@ B. 영어 이미지 프롬프트:
         
         if response.status_code != 200:
             error_text = response.text
-            return jsonify({"error": f"OpenAI API 오류: {error_text}"}), 500
+            print(f"[최종 대본 생성] OpenAI API 오류: {response.status_code} - {error_text}")
+            try:
+                error_json = response.json()
+                error_message = error_json.get("error", {}).get("message", error_text)
+                return jsonify({"error": f"OpenAI API 오류: {error_message}"}), 500
+            except:
+                return jsonify({"error": f"OpenAI API 오류: {error_text}"}), 500
         
         result = response.json()
-        full_response = result.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+        choices = result.get("choices", [])
         
+        if not choices:
+            return jsonify({"error": "OpenAI API 응답에 결과가 없습니다."}), 500
+        
+        choice = choices[0]
+        finish_reason = choice.get("finish_reason")
+        
+        # 콘텐츠 필터링 확인
+        if finish_reason == "content_filter":
+            return jsonify({
+                "error": "콘텐츠 정책 위반으로 인해 대본 생성이 차단되었습니다. 검수 대본의 내용을 수정하거나 다른 주제로 시도해주세요."
+            }), 400
+        
+        message = choice.get("message", {})
+        full_response = message.get("content", "").strip() if message.get("content") else None
+        
+        # content가 None이거나 빈 문자열인 경우
         if not full_response:
-            return jsonify({"error": "최종 대본 생성에 실패했습니다."}), 500
+            error_msg = "최종 대본 생성에 실패했습니다."
+            if finish_reason:
+                error_msg += f" (완료 사유: {finish_reason})"
+            if message.get("refusal"):
+                error_msg += f" 거부 사유: {message.get('refusal')}"
+            print(f"[최종 대본 생성] 응답 없음 - finish_reason: {finish_reason}, message: {message}")
+            return jsonify({"error": error_msg}), 500
         
         # TTS용 순수 대본 추출 (한국어 번역 부분만 추출)
         import re
@@ -3967,6 +4026,13 @@ B. 영어 이미지 프롬프트:
             final_script_lines = [line.strip() for line in cleaned_response.split('\n') if line.strip() and not line.strip().isdigit()]
         
         final_script = '\n'.join(final_script_lines) if final_script_lines else full_response
+        
+        # 최종 대본이 여전히 비어있거나 너무 짧은 경우
+        if not final_script or len(final_script.strip()) < 50:
+            print(f"[최종 대본 생성] 경고: 생성된 대본이 너무 짧거나 비어있음 (길이: {len(final_script) if final_script else 0})")
+            print(f"[최종 대본 생성] 원본 응답 (처음 500자): {full_response[:500] if full_response else 'None'}")
+            # 원본 검수 대본을 그대로 사용 (최소한의 fallback)
+            final_script = draft_script
         
         # 썸네일 프롬프트 생성 (주제 추출)
         topic_match = re.search(r'주제[:\s]+(.+?)(?:\n|$)', draft_script, re.IGNORECASE)
