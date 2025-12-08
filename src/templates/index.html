@@ -2182,6 +2182,7 @@
             const thumbnailPromptContent = document.getElementById('thumbnailPromptContent');
             const copyThumbnailBtn = document.getElementById('copyThumbnailBtn');
             const applyScriptBtn = document.getElementById('applyScriptBtn');
+            let savedImagePrompts = []; // 최종 대본 생성 시 받은 이미지 프롬프트 저장
 
             // 검수 대본 생성
             generateDraftBtn.addEventListener('click', async function() {
@@ -2256,6 +2257,10 @@
                     finalScriptContent.textContent = data.final_script;
                     finalResult.style.display = 'block';
                     
+                    // 이미지 프롬프트 저장
+                    savedImagePrompts = data.image_prompts || [];
+                    console.log('[최종 대본 생성] 이미지 프롬프트 개수:', savedImagePrompts.length);
+                    
                     if (data.thumbnail_prompt) {
                         thumbnailPromptContent.textContent = data.thumbnail_prompt;
                         thumbnailPromptResult.style.display = 'block';
@@ -2300,6 +2305,26 @@
 
                 const scriptInput = document.getElementById('script');
                 scriptInput.value = finalScript;
+                
+                // 대본 입력 이벤트 트리거하여 문장 분리 및 프롬프트 입력란 생성
+                const inputEvent = new Event('input', { bubbles: true });
+                scriptInput.dispatchEvent(inputEvent);
+                
+                // 이미지 프롬프트가 있으면 프롬프트 입력란에 채우기
+                if (savedImagePrompts && savedImagePrompts.length > 0) {
+                    setTimeout(() => {
+                        const promptInputElements = document.querySelectorAll('#promptInputs textarea[data-index]');
+                        console.log('[대본 적용] 프롬프트 입력란 개수:', promptInputElements.length, '저장된 프롬프트 개수:', savedImagePrompts.length);
+                        
+                        promptInputElements.forEach((input, idx) => {
+                            if (idx < savedImagePrompts.length && savedImagePrompts[idx]) {
+                                input.value = savedImagePrompts[idx];
+                                console.log(`[대본 적용] 프롬프트 ${idx + 1} 적용:`, savedImagePrompts[idx].substring(0, 50) + '...');
+                            }
+                        });
+                    }, 500); // 문장 분리 후 프롬프트 입력란 생성 대기
+                }
+                
                 scriptInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 scriptInput.focus();
                 
