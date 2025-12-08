@@ -3815,7 +3815,7 @@ D. 아웃트로: [최종 요약 및 CTA]
             "https://api.openai.com/v1/chat/completions",
             headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
             json={
-                "model": "gpt-4o",
+                "model": "gpt-4o-mini",
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
@@ -4135,7 +4135,7 @@ def api_generate_final_script():
                             "https://api.openai.com/v1/chat/completions",
                             headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
                             json={
-                                "model": "gpt-4o",
+                                "model": "gpt-4o-mini",
                                 "messages": messages,
                                 "temperature": 0.7,
                                 "max_tokens": 16000
