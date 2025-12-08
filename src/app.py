@@ -4174,20 +4174,54 @@ def api_generate_final_script():
         # TTS용 순수 대본 추출 (한국어 번역 부분만 추출)
         import re
         final_script_lines = []
-        korean_translations = re.findall(r'\[한국어 번역\]\s*(.+?)(?=\[영어 이미지 프롬프트\]|$)', full_response, re.DOTALL)
+        
+        # 방법 1: [한국어 번역] 태그로 감싸진 내용 추출
+        korean_translations = re.findall(r'\[한국어 번역\]\s*(.+?)(?=\[영어 이미지 프롬프트\]|$|\n\n)', full_response, re.DOTALL)
         for trans in korean_translations:
             cleaned = trans.strip()
-            if cleaned:
+            # 괄호와 대괄호 제거
+            cleaned = re.sub(r'\(.*?\)', '', cleaned)
+            cleaned = re.sub(r'\[.*?\]', '', cleaned)
+            cleaned = cleaned.strip()
+            if cleaned and len(cleaned) > 3:  # 너무 짧은 것은 제외
                 final_script_lines.append(cleaned)
         
-        # 한국어 번역이 없으면 전체 응답을 그대로 사용 (대본이 이미 한국어일 수 있음)
+        # 방법 2: 번호가 있는 형식에서 추출 (1. [한국어 번역] ...)
         if not final_script_lines:
-            # 태그 제거하고 순수 텍스트만 추출
-            cleaned_response = re.sub(r'\[.*?\]', '', full_response)
-            cleaned_response = re.sub(r'\(.*?\)', '', cleaned_response)
-            final_script_lines = [line.strip() for line in cleaned_response.split('\n') if line.strip() and not line.strip().isdigit()]
+            numbered_pattern = r'\d+\.\s*\[한국어 번역\]\s*(.+?)(?=\[영어 이미지 프롬프트\]|$|\n\n)', re.DOTALL)
+            korean_translations = re.findall(numbered_pattern, full_response)
+            for trans in korean_translations:
+                cleaned = trans.strip()
+                cleaned = re.sub(r'\(.*?\)', '', cleaned)
+                cleaned = re.sub(r'\[.*?\]', '', cleaned)
+                cleaned = cleaned.strip()
+                if cleaned and len(cleaned) > 3:
+                    final_script_lines.append(cleaned)
         
+        # 방법 3: 한국어 번역이 없으면 전체 응답에서 태그 제거 후 사용
+        if not final_script_lines:
+            # 모든 태그 제거
+            cleaned_response = re.sub(r'\[한국어 번역\]', '', full_response)
+            cleaned_response = re.sub(r'\[영어 이미지 프롬프트\]', '', cleaned_response)
+            cleaned_response = re.sub(r'\[.*?\]', '', cleaned_response)
+            cleaned_response = re.sub(r'\(.*?\)', '', cleaned_response)
+            
+            # 줄 단위로 분리하고 정제
+            lines = cleaned_response.split('\n')
+            for line in lines:
+                line = line.strip()
+                # 번호만 있는 줄이나 빈 줄 제외
+                if line and not line.isdigit() and not re.match(r'^\d+\.\s*$', line) and len(line) > 3:
+                    final_script_lines.append(line)
+        
+        # 최종 대본 생성
         final_script = '\n'.join(final_script_lines) if final_script_lines else full_response
+        
+        # 최종 정제: 남은 태그나 특수 문자 제거
+        final_script = re.sub(r'\[.*?\]', '', final_script)
+        final_script = re.sub(r'\(.*?\)', '', final_script)
+        final_script = re.sub(r'\n{3,}', '\n\n', final_script)  # 연속된 줄바꿈 정리
+        final_script = final_script.strip()
         
         # 최종 대본이 여전히 비어있거나 너무 짧은 경우
         if not final_script or len(final_script.strip()) < 50:
