@@ -4247,31 +4247,19 @@ def api_generate_final_script():
                     if english_cleaned:
                         image_prompts.append(english_cleaned)
         
-        # 방법 3: 한국어 번역만 추출 (fallback)
+        # 방법 3: 한국어 번역만 추출 (fallback - 이미지 프롬프트 없이)
         if not final_script_lines:
             korean_translations = re.findall(r'\[한국어 번역\]\s*(.+?)(?=\[영어 이미지 프롬프트\]|$|\n\n)', full_response, re.DOTALL)
-        for trans in korean_translations:
-            cleaned = trans.strip()
-            # 괄호와 대괄호 제거
-            cleaned = re.sub(r'\(.*?\)', '', cleaned)
-            cleaned = re.sub(r'\[.*?\]', '', cleaned)
-            cleaned = cleaned.strip()
-            if cleaned and len(cleaned) > 3:  # 너무 짧은 것은 제외
-                final_script_lines.append(cleaned)
-        
-        # 방법 2: 번호가 있는 형식에서 추출 (1. [한국어 번역] ...)
-        if not final_script_lines:
-            numbered_pattern = r'\d+\.\s*\[한국어 번역\]\s*(.+?)(?=\[영어 이미지 프롬프트\]|$|\n\n)'
-            korean_translations = re.findall(numbered_pattern, full_response, re.DOTALL)
             for trans in korean_translations:
                 cleaned = trans.strip()
+                # 괄호와 대괄호 제거
                 cleaned = re.sub(r'\(.*?\)', '', cleaned)
                 cleaned = re.sub(r'\[.*?\]', '', cleaned)
                 cleaned = cleaned.strip()
-                if cleaned and len(cleaned) > 3:
+                if cleaned and len(cleaned) > 3:  # 너무 짧은 것은 제외
                     final_script_lines.append(cleaned)
         
-        # 방법 3: 한국어 번역이 없으면 전체 응답에서 태그 제거 후 사용
+        # 방법 4: 한국어 번역이 없으면 전체 응답에서 태그 제거 후 사용
         if not final_script_lines:
             # 모든 태그 제거
             cleaned_response = re.sub(r'\[한국어 번역\]', '', full_response)
