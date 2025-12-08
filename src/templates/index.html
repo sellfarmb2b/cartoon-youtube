@@ -134,7 +134,12 @@
                 <pre id="finalScriptContent"></pre>
                 <button type="button" id="copyFinalBtn" style="background: #10b981; margin-top: 8px; font-size: 13px; padding: 8px 12px;">📋 최종 대본 복사</button>
             </div>
-            <div id="thumbnailPromptResult" class="thumbnail-prompt-result" style="display: none;">
+            <div id="visualPromptResult" class="visual-prompt-result" style="display: none; margin-top: 16px;">
+                <h4 style="margin: 0 0 8px 0; color: #7c3aed; font-size: 13px; font-weight: 600;">🖼️ 시각화 프롬프트 (한국어 번역 + 영어 이미지 프롬프트):</h4>
+                <pre id="visualPromptContent" style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; font-size: 12px; line-height: 1.6; max-height: 400px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; font-family: 'Courier New', monospace;"></pre>
+                <button type="button" id="copyVisualPromptBtn" style="background: #7c3aed; color: #fff; margin-top: 8px; font-size: 12px; padding: 6px 10px; width: 100%;">📋 시각화 프롬프트 복사</button>
+            </div>
+            <div id="thumbnailPromptResult" class="thumbnail-prompt-result" style="display: none; margin-top: 16px;">
                 <h4 style="margin: 0 0 8px 0; color: #92400e; font-size: 13px; font-weight: 600;">썸네일 프롬프트:</h4>
                 <code id="thumbnailPromptContent"></code>
                 <button type="button" id="copyThumbnailBtn" style="background: #f59e0b; color: #fff; margin-top: 8px; font-size: 12px; padding: 6px 10px; width: 100%;">📋 썸네일 프롬프트 복사</button>
@@ -2178,6 +2183,9 @@
             const finalResult = document.getElementById('finalResult');
             const finalScriptContent = document.getElementById('finalScriptContent');
             const copyFinalBtn = document.getElementById('copyFinalBtn');
+            const visualPromptResult = document.getElementById('visualPromptResult');
+            const visualPromptContent = document.getElementById('visualPromptContent');
+            const copyVisualPromptBtn = document.getElementById('copyVisualPromptBtn');
             const thumbnailPromptResult = document.getElementById('thumbnailPromptResult');
             const thumbnailPromptContent = document.getElementById('thumbnailPromptContent');
             const copyThumbnailBtn = document.getElementById('copyThumbnailBtn');
@@ -2240,6 +2248,7 @@
                 generateFinalBtn.disabled = true;
                 generateFinalBtn.textContent = '생성 중...';
                 finalResult.style.display = 'none';
+                visualPromptResult.style.display = 'none';
                 thumbnailPromptResult.style.display = 'none';
 
                 try {
@@ -2261,6 +2270,25 @@
                     savedImagePrompts = data.image_prompts || [];
                     console.log('[최종 대본 생성] 이미지 프롬프트 개수:', savedImagePrompts.length);
                     
+                    // 시각화 프롬프트 표시 (full_response 또는 포맷팅된 버전)
+                    if (data.full_response) {
+                        visualPromptContent.textContent = data.full_response;
+                        visualPromptResult.style.display = 'block';
+                    } else if (data.image_prompts && data.image_prompts.length > 0) {
+                        // full_response가 없으면 한국어 번역과 이미지 프롬프트를 조합하여 표시
+                        const finalScriptLines = data.final_script.split('\n').filter(line => line.trim());
+                        let formattedOutput = '';
+                        finalScriptLines.forEach((line, idx) => {
+                            if (idx < savedImagePrompts.length) {
+                                formattedOutput += `${idx + 1}.\n`;
+                                formattedOutput += `[한국어 번역] ${line.trim()}\n`;
+                                formattedOutput += `[영어 이미지 프롬프트] ${savedImagePrompts[idx]}\n\n`;
+                            }
+                        });
+                        visualPromptContent.textContent = formattedOutput;
+                        visualPromptResult.style.display = 'block';
+                    }
+                    
                     if (data.thumbnail_prompt) {
                         thumbnailPromptContent.textContent = data.thumbnail_prompt;
                         thumbnailPromptResult.style.display = 'block';
@@ -2281,6 +2309,16 @@
                     copyFinalBtn.textContent = '✓ 복사됨';
                     setTimeout(() => {
                         copyFinalBtn.textContent = '📋 최종 대본 복사';
+                    }, 2000);
+                });
+            });
+
+            // 시각화 프롬프트 복사
+            copyVisualPromptBtn.addEventListener('click', function() {
+                navigator.clipboard.writeText(visualPromptContent.textContent).then(() => {
+                    copyVisualPromptBtn.textContent = '✓ 복사됨';
+                    setTimeout(() => {
+                        copyVisualPromptBtn.textContent = '📋 시각화 프롬프트 복사';
                     }, 2000);
                 });
             });
