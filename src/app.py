@@ -28,6 +28,13 @@ try:
     import replicate
 except ImportError:
     replicate = None
+# Google Generative AI (Gemini) SDK
+try:
+    import google.generativeai as genai
+    GEMINI_AVAILABLE = True
+except ImportError:
+    genai = None
+    GEMINI_AVAILABLE = False
 from flask import (
     Flask,
     render_template,
@@ -105,7 +112,7 @@ def get_default_download_folder() -> str:
 
 def reload_api_keys() -> None:
     """Load API keys from the persistent config store."""
-    global ELEVENLABS_API_KEY, REPLICATE_API_TOKEN, OPENAI_API_KEY
+    global ELEVENLABS_API_KEY, REPLICATE_API_TOKEN, GEMINI_API_KEY
     settings = config_manager.get_all()
     ELEVENLABS_API_KEY = (
         settings.get("elevenlabs_api_key")
@@ -115,10 +122,14 @@ def reload_api_keys() -> None:
         settings.get("replicate_api_key")
         or os.environ.get("REPLICATE_API_TOKEN", "")
     ).strip()
-    OPENAI_API_KEY = (
-        settings.get("openai_api_key")
-        or os.environ.get("OPENAI_API_KEY", "")
+    GEMINI_API_KEY = (
+        settings.get("gemini_api_key")
+        or os.environ.get("GEMINI_API_KEY", "")
     ).strip()
+    
+    # Gemini API 설정
+    if GEMINI_AVAILABLE and GEMINI_API_KEY:
+        genai.configure(api_key=GEMINI_API_KEY)
 
 
 reload_api_keys()
@@ -126,9 +137,9 @@ reload_api_keys()
 
 def refresh_service_flags() -> None:
     """Update cached booleans for API availability."""
-    global replicate_api_available, openai_available
+    global replicate_api_available, gemini_available
     replicate_api_available = bool(REPLICATE_API_TOKEN)
-    openai_available = bool(OPENAI_API_KEY)
+    gemini_available = bool(GEMINI_API_KEY) and GEMINI_AVAILABLE
 
 
 refresh_service_flags()
@@ -339,29 +350,20 @@ def ensure_english_text(text: str) -> str:
     else:
         return text
 
-    if not OPENAI_API_KEY:
+    if not gemini_available or not GEMINI_API_KEY:
         return text
 
     try:
-        response = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
-            json={
-                "model": "gpt-4.1-mini",
-                "messages": [
-                    {"role": "system", "content": "You are a translator. Translate the text into fluent English."},
-                    {"role": "user", "content": text},
-                ],
-                "temperature": 0.1,
-                "max_tokens": 200,
-            },
-            timeout=60,
+        model = genai.GenerativeModel('gemini-3-pro-preview')
+        prompt = f"You are a translator. Translate the following text into fluent English.\n\n{text}"
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.1,
+                max_output_tokens=200,
+            )
         )
-        if response.status_code != 200:
-            print(f"[경고] 번역 실패: {response.status_code} {response.text}")
-            return text
-        data = response.json()
-        translated = data["choices"][0]["message"]["content"].strip()
+        translated = response.text.strip()
         return translated or text
     except Exception as exc:
         print(f"[경고] 번역 요청 중 오류: {exc}")
@@ -799,7 +801,7 @@ def alignment_to_phrases(alignment: Dict[str, Any], char_limit: int = 50, semant
 
 def extract_scene_context(scene_text: str, mode: str = "animation") -> Dict[str, str]:
     """장면 텍스트에서 문맥 정보를 추출합니다."""
-    if not openai_available:
+    if not gemini_available:
         return {}
     
     try:
@@ -809,49 +811,41 @@ def extract_scene_context(scene_text: str, mode: str = "animation") -> Dict[str,
         else:
             mode_instruction = "The images will be in stickman cartoon, vibrant 2D illustration style."
         
-        response = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
-            json={
-                "model": "gpt-4.1-mini",
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are a professional script analyst and visual context extractor. "
-                            "Analyze the scene description and extract key contextual information for image generation. "
-                            f"{mode_instruction}\n\n"
-                            "Return JSON with these fields:\n"
-                            "- overall_style: The visual style/genre (e.g., '1940s Film Noir', 'cyberpunk', 'high school romance', 'hyperrealistic')\n"
-                            "- location: The setting/background (e.g., 'dark narrow alleyway at night', 'sunlit classroom', 'rainy street')\n"
-                            "- time: Time of day/period (e.g., 'deep night', 'sunset', 'rainy afternoon', 'dawn')\n"
-                            "- characters: Key characters in the scene with brief descriptions (e.g., 'Detective Park (40s, weary, trench coat), Suji (20s, red dress)')\n"
-                            "- mood: The emotional atmosphere (e.g., 'tense', 'somber', 'mysterious', 'peaceful', 'urgent')\n\n"
-                            "Be specific and descriptive. Write in English only."
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": f"Extract context from this scene:\n\n{scene_text[:800]}",
-                    },
-                ],
-                "response_format": {"type": "json_object"},
-                "temperature": 0.3,
-                "max_tokens": 400,
-            },
-            timeout=30,
+        system_prompt = (
+            "You are a professional script analyst and visual context extractor. "
+            "Analyze the scene description and extract key contextual information for image generation. "
+            f"{mode_instruction}\n\n"
+            "Return JSON with these fields:\n"
+            "- overall_style: The visual style/genre (e.g., '1940s Film Noir', 'cyberpunk', 'high school romance', 'hyperrealistic')\n"
+            "- location: The setting/background (e.g., 'dark narrow alleyway at night', 'sunlit classroom', 'rainy street')\n"
+            "- time: Time of day/period (e.g., 'deep night', 'sunset', 'rainy afternoon', 'dawn')\n"
+            "- characters: Key characters in the scene with brief descriptions (e.g., 'Detective Park (40s, weary, trench coat), Suji (20s, red dress)')\n"
+            "- mood: The emotional atmosphere (e.g., 'tense', 'somber', 'mysterious', 'peaceful', 'urgent')\n\n"
+            "Be specific and descriptive. Write in English only. Return only valid JSON."
         )
-        if response.status_code == 200:
-            data = response.json()
-            content = data["choices"][0]["message"]["content"]
-            parsed = json.loads(content)
-            return {
-                "overall_style": parsed.get("overall_style", ""),
-                "location": parsed.get("location", ""),
-                "time": parsed.get("time", ""),
-                "characters": parsed.get("characters", ""),
-                "mood": parsed.get("mood", ""),
-            }
+        
+        user_prompt = f"Extract context from this scene:\n\n{scene_text[:800]}"
+        full_prompt = f"{system_prompt}\n\n{user_prompt}"
+        
+        model = genai.GenerativeModel('gemini-3-pro-preview')
+        response = model.generate_content(
+            full_prompt,
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.3,
+                max_output_tokens=400,
+                response_mime_type="application/json",
+            )
+        )
+        
+        content = response.text.strip()
+        parsed = json.loads(content)
+        return {
+            "overall_style": parsed.get("overall_style", ""),
+            "location": parsed.get("location", ""),
+            "time": parsed.get("time", ""),
+            "characters": parsed.get("characters", ""),
+            "mood": parsed.get("mood", ""),
+        }
     except Exception as e:
         print(f"[경고] 장면 문맥 추출 실패: {e}")
     
@@ -983,10 +977,10 @@ def call_openai_for_prompts(offset: int, sentences: List[str], mode: str = "anim
 
     for attempt in range(max_retries):
         try:
-            # OpenAI API 키 확인 (파라미터로 받은 키가 없으면 전역 변수 사용)
-            api_key = openai_api_key or OPENAI_API_KEY
-            if not api_key:
-                print(f"[경고] OpenAI API 키가 없어 프롬프트 생성을 건너뜁니다.")
+            # Gemini API 키 확인 (파라미터로 받은 키가 없으면 전역 변수 사용)
+            api_key = openai_api_key or GEMINI_API_KEY  # 파라미터명은 호환성을 위해 유지
+            if not api_key or not gemini_available:
+                print(f"[경고] Gemini API 키가 없어 프롬프트 생성을 건너뜁니다.")
                 return {}
             
             # 실사화 모드(realistic, realistic2)일 때만 새로운 시스템 프롬프트와 temperature 0.2 사용
@@ -1057,35 +1051,25 @@ IMPORTANT: Ensure all JSON strings are properly escaped and closed. Avoid unesca
                 user_content += context_info
             user_content += "\n\n[ENGLISH IMAGE PROMPT]\nReturn output strictly as JSON object with proper escaping."
 
-            response = requests.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={
-                    "model": "gpt-4.1-mini",
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": system_content,
-                        },
-                        {
-                            "role": "user",
-                            "content": user_content,
-                        },
-                    ],
-                    "response_format": {"type": "json_object"},
-                    "temperature": temperature,
-                    "max_tokens": 2000,
-                },
-                timeout=90,
-            )
-            if response.status_code != 200:
+            # Gemini API 호출
+            full_prompt = f"{system_content}\n\n{user_content}"
+            model = genai.GenerativeModel('gemini-3-pro-preview')
+            
+            try:
+                response = model.generate_content(
+                    full_prompt,
+                    generation_config=genai.types.GenerationConfig(
+                        temperature=temperature,
+                        max_output_tokens=2000,
+                        response_mime_type="application/json",
+                    )
+                )
+                content = response.text.strip()
+            except Exception as e:
                 if attempt < max_retries - 1:
                     time.sleep(2 ** attempt)
                     continue
-                raise RuntimeError(f"OpenAI request failed: {response.status_code} {response.text}")
-            
-            data = response.json()
-            content = data["choices"][0]["message"]["content"]
+                raise RuntimeError(f"Gemini API request failed: {str(e)}")
             
             # JSON 파싱 시도 (여러 방법으로)
             parsed = None
@@ -1189,38 +1173,32 @@ def generate_semantic_segments(text: str, max_segments: int = 4) -> List[str]:
         return []
 
     fallback = fallback_semantic_segments(text, max_segments=max_segments)
-    if not openai_available:
+    if not gemini_available:
         return fallback
 
     try:
-        response = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
-            json={
-                "model": "gpt-4.1-mini",
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "You split narration into subtitle-ready segments. "
-                            "Return the original text divided into short, sequential phrases. "
-                            "Do not paraphrase or remove words. Keep the language the same."
-                            " Respond strictly as JSON with an array named 'segments', each item containing 'text'."
-                        ),
-                    },
-                    {"role": "user", "content": text},
-                ],
-                "response_format": {"type": "json_object"},
-                "temperature": 0.2,
-                "max_tokens": 600,
-            },
-            timeout=60,
+        system_prompt = (
+            "You split narration into subtitle-ready segments. "
+            "Return the original text divided into short, sequential phrases. "
+            "Do not paraphrase or remove words. Keep the language the same."
+            " Respond strictly as JSON with an array named 'segments', each item containing 'text'."
         )
-        if response.status_code != 200:
-            print(f"[경고] 자막 세그먼트 생성 실패: {response.status_code} {response.text}")
+        full_prompt = f"{system_prompt}\n\n{text}"
+        
+        model = genai.GenerativeModel('gemini-3-pro-preview')
+        try:
+            response = model.generate_content(
+                full_prompt,
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.2,
+                    max_output_tokens=600,
+                    response_mime_type="application/json",
+                )
+            )
+            content = response.text.strip()
+        except Exception as e:
+            print(f"[경고] 자막 세그먼트 생성 실패: {e}")
             return fallback
-        data = response.json()
-        content = data["choices"][0]["message"]["content"]
         parsed = json.loads(content)
         raw_segments = parsed.get("segments") if isinstance(parsed, dict) else None
         if not isinstance(raw_segments, list):
@@ -1252,9 +1230,9 @@ def generate_visual_prompts(sentences: List[str], mode: str = "animation", progr
     for idx, sentence in enumerate(sentences):
         default_prompts.append(build_fallback_prompt(sentence, mode))
 
-    if not OPENAI_API_KEY:
+    if not gemini_available or not GEMINI_API_KEY:
         if progress_cb:
-            progress_cb("OpenAI API 키가 없어 기본 프롬프트를 사용합니다.")
+            progress_cb("Gemini API 키가 없어 기본 프롬프트를 사용합니다.")
         return default_prompts
 
     # 장면 단위로 분할 및 문맥 정보 추출
@@ -3572,7 +3550,7 @@ def api_settings():
         {
             "replicate_api_key": (data.get("replicate_api_key") or "").strip(),
             "elevenlabs_api_key": (data.get("elevenlabs_api_key") or "").strip(),
-            "openai_api_key": (data.get("openai_api_key") or "").strip(),
+            "gemini_api_key": (data.get("gemini_api_key") or "").strip(),
             "download_folder_path": (data.get("download_folder_path") or "").strip(),
         }
     )
@@ -3752,8 +3730,8 @@ def api_generate_draft_script():
         if not topic:
             return jsonify({"error": "주제/키워드를 입력해주세요."}), 400
         
-        if not OPENAI_API_KEY:
-            return jsonify({"error": "OpenAI API 키가 설정되지 않았습니다."}), 500
+        if not gemini_available or not GEMINI_API_KEY:
+            return jsonify({"error": "Gemini API 키가 설정되지 않았습니다."}), 500
         
         # 검수 대본 프롬프트
         system_prompt = """당신은 '지식 스토리텔러' 전문 유튜브 대본 작가입니다.
@@ -3811,57 +3789,37 @@ D. 아웃트로: [최종 요약 및 CTA]
 
         user_prompt = f"[주제]: {topic}"
         
-        response = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
-            json={
-                "model": "gpt-4.1-mini",
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                "temperature": 0.7,
-                "max_tokens": 8000
-            },
-            timeout=120
-        )
+        try:
+            full_prompt = f"{system_prompt}\n\n{user_prompt}"
+            model = genai.GenerativeModel('gemini-3-pro-preview')
+            response = model.generate_content(
+                full_prompt,
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.7,
+                    max_output_tokens=8000,
+                )
+            )
+            
+            script = response.text.strip()
+            
+            # Gemini는 finish_reason이 다르게 제공됨
+            # safety_ratings 확인
+            if hasattr(response, 'prompt_feedback') and response.prompt_feedback:
+                if hasattr(response.prompt_feedback, 'block_reason') and response.prompt_feedback.block_reason:
+                    return jsonify({
+                        "error": "콘텐츠 정책 위반으로 인해 대본 생성이 차단되었습니다. 다른 주제로 시도해주세요."
+                    }), 400
         
-        if response.status_code != 200:
-            error_text = response.text
-            print(f"[검수 대본 생성] OpenAI API 오류: {response.status_code} - {error_text}")
-            try:
-                error_json = response.json()
-                error_message = error_json.get("error", {}).get("message", error_text)
-                return jsonify({"error": f"OpenAI API 오류: {error_message}"}), 500
-            except:
-                return jsonify({"error": f"OpenAI API 오류: {error_text}"}), 500
-        
-        result = response.json()
-        choices = result.get("choices", [])
-        
-        if not choices:
-            return jsonify({"error": "OpenAI API 응답에 결과가 없습니다."}), 500
-        
-        choice = choices[0]
-        finish_reason = choice.get("finish_reason")
-        
-        # 콘텐츠 필터링 확인
-        if finish_reason == "content_filter":
-            return jsonify({
-                "error": "콘텐츠 정책 위반으로 인해 대본 생성이 차단되었습니다. 다른 주제로 시도해주세요."
-            }), 400
-        
-        message = choice.get("message", {})
-        script = message.get("content", "").strip() if message.get("content") else None
+        except Exception as e:
+            print(f"[검수 대본 생성] Gemini API 오류: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": f"Gemini API 오류: {str(e)}"}), 500
         
         # content가 None이거나 빈 문자열인 경우
         if not script:
             error_msg = "대본 생성에 실패했습니다."
-            if finish_reason:
-                error_msg += f" (완료 사유: {finish_reason})"
-            if message.get("refusal"):
-                error_msg += f" 거부 사유: {message.get('refusal')}"
-            print(f"[검수 대본 생성] 응답 없음 - finish_reason: {finish_reason}, message: {message}")
+            print(f"[검수 대본 생성] 응답 없음")
             return jsonify({"error": error_msg}), 500
         
         return jsonify({"script": script})
@@ -3941,8 +3899,8 @@ def api_generate_final_script():
         if not draft_script:
             return jsonify({"error": "검수 대본을 입력해주세요."}), 400
         
-        if not OPENAI_API_KEY:
-            return jsonify({"error": "OpenAI API 키가 설정되지 않았습니다."}), 500
+        if not gemini_available or not GEMINI_API_KEY:
+            return jsonify({"error": "Gemini API 키가 설정되지 않았습니다."}), 500
         
         # 챕터별로 분리
         chapters = split_draft_script_into_chapters(draft_script)
@@ -4131,58 +4089,52 @@ def api_generate_final_script():
                             print(f"[최종 대본 생성] 챕터 {idx} 청크 {chunk_idx} - 계속 요청 {continuation_count}번째")
                             print(f"{'='*80}\n")
                         
-                        response = requests.post(
-                            "https://api.openai.com/v1/chat/completions",
-                            headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
-                            json={
-                                "model": "gpt-4.1-mini",
-                                "messages": messages,
-                                "temperature": 0.7,
-                                "max_tokens": 16000
-                            },
-                            timeout=180
-                        )
+                        # Gemini API 호출: messages를 단일 프롬프트로 결합
+                        full_prompt_parts = []
+                        for msg in messages:
+                            if msg["role"] == "system":
+                                full_prompt_parts.append(f"[SYSTEM]\n{msg['content']}\n")
+                            elif msg["role"] == "user":
+                                full_prompt_parts.append(f"[USER]\n{msg['content']}\n")
+                            elif msg["role"] == "assistant":
+                                full_prompt_parts.append(f"[ASSISTANT]\n{msg['content']}\n")
+                        full_prompt = "\n".join(full_prompt_parts)
                         
-                        if response.status_code != 200:
-                            error_text = response.text
-                            print(f"[최종 대본 생성] 챕터 {idx} 청크 {chunk_idx} OpenAI API 오류: {response.status_code} - {error_text}")
-                            try:
-                                error_json = response.json()
-                                error_message = error_json.get("error", {}).get("message", error_text)
-                                return jsonify({"error": f"챕터 {idx} 처리 중 OpenAI API 오류: {error_message}"}), 500
-                            except:
-                                return jsonify({"error": f"챕터 {idx} 처리 중 OpenAI API 오류: {error_text}"}), 500
+                        model = genai.GenerativeModel('gemini-3-pro-preview')
+                        try:
+                            response = model.generate_content(
+                                full_prompt,
+                                generation_config=genai.types.GenerationConfig(
+                                    temperature=0.7,
+                                    max_output_tokens=16000,
+                                )
+                            )
+                            
+                            chunk_response = response.text.strip()
+                            
+                            # Gemini는 safety_ratings로 필터링 확인
+                            if hasattr(response, 'prompt_feedback') and response.prompt_feedback:
+                                if hasattr(response.prompt_feedback, 'block_reason') and response.prompt_feedback.block_reason:
+                                    return jsonify({
+                                        "error": f"챕터 {idx} 처리 중 콘텐츠 정책 위반으로 인해 대본 생성이 차단되었습니다. 검수 대본의 내용을 수정하거나 다른 주제로 시도해주세요."
+                                    }), 400
+                            
+                            # 디버깅: Gemini 응답 확인
+                            if chunk_response:
+                                print(f"\n{'='*80}")
+                                print(f"[최종 대본 생성] 챕터 {idx} 청크 {chunk_idx} - Gemini 응답 받음 (요청 {continuation_count + 1}번째)")
+                                print(f"[DEBUG] 응답 길이: {len(chunk_response)}자")
+                                print(f"[DEBUG] 응답 처음 1000자:\n{chunk_response[:1000]}")
+                                if len(chunk_response) > 1000:
+                                    print(f"[DEBUG] 응답 마지막 500자:\n{chunk_response[-500:]}")
+                                print(f"{'='*80}\n")
+                            
+                        except Exception as e:
+                            error_text = str(e)
+                            print(f"[최종 대본 생성] 챕터 {idx} 청크 {chunk_idx} Gemini API 오류: {error_text}")
+                            return jsonify({"error": f"챕터 {idx} 처리 중 Gemini API 오류: {error_text}"}), 500
                         
-                        result = response.json()
-                        choices = result.get("choices", [])
-                        
-                        if not choices:
-                            return jsonify({"error": f"챕터 {idx} 처리 중 OpenAI API 응답에 결과가 없습니다."}), 500
-                        
-                        choice = choices[0]
-                        finish_reason = choice.get("finish_reason")
-                        
-                        # 콘텐츠 필터링 확인
-                        if finish_reason == "content_filter":
-                            return jsonify({
-                                "error": f"챕터 {idx} 처리 중 콘텐츠 정책 위반으로 인해 대본 생성이 차단되었습니다. 검수 대본의 내용을 수정하거나 다른 주제로 시도해주세요."
-                            }), 400
-                        
-                        message = choice.get("message", {})
-                        chunk_response = message.get("content", "").strip() if message.get("content") else None
-                        
-                        # 디버깅: OpenAI 응답 확인
-                        if chunk_response:
-                            print(f"\n{'='*80}")
-                            print(f"[최종 대본 생성] 챕터 {idx} 청크 {chunk_idx} - OpenAI 응답 받음 (요청 {continuation_count + 1}번째)")
-                            print(f"[DEBUG] 응답 길이: {len(chunk_response)}자")
-                            print(f"[DEBUG] finish_reason: {finish_reason}")
-                            print(f"[DEBUG] 응답 처음 1000자:\n{chunk_response[:1000]}")
-                            if len(chunk_response) > 1000:
-                                print(f"[DEBUG] 응답 마지막 500자:\n{chunk_response[-500:]}")
-                            print(f"{'='*80}\n")
-                        
-                        # OpenAI 거부 응답 감지
+                        # Gemini 거부 응답 감지
                         refusal_keywords = [
                             "I'm sorry, I can't assist",
                             "can't assist with that request",
@@ -4196,7 +4148,7 @@ def api_generate_final_script():
                         # content가 None이거나 빈 문자열인 경우, 또는 거부 응답인 경우
                         if not chunk_response or is_refusal:
                             if is_refusal:
-                                print(f"[최종 대본 생성] OpenAI 거부 응답 감지, 재시도 중...")
+                                print(f"[최종 대본 생성] Gemini 거부 응답 감지, 재시도 중...")
                                 # 거부 응답인 경우, 프롬프트를 수정하여 재시도
                                 if continuation_count < 3:  # 최대 3번까지 재시도
                                     continuation_count += 1
@@ -4229,16 +4181,12 @@ def api_generate_final_script():
                                     ]
                                     continue
                                 else:
-                                    error_msg = f"챕터 {idx} 처리 중 OpenAI가 요청을 거부했습니다. 대본 내용을 확인하거나 다른 주제로 시도해주세요."
-                                    print(f"[최종 대본 생성] 재시도 횟수 초과 - finish_reason: {finish_reason}, message: {message}")
+                                    error_msg = f"챕터 {idx} 처리 중 Gemini가 요청을 거부했습니다. 대본 내용을 확인하거나 다른 주제로 시도해주세요."
+                                    print(f"[최종 대본 생성] 재시도 횟수 초과")
                                     return jsonify({"error": error_msg}), 400
                             else:
                                 error_msg = f"챕터 {idx} 처리 중 최종 대본 생성에 실패했습니다."
-                                if finish_reason:
-                                    error_msg += f" (완료 사유: {finish_reason})"
-                                if message.get("refusal"):
-                                    error_msg += f" 거부 사유: {message.get('refusal')}"
-                                print(f"[최종 대본 생성] 챕터 {idx} 응답 없음 - finish_reason: {finish_reason}, message: {message}")
+                                print(f"[최종 대본 생성] 챕터 {idx} 응답 없음")
                                 return jsonify({"error": error_msg}), 500
                         
                         # 응답 저장
@@ -4278,9 +4226,10 @@ def api_generate_final_script():
                                 needs_continuation = False
                                 print(f"[최종 대본 생성] AI가 완료했다고 응답했지만 번역 포함 ({len(generated_translations)}개), 추가 확인")
                         
-                        if needs_continuation == False and finish_reason == "length":
+                        # Gemini는 응답 길이로 계속 필요 여부 판단
+                        if needs_continuation == False and len(chunk_response) > 15000:
                             needs_continuation = True
-                            print(f"[최종 대본 생성] 토큰 제한 도달, 계속 요청 필요")
+                            print(f"[최종 대본 생성] 응답이 길어 계속 요청 필요")
                         elif needs_continuation == False and any(keyword in chunk_response.lower() for keyword in ["계속", "continue", "...계속하려면", "다음 부분"]):
                             # "이미 처리했습니다" 같은 완료 메시지가 없고 계속 키워드가 있으면 계속 필요
                             needs_continuation = True
@@ -4895,7 +4844,7 @@ def api_generate_images_direct():
     # API 키 (사용자가 입력한 경우 사용, 없으면 기본값 사용)
     replicate_api_key = data.get("replicate_api_key") or None
     elevenlabs_api_key = data.get("elevenlabs_api_key") or None
-    openai_api_key = data.get("openai_api_key") or None
+    gemini_api_key = data.get("gemini_api_key") or None
     
     print(f"[API] 요청 파라미터: sentences={len(sentences)}, prompts={len(prompts)}, mode={mode}, test_mode={test_mode}, banana_flags={len(banana_model_flags)}")
     
@@ -4904,15 +4853,15 @@ def api_generate_images_direct():
         print(f"[API] 실사화 모드 감지: 프롬프트 재생성 시작 (새로운 시스템 프롬프트 적용)")
         try:
             # OpenAI API 키 확인
-            if not openai_api_key:
-                openai_api_key = OPENAI_API_KEY
-            if not openai_api_key:
-                print("[API] 경고: OpenAI API 키가 없어 프롬프트 재생성을 건너뜁니다.")
+            if not gemini_api_key:
+                gemini_api_key = GEMINI_API_KEY
+            if not gemini_api_key or not gemini_available:
+                print("[API] 경고: Gemini API 키가 없어 프롬프트 재생성을 건너뜁니다.")
             else:
                 # 프롬프트 재생성
                 scene_map = split_script_into_scenes(script_text)
                 scene_context = scene_map[0] if scene_map else None
-                prompts_map = call_openai_for_prompts(0, sentences, mode, scene_context=scene_context, openai_api_key=openai_api_key)
+                prompts_map = call_openai_for_prompts(0, sentences, mode, scene_context=scene_context, openai_api_key=gemini_api_key)
                 
                 # prompts_map을 prompts 리스트로 변환
                 new_prompts = []
@@ -5703,7 +5652,7 @@ def api_debug_info():
             "static_folder_writable": os.access(STATIC_FOLDER, os.W_OK) if os.path.exists(STATIC_FOLDER) else False,
             "replicate_api_available": bool(REPLICATE_API_TOKEN),
             "elevenlabs_api_available": bool(ELEVENLABS_API_KEY),
-            "openai_api_available": bool(OPENAI_API_KEY),
+            "gemini_api_available": bool(GEMINI_API_KEY) and gemini_available,
             "ffmpeg_path": FFMPEG_BINARY,
             "ffmpeg_exists": os.path.exists(FFMPEG_BINARY) if FFMPEG_BINARY else False,
         }

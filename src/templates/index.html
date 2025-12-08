@@ -339,9 +339,9 @@
         <label for="settingsElevenlabsKey">ElevenLabs TTS API 키</label>
         <input type="password" id="settingsElevenlabsKey" placeholder="sk-..." autocomplete="off">
         <p class="settings-helper">ElevenLabs 키가 없으면 TTS가 생성되지 않습니다.</p>
-        <label for="settingsOpenaiKey">OpenAI 프롬프트 생성 API 키</label>
-        <input type="password" id="settingsOpenaiKey" placeholder="sk-..." autocomplete="off">
-        <p class="settings-helper">OpenAI 키는 대본 기반 프롬프트 자동 생성에 사용됩니다.</p>
+        <label for="settingsGeminiKey">Gemini API 키</label>
+        <input type="password" id="settingsGeminiKey" placeholder="AIza..." autocomplete="off">
+        <p class="settings-helper">Gemini 키는 대본 생성 및 프롬프트 자동 생성에 사용됩니다.</p>
         <label for="settingsDownloadFolder">다운로드 폴더 경로 (선택사항)</label>
         <div style="display:flex; gap:8px; align-items:center;">
             <input type="text" id="settingsDownloadFolder" placeholder="예: /Users/username/Downloads 또는 C:\Users\username\Downloads" autocomplete="off" style="flex:1;">
@@ -509,7 +509,7 @@
             const previewCloseBtn = document.getElementById('previewCloseBtn');
             const settingsReplicateInput = document.getElementById('settingsReplicateKey');
             const settingsElevenlabsInput = document.getElementById('settingsElevenlabsKey');
-            const settingsOpenaiInput = document.getElementById('settingsOpenaiKey');
+            const settingsGeminiInput = document.getElementById('settingsGeminiKey');
             const settingsDownloadFolderInput = document.getElementById('settingsDownloadFolder');
             const selectFolderBtn = document.getElementById('selectFolderBtn');
             const customVoiceIdInput = document.getElementById('customVoiceIdInput');
@@ -518,16 +518,16 @@
             let settingsState = {
                 replicate_api_key: '',
                 elevenlabs_api_key: '',
-                openai_api_key: '',
+                gemini_api_key: '',
                 download_folder_path: ''
             };
             let customVoiceIds = [];
 
             function populateSettingsForm() {
-                if (!settingsReplicateInput || !settingsElevenlabsInput || !settingsOpenaiInput) return;
+                if (!settingsReplicateInput || !settingsElevenlabsInput || !settingsGeminiInput) return;
                 settingsReplicateInput.value = settingsState.replicate_api_key || '';
                 settingsElevenlabsInput.value = settingsState.elevenlabs_api_key || '';
-                settingsOpenaiInput.value = settingsState.openai_api_key || '';
+                settingsGeminiInput.value = settingsState.gemini_api_key || '';
                 if (settingsDownloadFolderInput) {
                     settingsDownloadFolderInput.value = settingsState.download_folder_path || '';
                 }
@@ -555,7 +555,7 @@
                     settingsState = {
                         replicate_api_key: data.replicate_api_key || '',
                         elevenlabs_api_key: data.elevenlabs_api_key || '',
-                        openai_api_key: data.openai_api_key || '',
+                        gemini_api_key: data.gemini_api_key || '',
                         download_folder_path: data.download_folder_path || ''
                     };
                     populateSettingsForm();
@@ -706,7 +706,7 @@
                 const payload = {
                     replicate_api_key: settingsReplicateInput.value.trim(),
                     elevenlabs_api_key: settingsElevenlabsInput.value.trim(),
-                    openai_api_key: settingsOpenaiInput.value.trim(),
+                    gemini_api_key: settingsGeminiInput.value.trim(),
                     download_folder_path: settingsDownloadFolderInput ? settingsDownloadFolderInput.value.trim() : ''
                 };
                 saveSettingsBtn.disabled = true;
@@ -1655,7 +1655,7 @@
                     // API 키 읽기
                     const replicateApiKey = (settingsState.replicate_api_key || '').trim() || null;
                     const elevenlabsApiKey = (settingsState.elevenlabs_api_key || '').trim() || null;
-                    const openaiApiKey = (settingsState.openai_api_key || '').trim() || null;
+                    const geminiApiKey = (settingsState.gemini_api_key || '').trim() || null;
                     
                     console.log('[이미지 생성] API 요청 시작:', {
                         sentencesCount: sentences.length,
@@ -1663,7 +1663,7 @@
                         mode: currentMode,
                         hasReplicateKey: !!replicateApiKey,
                         hasElevenlabsKey: !!elevenlabsApiKey,
-                        hasOpenAIKey: !!openaiApiKey
+                        hasGeminiKey: !!geminiApiKey
                     });
                     
                     const customStylePromptInput = document.getElementById('customStylePrompt');
@@ -1681,7 +1681,7 @@
                             test_mode: isTestMode,
                             replicate_api_key: replicateApiKey,
                             elevenlabs_api_key: elevenlabsApiKey,
-                            openai_api_key: openaiApiKey,
+                            gemini_api_key: geminiApiKey,
                             banana_model_flags: bananaModelFlags
                         })
                     });
