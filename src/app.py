@@ -4101,6 +4101,7 @@ def api_generate_final_script():
                         full_prompt = "\n".join(full_prompt_parts)
                         
                         model = genai.GenerativeModel('gemini-3-pro-preview')
+                        chunk_response = None
                         try:
                             response = model.generate_content(
                                 full_prompt,
@@ -4110,7 +4111,11 @@ def api_generate_final_script():
                                 )
                             )
                             
-                            chunk_response = response.text.strip()
+                            # Gemini API 응답 처리
+                            if not response or not hasattr(response, 'text'):
+                                raise Exception("Gemini API 응답에 텍스트가 없습니다.")
+                            
+                            chunk_response = response.text.strip() if response.text else ""
                             
                             # Gemini는 safety_ratings로 필터링 확인
                             if hasattr(response, 'prompt_feedback') and response.prompt_feedback:
@@ -4132,7 +4137,15 @@ def api_generate_final_script():
                         except Exception as e:
                             error_text = str(e)
                             print(f"[최종 대본 생성] 챕터 {idx} 청크 {chunk_idx} Gemini API 오류: {error_text}")
+                            import traceback
+                            traceback.print_exc()
                             return jsonify({"error": f"챕터 {idx} 처리 중 Gemini API 오류: {error_text}"}), 500
+                        
+                        # chunk_response가 None이거나 빈 문자열인 경우 처리
+                        if not chunk_response:
+                            error_msg = f"챕터 {idx} 청크 {chunk_idx} 처리 중 Gemini API 응답이 비어있습니다."
+                            print(f"[최종 대본 생성] {error_msg}")
+                            return jsonify({"error": error_msg}), 500
                         
                         # Gemini 거부 응답 감지
                         refusal_keywords = [
