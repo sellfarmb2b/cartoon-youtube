@@ -132,9 +132,17 @@ def reload_api_keys() -> None:
         or os.environ.get("GEMINI_API_KEY", "")
     ).strip()
     
+    # 디버깅: 로드된 키 확인
+    print(f"[API 키 로드] Gemini API 키: {'설정됨' if GEMINI_API_KEY else '없음'} (길이: {len(GEMINI_API_KEY)})")
+    print(f"[API 키 로드] settings에서 gemini_api_key: {settings.get('gemini_api_key', 'NOT_FOUND')[:20]}...")
+    
     # Gemini API 설정
     if GEMINI_AVAILABLE and GEMINI_API_KEY:
-        genai.configure(api_key=GEMINI_API_KEY)
+        try:
+            genai.configure(api_key=GEMINI_API_KEY)
+            print(f"[API 키 로드] Gemini API 설정 완료")
+        except Exception as e:
+            print(f"[API 키 로드] Gemini API 설정 실패: {e}")
 
 
 reload_api_keys()
@@ -3561,6 +3569,13 @@ def api_settings():
     )
     reload_api_keys()
     refresh_service_flags()
+    
+    # 디버깅: 저장된 설정 확인
+    saved_settings = config_manager.get_all()
+    print(f"[설정 저장] Gemini API 키 저장 확인: {bool(saved_settings.get('gemini_api_key'))} (길이: {len(saved_settings.get('gemini_api_key', ''))})")
+    print(f"[설정 저장] GEMINI_API_KEY 전역 변수: {bool(GEMINI_API_KEY)} (길이: {len(GEMINI_API_KEY)})")
+    print(f"[설정 저장] gemini_available: {gemini_available}")
+    
     global _cached_voice_list
     _cached_voice_list = None
     return jsonify({"status": "ok"})
