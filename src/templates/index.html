@@ -3318,17 +3318,12 @@
 
                         const data = await response.json();
                         
-                        // 이미지 표시
+                        // 이미지 표시 (이미지만 표시)
                         thumbnailImageContainer.innerHTML = `
-                            <div style="margin-bottom: 20px;">
-                                <h4>생성된 썸네일</h4>
+                            <div style="text-align: center; margin-bottom: 20px;">
                                 <div style="background: #f9fafb; border: 2px solid #e5e7eb; border-radius: 12px; padding: 20px; display: inline-block;">
                                     <img id="thumbnailGeneratedImage" src="data:${data.mime_type || 'image/png'};base64,${data.image}" alt="썸네일" style="max-width: 100%; max-height: 600px; border-radius: 8px; pointer-events: none; user-select: none;">
                                 </div>
-                            </div>
-                            <div style="margin-top: 16px;">
-                                <p><strong>상황 묘사:</strong> ${situation}</p>
-                                <p><strong>카피:</strong> <span style="font-size: 24px; font-weight: bold; color: #dc2626;">${copy}</span></p>
                             </div>
                             <button type="button" id="downloadThumbnailBtn" class="success-btn" style="width: 100%; margin-top: 16px; padding: 12px;">
                                 💾 썸네일 다운로드
