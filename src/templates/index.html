@@ -154,6 +154,13 @@
         .script-result h4 { margin: 0 0 8px 0; color: #1f2937; font-size: 14px; font-weight: 600; }
         .thumbnail-prompt-result { margin-top: 12px; padding: 12px; background: #fef3c7; border-radius: 6px; border: 1px solid #fbbf24; }
         .thumbnail-prompt-result code { display: block; font-size: 12px; color: #92400e; }
+        /* 사이드바 탭 메뉴 스타일 */
+        .sidebar-tabs { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 2px solid #e5e7eb; }
+        .sidebar-tab { flex: 1; padding: 10px 12px; background: transparent; border: none; border-bottom: 3px solid transparent; color: #6b7280; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.2s ease; text-align: center; }
+        .sidebar-tab:hover { color: #2563eb; background: #f3f4f6; }
+        .sidebar-tab.active { color: #2563eb; border-bottom-color: #2563eb; background: #eff6ff; }
+        .sidebar-content { display: none; }
+        .sidebar-content.active { display: block; }
         @media (max-width:768px) {
             .sidebar { width: 100%; position: relative; height: auto; }
             .main-content { margin-left: 0; }
@@ -167,10 +174,18 @@
 <div class="app-container">
     <!-- 좌측 사이드바: 대본 생성 기능 -->
     <div class="sidebar">
-        <h2 style="margin: 0 0 24px 0; color: #1f2937; font-size: 20px; font-weight: 700;">📝 대본 생성</h2>
+        <h2 style="margin: 0 0 20px 0; color: #1f2937; font-size: 20px; font-weight: 700;">메뉴</h2>
         
-        <!-- 검수 대본 프롬프트 -->
-        <div class="script-generator-section">
+        <!-- 사이드바 탭 메뉴 -->
+        <div class="sidebar-tabs">
+            <button type="button" class="sidebar-tab active" data-tab="script">📝 대본생성</button>
+            <button type="button" class="sidebar-tab" data-tab="video">🎬 영상생성</button>
+        </div>
+        
+        <!-- 대본생성 탭 콘텐츠 -->
+        <div id="scriptTabContent" class="sidebar-content active">
+            <!-- 검수 대본 프롬프트 -->
+            <div class="script-generator-section">
             <h3>1단계: 검수 대본 생성</h3>
             <label for="draftTopic" style="font-size: 14px; margin-bottom: 8px;">주제/키워드 입력</label>
             <input type="text" id="draftTopic" placeholder="예: 스탈린그라드 전투, 워렌 버핏의 투자 철학" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px;">
@@ -210,6 +225,15 @@
             <h3>3단계: 대본 적용</h3>
             <button type="button" id="applyScriptBtn" style="background: #059669; margin-top: 12px;" disabled>✅ 메인 영역에 대본 적용</button>
             <p style="margin-top: 8px; color: #6b7280; font-size: 12px; line-height: 1.5;">최종 대본을 생성한 후, 이 버튼을 눌러 메인 영역의 대본 입력란에 자동으로 적용할 수 있습니다.</p>
+        </div>
+        </div>
+        
+        <!-- 영상생성 탭 콘텐츠 -->
+        <div id="videoTabContent" class="sidebar-content">
+            <div class="script-generator-section">
+                <h3>영상 생성 메뉴</h3>
+                <p style="color: #6b7280; font-size: 14px; line-height: 1.6;">영상 생성 관련 기능이 여기에 표시됩니다.</p>
+            </div>
         </div>
     </div>
 
@@ -476,6 +500,27 @@
         }
 
         document.addEventListener('DOMContentLoaded', function () {
+            // 사이드바 탭 전환 기능
+            const sidebarTabs = document.querySelectorAll('.sidebar-tab');
+            const sidebarContents = document.querySelectorAll('.sidebar-content');
+            
+            sidebarTabs.forEach(tab => {
+                tab.addEventListener('click', function() {
+                    const targetTab = this.dataset.tab;
+                    
+                    // 모든 탭 비활성화
+                    sidebarTabs.forEach(t => t.classList.remove('active'));
+                    sidebarContents.forEach(c => c.classList.remove('active'));
+                    
+                    // 선택한 탭 활성화
+                    this.classList.add('active');
+                    const targetContent = document.getElementById(targetTab + 'TabContent');
+                    if (targetContent) {
+                        targetContent.classList.add('active');
+                    }
+                });
+            });
+            
             const previewBtn = document.getElementById('previewBtn');
             const voiceSelect = document.getElementById('voiceSelect');
             const previewAudio = document.getElementById('previewAudio');
