@@ -331,6 +331,9 @@
             <button class="nav-item" onclick="switchView('videoGenView')">
                 <span>🎥 영상 제작</span>
             </button>
+            <button class="nav-item" onclick="switchView('thumbnailView')">
+                <span>🖼️ 썸네일 제작</span>
+            </button>
         </div>
         <div class="sidebar-footer">
             <button class="nav-item" id="openSettingsBtn" style="width: 100%; justify-content: center; background: #374151;">
@@ -595,6 +598,56 @@
                     </div>
                 </div>
                 {% endif %}
+            </div>
+        </div>
+
+        <!-- 썸네일 제작 뷰 -->
+        <div id="thumbnailView" class="content-view">
+            <div class="section-header">
+                <h2>유튜브 썸네일 제작</h2>
+                <p>AI로 클릭률을 높이는 썸네일을 제작하세요.</p>
+            </div>
+
+            <div class="card">
+                <h3 style="margin-top:0;">1단계: 입력 정보</h3>
+                
+                <label for="thumbnailScriptRef">참조 대본</label>
+                <textarea id="thumbnailScriptRef" readonly placeholder="[대본 생성] 탭에서 생성된 대본이 자동으로 표시됩니다." style="min-height: 150px; background: #f9fafb;"></textarea>
+                <button type="button" id="loadScriptBtn" class="secondary-btn" style="margin-top: 8px;">대본 불러오기</button>
+
+                <label for="thumbnailCharacterSetting" style="margin-top: 20px;">캐릭터/모델 설정 (선택사항)</label>
+                <input type="text" id="thumbnailCharacterSetting" placeholder="예: 20대 남성, 밝은 피부, 검은 머리, 정장 차림">
+
+                <label for="thumbnailReferenceImage" style="margin-top: 20px;">참조 이미지 업로드 (선택사항)</label>
+                <input type="file" id="thumbnailReferenceImage" accept="image/*" style="padding: 8px;">
+                <div id="thumbnailReferencePreview" style="margin-top: 12px; display: none;">
+                    <img id="thumbnailReferenceImg" src="" alt="참조 이미지" style="max-width: 300px; max-height: 200px; border-radius: 8px; border: 1px solid #e5e7eb;">
+                    <button type="button" id="removeReferenceImageBtn" class="danger-btn" style="margin-left: 8px; padding: 4px 12px; font-size: 12px;">제거</button>
+                </div>
+
+                <button type="button" id="generateThumbnailConceptsBtn" class="purple-btn" style="width: 100%; margin-top: 24px; padding: 16px; font-size: 16px;">
+                    ✨ 썸네일 기획안 생성하기
+                </button>
+            </div>
+
+            <div id="thumbnailConceptsResult" style="display: none;">
+                <div class="card">
+                    <h3 style="margin-top:0;">2단계: 기획안 선택 및 수정</h3>
+                    <p style="color: #6b7280; margin-bottom: 20px;">생성된 3가지 옵션 중 하나를 선택하고, 필요시 수정한 후 이미지를 생성하세요.</p>
+                    
+                    <div id="thumbnailConceptsContainer" style="display: flex; flex-direction: column; gap: 20px;">
+                        <!-- 기획안 카드들이 여기에 동적으로 추가됩니다 -->
+                    </div>
+                </div>
+            </div>
+
+            <div id="thumbnailImageResult" style="display: none;">
+                <div class="card">
+                    <h3 style="margin-top:0;">3단계: 생성된 썸네일</h3>
+                    <div id="thumbnailImageContainer" style="text-align: center;">
+                        <!-- 생성된 이미지가 여기에 표시됩니다 -->
+                    </div>
+                </div>
             </div>
         </div>
     </main>
@@ -3091,6 +3144,233 @@
                     });
                 });
             }
+
+            // ============================================================
+            // 썸네일 제작 기능
+            // ============================================================
+            const thumbnailScriptRef = document.getElementById('thumbnailScriptRef');
+            const loadScriptBtn = document.getElementById('loadScriptBtn');
+            const thumbnailCharacterSetting = document.getElementById('thumbnailCharacterSetting');
+            const thumbnailReferenceImage = document.getElementById('thumbnailReferenceImage');
+            const thumbnailReferencePreview = document.getElementById('thumbnailReferencePreview');
+            const thumbnailReferenceImg = document.getElementById('thumbnailReferenceImg');
+            const removeReferenceImageBtn = document.getElementById('removeReferenceImageBtn');
+            const generateThumbnailConceptsBtn = document.getElementById('generateThumbnailConceptsBtn');
+            const thumbnailConceptsResult = document.getElementById('thumbnailConceptsResult');
+            const thumbnailConceptsContainer = document.getElementById('thumbnailConceptsContainer');
+            const thumbnailImageResult = document.getElementById('thumbnailImageResult');
+            const thumbnailImageContainer = document.getElementById('thumbnailImageContainer');
+            
+            let referenceImageBase64 = null;
+
+            // 대본 불러오기
+            if (loadScriptBtn) {
+                loadScriptBtn.addEventListener('click', function() {
+                    const finalScript = document.getElementById('finalScriptContent').textContent;
+                    const draftScript = document.getElementById('finalDraftScript').value;
+                    
+                    if (finalScript && finalScript !== "결과 없음") {
+                        thumbnailScriptRef.value = finalScript;
+                        alert("최종 대본을 불러왔습니다.");
+                    } else if (draftScript) {
+                        thumbnailScriptRef.value = draftScript;
+                        alert("검수 대본을 불러왔습니다.");
+                    } else {
+                        alert("불러올 대본이 없습니다. 먼저 대본을 생성해주세요.");
+                    }
+                });
+            }
+
+            // 참조 이미지 업로드
+            if (thumbnailReferenceImage) {
+                thumbnailReferenceImage.addEventListener('change', function(e) {
+                    const file = e.target.files[0];
+                    if (file && file.type.startsWith('image/')) {
+                        const reader = new FileReader();
+                        reader.onload = function(event) {
+                            referenceImageBase64 = event.target.result;
+                            thumbnailReferenceImg.src = referenceImageBase64;
+                            thumbnailReferencePreview.style.display = 'block';
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                });
+            }
+
+            // 참조 이미지 제거
+            if (removeReferenceImageBtn) {
+                removeReferenceImageBtn.addEventListener('click', function() {
+                    referenceImageBase64 = null;
+                    thumbnailReferenceImage.value = '';
+                    thumbnailReferencePreview.style.display = 'none';
+                });
+            }
+
+            // 썸네일 기획안 생성
+            if (generateThumbnailConceptsBtn) {
+                generateThumbnailConceptsBtn.addEventListener('click', async function() {
+                    const scriptText = thumbnailScriptRef.value.trim();
+                    if (!scriptText) {
+                        alert("참조 대본을 입력하거나 불러와주세요.");
+                        return;
+                    }
+
+                    generateThumbnailConceptsBtn.disabled = true;
+                    generateThumbnailConceptsBtn.textContent = "기획안 생성 중...";
+                    thumbnailConceptsResult.style.display = 'none';
+                    thumbnailImageResult.style.display = 'none';
+                    
+                    showAILoading('썸네일 기획안 생성 중...', 'AI가 클릭률을 높일 수 있는 썸네일 컨셉을 분석하고 있습니다.');
+
+                    try {
+                        const response = await fetch('/api/generate_thumbnail_concepts', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                script: scriptText,
+                                character_setting: thumbnailCharacterSetting.value.trim()
+                            })
+                        });
+
+                        if (!response.ok) {
+                            const err = await response.json();
+                            throw new Error(err.error || "기획안 생성 실패");
+                        }
+
+                        const data = await response.json();
+                        
+                        // 기획안 카드 생성
+                        thumbnailConceptsContainer.innerHTML = '';
+                        data.concepts.forEach((concept, index) => {
+                            const card = document.createElement('div');
+                            card.className = 'card';
+                            card.style.border = '2px solid #e5e7eb';
+                            card.style.padding = '20px';
+                            card.innerHTML = `
+                                <h4 style="margin-top:0; color: #2563eb;">옵션 ${index + 1}</h4>
+                                
+                                <label>상황 묘사</label>
+                                <textarea class="concept-situation" data-index="${index}" style="width: 100%; min-height: 80px; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;">${concept.situation || ''}</textarea>
+                                
+                                <label style="margin-top: 16px;">텍스트(카피)</label>
+                                <input type="text" class="concept-copy" data-index="${index}" value="${concept.copy || ''}" style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;">
+                                
+                                <label style="margin-top: 16px;">나노바나나 PRO용 프롬프트</label>
+                                <textarea class="concept-prompt" data-index="${index}" style="width: 100%; min-height: 120px; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; font-family: monospace;">${concept.prompt || ''}</textarea>
+                                
+                                <button type="button" class="generateThumbnailImageBtn success-btn" data-index="${index}" style="width: 100%; margin-top: 16px; padding: 12px;">
+                                    🖼️ 이 컨셉으로 이미지 생성
+                                </button>
+                            `;
+                            thumbnailConceptsContainer.appendChild(card);
+                        });
+
+                        thumbnailConceptsResult.style.display = 'block';
+
+                    } catch (e) {
+                        console.error(e);
+                        alert("오류 발생: " + e.message);
+                    } finally {
+                        hideAILoading();
+                        generateThumbnailConceptsBtn.disabled = false;
+                        generateThumbnailConceptsBtn.textContent = "✨ 썸네일 기획안 생성하기";
+                    }
+                });
+            }
+
+            // 이미지 생성 버튼 이벤트 위임
+            document.addEventListener('click', async function(e) {
+                if (e.target.classList.contains('generateThumbnailImageBtn')) {
+                    const index = parseInt(e.target.dataset.index);
+                    const card = e.target.closest('.card');
+                    
+                    const situation = card.querySelector(`.concept-situation[data-index="${index}"]`).value.trim();
+                    const copy = card.querySelector(`.concept-copy[data-index="${index}"]`).value.trim();
+                    const prompt = card.querySelector(`.concept-prompt[data-index="${index}"]`).value.trim();
+                    
+                    if (!prompt) {
+                        alert("프롬프트를 입력해주세요.");
+                        return;
+                    }
+
+                    e.target.disabled = true;
+                    e.target.textContent = "이미지 생성 중...";
+                    thumbnailImageResult.style.display = 'none';
+                    
+                    showAILoading('썸네일 이미지 생성 중...', 'AI가 썸네일 이미지를 생성하고 있습니다...', 0);
+
+                    try {
+                        const response = await fetch('/api/generate_thumbnail_image', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                prompt: prompt,
+                                reference_image: referenceImageBase64
+                            })
+                        });
+
+                        if (!response.ok) {
+                            const err = await response.json();
+                            throw new Error(err.error || "이미지 생성 실패");
+                        }
+
+                        const data = await response.json();
+                        
+                        // 이미지 표시
+                        thumbnailImageContainer.innerHTML = `
+                            <div style="margin-bottom: 20px;">
+                                <h4>생성된 썸네일</h4>
+                                <div style="background: #f9fafb; border: 2px solid #e5e7eb; border-radius: 12px; padding: 20px; display: inline-block;">
+                                    <img src="data:${data.mime_type || 'image/png'};base64,${data.image}" alt="썸네일" style="max-width: 100%; max-height: 600px; border-radius: 8px;">
+                                </div>
+                            </div>
+                            <div style="margin-top: 16px;">
+                                <p><strong>상황 묘사:</strong> ${situation}</p>
+                                <p><strong>카피:</strong> <span style="font-size: 24px; font-weight: bold; color: #dc2626;">${copy}</span></p>
+                            </div>
+                            <button type="button" id="downloadThumbnailBtn" class="success-btn" style="width: 100%; margin-top: 16px; padding: 12px;">
+                                💾 썸네일 다운로드
+                            </button>
+                        `;
+                        
+                        // 다운로드 버튼 이벤트
+                        const downloadBtn = document.getElementById('downloadThumbnailBtn');
+                        if (downloadBtn) {
+                            downloadBtn.addEventListener('click', function() {
+                                const link = document.createElement('a');
+                                link.href = `data:${data.mime_type || 'image/png'};base64,${data.image}`;
+                                link.download = `thumbnail_${Date.now()}.png`;
+                                link.click();
+                            });
+                        }
+                        
+                        thumbnailImageResult.style.display = 'block';
+                        thumbnailImageResult.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+                    } catch (e) {
+                        console.error(e);
+                        alert("오류 발생: " + e.message);
+                    } finally {
+                        hideAILoading();
+                        e.target.disabled = false;
+                        e.target.textContent = "🖼️ 이 컨셉으로 이미지 생성";
+                    }
+                }
+            });
+
+            // 썸네일 탭 전환 시 대본 자동 불러오기
+            const originalSwitchView = window.switchView;
+            window.switchView = function(viewId) {
+                originalSwitchView(viewId);
+                if (viewId === 'thumbnailView') {
+                    // 대본 자동 불러오기 시도
+                    setTimeout(() => {
+                        if (loadScriptBtn) {
+                            loadScriptBtn.click();
+                        }
+                    }, 100);
+                }
+            };
         });
     </script>
     </main>

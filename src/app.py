@@ -5939,6 +5939,172 @@ def api_generate_metadata():
         return jsonify({"error": str(e)}), 500
 
 
+# -----------------------------------------------------------------------------
+# [추가] 썸네일 제작 API
+# -----------------------------------------------------------------------------
+@app.route("/api/generate_thumbnail_concepts", methods=["POST"])
+def api_generate_thumbnail_concepts():
+    """썸네일 기획안 3가지 생성 API (Gemini 1.5 Pro)"""
+    data = request.get_json(silent=True) or {}
+    script_text = (data.get("script") or "").strip()
+    character_setting = (data.get("character_setting") or "").strip()
+    
+    if not script_text:
+        return jsonify({"error": "참조 대본을 입력해주세요."}), 400
+    
+    # API 키 확인
+    if not GEMINI_API_KEY:
+        return jsonify({"error": "Gemini API 키가 설정되지 않았습니다."}), 500
+
+    # 시스템 프롬프트
+    system_instruction = """당신은 유튜브 썸네일 전문 기획자입니다. 제공된 대본을 바탕으로 클릭을 유도하는 썸네일 구성 3가지를 제안하세요.
+
+사용자가 입력한 '캐릭터/모델 설정'이 있다면 이를 반영하세요.
+
+각 옵션은 다음 형식을 엄격히 준수해야 합니다:
+
+1. **상황 묘사:** 배경, 인물 표정, 주요 오브젝트 설명
+2. **텍스트(카피):** 10자 이내의 강력한 한글 멘트 (가독성 고려, 색상 추천 포함)
+3. **나노바나나 PRO용 프롬프트:** AI 이미지 생성 툴에 바로 넣을 수 있는 **영어 프롬프트**를 작성하세요. 
+   - 스타일(Cinematic, Hyper-realistic), 조명(Dramatic lighting), 표정(Shocked face), 구도(Close-up), 화질(8k, high detail) 등의 파라미터를 반드시 포함해야 합니다.
+
+반드시 다음 JSON 형식으로만 응답하세요:
+{
+  "concepts": [
+    {
+      "situation": "상황 묘사 내용",
+      "copy": "카피 텍스트",
+      "prompt": "영어 프롬프트"
+    },
+    {
+      "situation": "상황 묘사 내용",
+      "copy": "카피 텍스트",
+      "prompt": "영어 프롬프트"
+    },
+    {
+      "situation": "상황 묘사 내용",
+      "copy": "카피 텍스트",
+      "prompt": "영어 프롬프트"
+    }
+  ]
+}"""
+    
+    try:
+        global genai_client
+        if genai_client is None:
+            return jsonify({"error": "Gemini Client 초기화 실패"}), 500
+        
+        from google.genai import types
+        
+        # 사용자 프롬프트 구성
+        user_prompt = f"""다음 대본을 분석하여 썸네일 기획안 3가지를 제안해주세요.
+
+대본:
+{script_text}
+
+"""
+        if character_setting:
+            user_prompt += f"""캐릭터/모델 설정:
+{character_setting}
+
+"""
+        user_prompt += "위 정보를 바탕으로 클릭률을 높일 수 있는 썸네일 기획안 3가지를 제안해주세요."
+        
+        response = genai_client.models.generate_content(
+            model='gemini-1.5-pro',
+            contents=user_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                temperature=0.7,
+                response_mime_type="application/json"
+            )
+        )
+        
+        result = json.loads(response.text)
+        return jsonify(result)
+    except Exception as e:
+        print(f"[썸네일 기획안 생성 오류] {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/generate_thumbnail_image", methods=["POST"])
+def api_generate_thumbnail_image():
+    """썸네일 이미지 생성 API (Gemini 3 Pro Image Preview)"""
+    try:
+        data = request.get_json(silent=True) or {}
+        prompt = (data.get("prompt") or "").strip()
+        reference_image_base64 = data.get("reference_image")  # base64 인코딩된 이미지
+        
+        if not prompt:
+            return jsonify({"error": "프롬프트를 입력해주세요."}), 400
+        
+        # API 키 확인
+        if not GEMINI_API_KEY:
+            return jsonify({"error": "Gemini API 키가 설정되지 않았습니다."}), 500
+
+        global genai_client
+        if genai_client is None:
+            return jsonify({"error": "Gemini Client 초기화 실패"}), 500
+        
+        from google.genai import types
+        import base64
+        from PIL import Image
+        from io import BytesIO
+        
+        # 참조 이미지 처리
+        reference_images = []
+        if reference_image_base64:
+            try:
+                # base64 디코딩
+                image_data = base64.b64decode(reference_image_base64.split(',')[1] if ',' in reference_image_base64 else reference_image_base64)
+                reference_img = Image.open(BytesIO(image_data))
+                reference_images = [reference_img]
+            except Exception as img_error:
+                print(f"[참조 이미지 처리 오류] {img_error}")
+                # 이미지 처리 실패 시 무시하고 진행
+        
+        # Gemini 3 Pro Image Preview 모델 사용
+        # contents는 프롬프트 + 참조 이미지 리스트
+        contents = [prompt] + reference_images
+        
+        response = genai_client.models.generate_content(
+            model='gemini-3-pro-image-preview',
+            contents=contents,
+            config=types.GenerateContentConfig(
+                response_modalities=['TEXT', 'IMAGE'],
+                image_config=types.ImageConfig(
+                    aspect_ratio="16:9",  # 유튜브 썸네일 비율
+                    image_size="2K",  # 2K 해상도
+                ),
+                temperature=0.7
+            )
+        )
+        
+        # 응답에서 이미지 추출
+        if hasattr(response, 'candidates') and response.candidates:
+            candidate = response.candidates[0]
+            if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                for part in candidate.content.parts:
+                    if hasattr(part, 'inline_data'):
+                        # 이미지 데이터를 base64로 반환
+                        image_base64 = part.inline_data.data
+                        return jsonify({
+                            "image": image_base64,
+                            "mime_type": part.inline_data.mime_type or "image/png"
+                        })
+        
+        # 이미지가 없으면 오류
+        return jsonify({"error": "이미지 생성에 실패했습니다. 응답에 이미지가 포함되지 않았습니다."}), 500
+        
+    except Exception as e:
+        print(f"[썸네일 이미지 생성 오류] {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
 if __name__ == "__main__":
     selected_port = find_available_port()
     flask_thread = threading.Thread(target=run_flask_server, args=(selected_port,), daemon=True)
