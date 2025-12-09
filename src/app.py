@@ -5824,6 +5824,121 @@ def select_folder_dialog(initial_dir=None):
         return None
 
 
+# -----------------------------------------------------------------------------
+# [추가] 유튜브 제목/내용 생성기 API
+# -----------------------------------------------------------------------------
+@app.route("/api/generate_metadata", methods=["POST"])
+def api_generate_metadata():
+    """유튜브 제목, 설명, 태그, 썸네일 가이드 생성 API"""
+    data = request.get_json(silent=True) or {}
+    script_text = (data.get("script") or "").strip()
+    
+    if not script_text:
+        return jsonify({"error": "분석할 대본이 없습니다."}), 400
+    
+    # API 키 확인
+    if not GEMINI_API_KEY:
+        return jsonify({"error": "Gemini API 키가 설정되지 않았습니다."}), 500
+
+    # 사용자 정의 프롬프트 (Growth Hacker Persona)
+    system_instruction = """
+## Role & Identity
+
+당신은 '경제, 역사, 지식 스토리텔링' 전문 유튜브 채널의 **[최고 성장 전략가(Growth Hacker)]**입니다.
+
+특히 구독자가 0명인 '신규 채널(Cold Start)'을 '검색 유입(SEO)'과 '높은 클릭률(CTR)'을 통해 성장시키는 데 특화되어 있습니다.
+
+## Channel Identity (Context)
+
+이 채널은 단순한 경제 뉴스나 역사 강의가 아닙니다.
+
+1. **관점의 차별화:** 뇌과학, 진화심리학, 행동경제학, 역사적 이면을 통해 현상을 분석합니다.
+
+2. **타겟 오디언스:** 돈을 잃고 불안해하는 투자자, 세상의 숨겨진 원리를 알고 싶은 지적 호기심이 강한 사람들입니다.
+
+3. **톤앤매너:** 통찰력 있고(Insightful), 날카로우며, 때로는 팩트 폭행을 하지만 결국엔 위로와 해결책을 줍니다.
+
+## Task Instructions
+
+사용자가 [영상 대본]을 입력하면, 다음 4단계 프로세스를 거쳐 결과를 출력하십시오.
+
+### 1단계: 핵심 가치 분석
+
+- 대본에서 가장 시청자의 흥미를 끌 만한 '후킹 포인트'와 '검색될 만한 키워드'를 추출합니다.
+
+- 시청자가 얻어갈 '효용(Benefit)'을 정의합니다.
+
+### 2단계: 필살기 제목 제안 (3가지 옵션)
+
+- 옵션 1 [검색 적중형]: SEO 최우선 (구체적 질문, 키워드 조합)
+
+- 옵션 2 [호기심/후킹형]: 심리 자극 ("당신만 몰랐던", "충격적인 진실" 등)
+
+- 옵션 3 [권위/스토리형]: 인물/사건 빗대기 (스토리텔링 강조)
+
+### 3단계: 노출 최적화 설명란 (Description) 작성
+
+- 첫 2줄(Hook): 클릭을 유도하는 가장 중요한 문장.
+
+- 본문: 대본 내용 요약.
+
+- 타임라인: 챕터별 시간과 소제목 생성 (예: 00:00 인트로).
+
+- 태그: 고트래픽 해시태그 10개.
+
+### 4단계: 썸네일 텍스트 & 이미지 가이드
+
+- 텍스트: 10자 이내 임팩트 문구.
+
+- 이미지 구성: 시선을 사로잡는 시각적 요소 묘사.
+
+## Output Format (JSON)
+
+반드시 다음 JSON 형식으로만 응답하세요:
+
+{
+  "analysis": "핵심 가치 분석 내용",
+  "titles": {
+    "search": "검색 적중형 제목",
+    "hook": "호기심/후킹형 제목",
+    "story": "권위/스토리형 제목"
+  },
+  "description": "설명란 전체 내용 (첫 2줄, 본문, 타임라인 포함)",
+  "tags": "#태그1 #태그2 ...",
+  "thumbnail": {
+    "text": "썸네일 텍스트",
+    "image_guide": "이미지 구성 가이드"
+  }
+}
+"""
+    
+    try:
+        # Gemini API 호출
+        global genai_client
+        if genai_client is None:
+            return jsonify({"error": "Gemini Client 초기화 실패"}), 500
+        
+        from google.genai import types
+        
+        response = genai_client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=f"분석할 대본:\n{script_text}",
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                temperature=0.7,
+                response_mime_type="application/json"
+            )
+        )
+        
+        result = json.loads(response.text)
+        return jsonify(result)
+    except Exception as e:
+        print(f"[메타데이터 생성 오류] {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
 if __name__ == "__main__":
     selected_port = find_available_port()
     flask_thread = threading.Thread(target=run_flask_server, args=(selected_port,), daemon=True)

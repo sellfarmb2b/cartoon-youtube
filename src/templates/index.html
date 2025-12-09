@@ -179,7 +179,7 @@
         <!-- 사이드바 탭 메뉴 -->
         <div class="sidebar-tabs">
             <button type="button" class="sidebar-tab active" data-tab="script">📝 대본생성</button>
-            <button type="button" class="sidebar-tab" data-tab="video">🎬 영상생성</button>
+            <button type="button" class="sidebar-tab" data-tab="metadata">✨ 제목/내용 생성</button>
         </div>
         
         <!-- 대본생성 탭 콘텐츠 -->
@@ -228,11 +228,58 @@
         </div>
         </div>
         
-        <!-- 영상생성 탭 콘텐츠 -->
-        <div id="videoTabContent" class="sidebar-content">
+        <!-- 제목/내용 생성 탭 콘텐츠 -->
+        <div id="metadataTabContent" class="sidebar-content">
             <div class="script-generator-section">
-                <h3>영상 생성 메뉴</h3>
-                <p style="color: #6b7280; font-size: 14px; line-height: 1.6;">영상 생성 관련 기능이 여기에 표시됩니다.</p>
+                <h3>유튜브 성장 전략기 (Growth Hacker)</h3>
+                <p style="font-size: 13px; color: #6b7280; margin-bottom: 12px;">
+                    생성된 최종 대본을 바탕으로 <b>검색 유입(SEO)</b>과 <b>클릭률(CTR)</b>을 극대화하는 제목, 설명, 썸네일 전략을 제안합니다.
+                </p>
+                
+                <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+                    <label style="font-size: 12px; font-weight: bold; color: #0369a1;">분석 대상</label>
+                    <div style="font-size: 13px; color: #0c4a6e;" id="targetScriptStatus">
+                        대본이 아직 생성되지 않았습니다.
+                    </div>
+                </div>
+                <button type="button" id="generateMetadataBtn" style="background: #2563eb; width: 100%;">
+                    ✨ 전략 분석 및 생성 시작
+                </button>
+            </div>
+            <div id="metadataResult" style="display: none; margin-top: 20px;">
+                <div class="script-generator-section">
+                    <h4 style="color: #4b5563; font-size: 14px; border-bottom: 1px solid #eee; padding-bottom: 5px;">🧐 핵심 가치 분석</h4>
+                    <p id="metaAnalysis" style="font-size: 13px; color: #374151; white-space: pre-wrap;"></p>
+                </div>
+                <div class="script-generator-section">
+                    <h4 style="color: #dc2626; font-size: 14px; border-bottom: 1px solid #eee; padding-bottom: 5px;">🔥 필살기 제목 3선</h4>
+                    
+                    <div style="margin-bottom: 8px;">
+                        <span style="font-size: 11px; background: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 4px;">옵션 1: 검색 적중형</span>
+                        <p id="metaTitleSearch" style="font-weight: bold; font-size: 14px; margin: 4px 0; cursor: pointer;" onclick="copyText(this)" title="클릭해서 복사"></p>
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                        <span style="font-size: 11px; background: #fef3c7; color: #92400e; padding: 2px 6px; border-radius: 4px;">옵션 2: 호기심/후킹형</span>
+                        <p id="metaTitleHook" style="font-weight: bold; font-size: 14px; margin: 4px 0; cursor: pointer;" onclick="copyText(this)" title="클릭해서 복사"></p>
+                    </div>
+                    <div>
+                        <span style="font-size: 11px; background: #dbeafe; color: #1e40af; padding: 2px 6px; border-radius: 4px;">옵션 3: 권위/스토리형</span>
+                        <p id="metaTitleStory" style="font-weight: bold; font-size: 14px; margin: 4px 0; cursor: pointer;" onclick="copyText(this)" title="클릭해서 복사"></p>
+                    </div>
+                </div>
+                <div class="script-generator-section">
+                    <h4 style="color: #4b5563; font-size: 14px; border-bottom: 1px solid #eee; padding-bottom: 5px;">📝 설명란 (Description)</h4>
+                    <textarea id="metaDescription" readonly style="width: 100%; height: 150px; font-size: 12px; background: #f9fafb; border: 1px solid #e5e7eb;"></textarea>
+                    <div style="margin-top: 8px;">
+                        <span style="font-size: 12px; font-weight: bold;">태그:</span>
+                        <p id="metaTags" style="font-size: 12px; color: #2563eb; margin: 4px 0;"></p>
+                    </div>
+                </div>
+                <div class="script-generator-section" style="background: #fffbeb; border: 1px solid #fcd34d;">
+                    <h4 style="color: #92400e; font-size: 14px; margin-top: 0;">🎨 썸네일 가이드</h4>
+                    <p style="font-size: 13px; margin: 5px 0;"><b>텍스트:</b> <span id="metaThumbText" style="font-weight: bold; background: white; padding: 2px 5px;"></span></p>
+                    <p style="font-size: 13px; margin: 5px 0;"><b>이미지:</b> <span id="metaThumbImage"></span></p>
+                </div>
             </div>
         </div>
     </div>
@@ -2577,6 +2624,107 @@
                     applyScriptBtn.style.background = '#059669';
                 }, 2000);
             });
+
+            // [추가] 제목/내용 생성기 로직
+            const generateMetadataBtn = document.getElementById('generateMetadataBtn');
+            const metadataResult = document.getElementById('metadataResult');
+            const targetScriptStatus = document.getElementById('targetScriptStatus');
+
+            // 탭 전환 시 대본 상태 확인
+            sidebarTabs.forEach(tab => {
+                tab.addEventListener('click', function() {
+                    if (this.dataset.tab === 'metadata') {
+                        checkScriptAvailability();
+                    }
+                });
+            });
+
+            function checkScriptAvailability() {
+                const finalScript = document.getElementById('finalScriptContent').textContent;
+                const draftScript = document.getElementById('finalDraftScript').value;
+                
+                if (finalScript && finalScript !== "결과 없음") {
+                    targetScriptStatus.innerHTML = "✅ <b>최종 대본</b>이 준비되어 있습니다.";
+                    targetScriptStatus.style.color = "#059669";
+                    generateMetadataBtn.disabled = false;
+                } else if (draftScript) {
+                    targetScriptStatus.innerHTML = "⚠️ 최종 대본이 없습니다. <b>검수 대본</b>을 사용합니다.";
+                    targetScriptStatus.style.color = "#d97706";
+                    generateMetadataBtn.disabled = false;
+                } else {
+                    targetScriptStatus.innerHTML = "❌ 분석할 대본이 없습니다. 대본을 먼저 생성하세요.";
+                    targetScriptStatus.style.color = "#dc2626";
+                    generateMetadataBtn.disabled = true;
+                }
+            }
+
+            // 메타데이터 생성 버튼 클릭
+            if (generateMetadataBtn) {
+                generateMetadataBtn.addEventListener('click', async function() {
+                    // 1. 분석할 대본 가져오기 (최종 대본 우선, 없으면 검수 대본)
+                    let scriptText = document.getElementById('finalScriptContent').textContent;
+                    if (!scriptText || scriptText === "결과 없음") {
+                        scriptText = document.getElementById('finalDraftScript').value;
+                    }
+                    if (!scriptText) {
+                        alert("분석할 대본이 없습니다.");
+                        return;
+                    }
+
+                    // UI 상태 변경
+                    generateMetadataBtn.disabled = true;
+                    generateMetadataBtn.textContent = "전략 분석 중... (Gemini)";
+                    metadataResult.style.display = 'none';
+                    showAILoading("성장 전략 수립 중...", "타겟 오디언스 분석 및 SEO 최적화 진행 중");
+
+                    try {
+                        const response = await fetch('/api/generate_metadata', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ script: scriptText })
+                        });
+
+                        if (!response.ok) {
+                            const err = await response.json();
+                            throw new Error(err.error || "생성 실패");
+                        }
+
+                        const data = await response.json();
+
+                        // 결과 바인딩
+                        document.getElementById('metaAnalysis').textContent = data.analysis;
+                        document.getElementById('metaTitleSearch').textContent = data.titles.search;
+                        document.getElementById('metaTitleHook').textContent = data.titles.hook;
+                        document.getElementById('metaTitleStory').textContent = data.titles.story;
+                        document.getElementById('metaDescription').value = data.description;
+                        document.getElementById('metaTags').textContent = data.tags;
+                        document.getElementById('metaThumbText').textContent = data.thumbnail.text;
+                        document.getElementById('metaThumbImage').textContent = data.thumbnail.image_guide;
+
+                        metadataResult.style.display = 'block';
+
+                    } catch (e) {
+                        console.error(e);
+                        alert("오류 발생: " + e.message);
+                    } finally {
+                        hideAILoading();
+                        generateMetadataBtn.disabled = false;
+                        generateMetadataBtn.textContent = "✨ 전략 분석 및 생성 시작";
+                    }
+                });
+            }
+
+            // 텍스트 복사 헬퍼 함수 (전역으로 사용하기 위해 window에 할당)
+            window.copyText = function(element) {
+                const text = element.textContent;
+                navigator.clipboard.writeText(text).then(() => {
+                    const original = element.style.backgroundColor;
+                    element.style.backgroundColor = "#dcfce7"; // 녹색 배경 깜빡임
+                    setTimeout(() => {
+                        element.style.backgroundColor = "transparent";
+                    }, 300);
+                });
+            }
         });
     </script>
     </main>
