@@ -2338,7 +2338,8 @@
                     const response = await fetch('/api/generate_draft_script', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ topic: topic })
+                        body: JSON.stringify({ topic: topic }),
+                        signal: AbortSignal.timeout(300000) // 5분 타임아웃
                     });
 
                     const data = await response.json();
@@ -2350,7 +2351,18 @@
                     draftResult.style.display = 'block';
                     finalDraftScript.value = data.script; // 자동으로 최종 대본 입력란에 채우기
                 } catch (error) {
-                    alert('오류: ' + error.message);
+                    console.error('[검수 대본 생성] 오류:', error);
+                    let errorMessage = '검수 대본 생성 중 오류가 발생했습니다.';
+                    
+                    if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+                        errorMessage = '요청 시간이 초과되었습니다. 주제가 복잡하거나 서버가 바쁠 수 있습니다. 잠시 후 다시 시도해주세요.';
+                    } else if (error.message) {
+                        errorMessage = error.message;
+                    } else if (error instanceof TypeError && error.message.includes('fetch')) {
+                        errorMessage = '네트워크 오류가 발생했습니다. 인터넷 연결을 확인해주세요.';
+                    }
+                    
+                    alert('오류: ' + errorMessage);
                 } finally {
                     hideAILoading();
                     generateDraftBtn.disabled = false;
@@ -2388,7 +2400,7 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ draft_script: draftScript }),
-                        signal: AbortSignal.timeout(600000) // 10분 타임아웃
+                        signal: AbortSignal.timeout(1200000) // 20분 타임아웃 (긴 대본 처리용)
                     });
 
                     if (!response.ok) {
