@@ -4212,7 +4212,7 @@ def run_final_script_job(job_id: str, draft_script: str):
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": base_user_prompt}
                     ]
-                    max_continuations = 10  # 최대 10번까지 계속 요청
+                    max_continuations = 15  # 횟수 조금 더 여유있게 증가
                     continuation_count = 0
                     
                     while continuation_count <= max_continuations:
@@ -4254,7 +4254,7 @@ def run_final_script_job(job_id: str, draft_script: str):
                                 contents=full_prompt,
                                 config=types.GenerateContentConfig(
                                     temperature=0.7,
-                                    max_output_tokens=16000,
+                                    max_output_tokens=8000,
                                 )
                             )
                             
@@ -4353,130 +4353,31 @@ def run_final_script_job(job_id: str, draft_script: str):
                         # 응답을 메시지 히스토리에 추가
                         messages.append({"role": "assistant", "content": chunk_response})
                         
-                        # 응답이 완전한지 확인
-                        # 1. finish_reason이 "stop"이면 완료
-                        # 2. finish_reason이 "length"이면 계속 필요
-                        # 3. 응답에 "계속" 또는 "continue" 키워드가 있으면 계속 필요
-                        # 4. "이미 모든 문장을 처리했습니다" 같은 응답이 나오면 중단
-                        needs_continuation = False
-                        
-                        # AI가 완료했다고 명시적으로 말하는 경우 확인
-                        completion_keywords = [
-                            "이미 모든 문장을 처리했습니다",
-                            "모든 문장을 처리했습니다",
-                            "추가로 처리할 부분이 없습니다",
-                            "대본의 모든 내용을 처리했습니다",
-                            "모든 내용을 처리했습니다",
-                            "처리할 부분이 없습니다",
-                            "이미 처리했습니다"
-                        ]
-                        
-                        if any(keyword in chunk_response for keyword in completion_keywords):
-                            # 완료 응답이지만, 실제로 번역이 있는지 확인
+                        # 완료 여부 체크 (간소화된 로직)
+                        is_finished = False
+                        # 완료 키워드 체크
+                        if "모든 문장을 처리했습니다" in chunk_response or "처리할 부분이 없습니다" in chunk_response:
+                            is_finished = True
+                        # 내용이 짧고 '계속'이라는 말이 없으면 종료로 간주
+                        elif "계속" not in chunk_response and len(chunk_response) < 5000:
                             import re
-                            generated_translations = re.findall(r'\[한국어 번역\]', chunk_response)
-                            if len(generated_translations) == 0:
-                                # 번역이 없고 완료 메시지만 있으면 중단
-                                print(f"[최종 대본 생성] AI가 완료했다고 응답했고 번역이 없음, 중단")
-                                needs_continuation = False
-                            else:
-                                # 번역이 있으면 계속 확인
-                                needs_continuation = False
-                                print(f"[최종 대본 생성] AI가 완료했다고 응답했지만 번역 포함 ({len(generated_translations)}개), 추가 확인")
-                        
-                        # Gemini는 응답 길이로 계속 필요 여부 판단
-                        if needs_continuation == False and len(chunk_response) > 15000:
-                            needs_continuation = True
-                            print(f"[최종 대본 생성] 응답이 길어 계속 요청 필요")
-                        elif needs_continuation == False and any(keyword in chunk_response.lower() for keyword in ["계속", "continue", "...계속하려면", "다음 부분"]):
-                            # "이미 처리했습니다" 같은 완료 메시지가 없고 계속 키워드가 있으면 계속 필요
-                            needs_continuation = True
-                            print(f"[최종 대본 생성] 응답에 계속 키워드 감지, 계속 요청 필요")
-                        
-                        # 검수 대본의 모든 문장이 처리되었는지 확인
-                        # 간단한 휴리스틱: 검수 대본의 문장 수와 생성된 번역 수 비교
-                        if not needs_continuation:
-                            import re
-                            
-                            # Gemini가 완료 메시지를 보냈는지 확인 (무한 루프 방지)
-                            completion_keywords = [
-                                "모든 대본을 처리했습니다",
-                                "모든 대본을 성공적으로 처리",
-                                "더 이상 처리할 남은 문장이 없습니다",
-                                "더 이상 이어서 처리할 남은 문장이 없습니다",
-                                "모든 문장을 빠짐없이",
-                                "단 한 문장도 빠뜨리지 않고 모두",
-                                "처리 완료했습니다",
-                                "완료했습니다"
-                            ]
-                            
-                            last_response_lower = chunk_response.lower()
-                            has_completion_message = any(keyword in last_response_lower for keyword in [kw.lower() for kw in completion_keywords])
-                            
-                            if has_completion_message:
-                                # 완료 메시지가 있지만 문장 수를 확인
-                                draft_sentences = re.split(r'[.!?。！？]\s+', chunk_content)
-                                draft_sentences = [s.strip() for s in draft_sentences if s.strip() and len(s.strip()) > 5]
-                                generated_translations = re.findall(r'\[한국어 번역\]', ''.join(chunk_responses))
-                                
-                                if len(generated_translations) > 0 and len(draft_sentences) > 0:
-                                    completion_ratio = len(generated_translations) / len(draft_sentences)
-                                    # 완료 메시지가 있고 50% 이상이면 충분하다고 간주 (무한 루프 방지)
-                                    if completion_ratio >= 0.5:
-                                        print(f"[최종 대본 생성] 완료 메시지 감지 및 문장 수 충분 (검수: {len(draft_sentences)}개, 생성: {len(generated_translations)}개, 비율: {completion_ratio:.2%}), 완료로 간주")
-                                        needs_continuation = False
-                                    else:
-                                        # 완료 메시지가 있지만 문장 수가 너무 부족하면 경고 후 계속
-                                        print(f"[최종 대본 생성] 완료 메시지 있으나 문장 수 부족 (검수: {len(draft_sentences)}개, 생성: {len(generated_translations)}개, 비율: {completion_ratio:.2%}), 계속 시도")
-                                        # 하지만 연속 요청이 너무 많으면 중단
-                                        if continuation_count >= 3:
-                                            print(f"[최종 대본 생성] 완료 메시지 있으나 문장 수 부족, 연속 요청 {continuation_count}회 도달로 중단")
-                                            needs_continuation = False
-                                else:
-                                    # 문장 수를 계산할 수 없으면 완료 메시지를 신뢰
-                                    print(f"[최종 대본 생성] 완료 메시지 감지, 문장 수 계산 불가, 완료로 간주")
-                                    needs_continuation = False
-                            else:
-                                # 완료 메시지가 없으면 기존 로직대로 문장 수 확인
-                                draft_sentences = re.split(r'[.!?。！？]\s+', chunk_content)
-                                draft_sentences = [s.strip() for s in draft_sentences if s.strip() and len(s.strip()) > 5]
-                                generated_translations = re.findall(r'\[한국어 번역\]', ''.join(chunk_responses))
-                                
-                                if len(generated_translations) > 0 and len(draft_sentences) > 0:
-                                    completion_ratio = len(generated_translations) / len(draft_sentences)
-                                    # 70% 이상이면 충분하다고 간주
-                                    if completion_ratio < 0.7:
-                                        needs_continuation = True
-                                        print(f"[최종 대본 생성] 문장 수 불일치 (검수: {len(draft_sentences)}개, 생성: {len(generated_translations)}개, 비율: {completion_ratio:.2%}), 계속 요청 필요")
-                                    else:
-                                        print(f"[최종 대본 생성] 문장 수 충분 (검수: {len(draft_sentences)}개, 생성: {len(generated_translations)}개, 비율: {completion_ratio:.2%}), 완료로 간주")
-                            
-                            # 연속된 같은 응답이 나오면 중단 (무한 루프 방지)
-                            if continuation_count >= 2:
-                                last_responses = chunk_responses[-2:] if len(chunk_responses) >= 2 else chunk_responses
-                                if len(last_responses) == 2 and last_responses[0] == last_responses[1]:
-                                    print(f"[최종 대본 생성] 연속된 같은 응답 감지, 무한 루프 방지를 위해 중단")
-                                    needs_continuation = False
-                            
-                            # 최대 연속 요청 횟수 체크 (추가 안전장치)
-                            if continuation_count >= 5:
-                                print(f"[최종 대본 생성] 최대 연속 요청 횟수(5회) 도달, 무한 루프 방지를 위해 중단")
-                                needs_continuation = False
-                        
-                        if not needs_continuation:
-                            # 완료
-                            print(f"[최종 대본 생성] 챕터 {idx} 청크 {chunk_idx} 완료 (총 {continuation_count + 1}번 요청)")
+                            # 번역 태그는 있는데 계속하라는 말이 없으면 끝난 것으로 간주
+                            if re.search(r'\[한국어 번역\]', chunk_response) and not re.search(r'계속', chunk_response):
+                                 is_finished = True
+
+                        if is_finished:
                             break
-                        
-                        # 계속 요청
+                            
                         continuation_count += 1
+                        update_job(job_id, message=f"챕터 {idx} 내용이 길어 계속 생성 중... ({continuation_count}/{max_continuations})")
+                        messages.append({"role": "user", "content": "계속해주세요. 이전 응답의 마지막 부분부터 이어서 모든 남은 문장을 처리해주세요."})
+                        
                         if continuation_count > max_continuations:
                             print(f"[최종 대본 생성] 경고: 최대 계속 요청 횟수({max_continuations}) 도달, 현재까지 수집된 결과 반환")
                             break
                         
-                        # 계속 요청 메시지 추가
-                        continue_prompt = "계속해주세요. 이전 응답의 마지막 부분부터 이어서 모든 남은 문장을 처리해주세요."
-                        messages.append({"role": "user", "content": continue_prompt})
+                        # 다음 반복으로 계속
+                        continue
                     
                     # 모든 응답 합치기
                     chunk_full_response = "\n\n".join(chunk_responses)
@@ -4503,174 +4404,80 @@ def run_final_script_job(job_id: str, draft_script: str):
         final_script_lines = []
         image_prompts = []  # 영어 이미지 프롬프트 저장
         
-        # 방법 1: [한국어 번역]과 [영어 이미지 프롬프트] 쌍으로 추출
-        pairs = re.findall(
-            r'\[한국어 번역\]\s*(.+?)\s*\[영어 이미지 프롬프트\]\s*(.+?)(?=\[한국어 번역\]|$|\n\n\d+\.)',
-            full_response,
-            re.DOTALL
-        )
+        # [한국어 번역] ... [영어 이미지 프롬프트] ... 추출
+        pairs = re.findall(r'\[한국어 번역\]\s*(.+?)\s*\[영어 이미지 프롬프트\]\s*(.+?)(?=\[한국어 번역\]|$|\n\n\d+\.)', full_response, re.DOTALL)
         
-        for korean_text, english_prompt in pairs:
-            # 한국어 번역 정제 (TTS용)
-            korean_cleaned = korean_text.strip()
-            korean_cleaned = re.sub(r'\(.*?\)', '', korean_cleaned)  # 괄호 제거
-            korean_cleaned = re.sub(r'\[.*?\]', '', korean_cleaned)  # 대괄호 제거
-            korean_cleaned = korean_cleaned.strip()
+        for k, e in pairs:
+            kc = re.sub(r'\(.*?\)|\[.*?\]', '', k).strip()
+            ec = re.sub(r'\(.*?\)', '', e).strip()
+            if kc and len(kc) > 2: final_script_lines.append(kc)
+            if ec: image_prompts.append(ec)
             
-            # 영어 이미지 프롬프트 정제
-            english_cleaned = english_prompt.strip()
-            english_cleaned = re.sub(r'\(.*?\)', '', english_cleaned)  # 괄호 제거
-            english_cleaned = english_cleaned.strip()
-            
-            if korean_cleaned and len(korean_cleaned) > 3:
-                final_script_lines.append(korean_cleaned)
-                if english_cleaned:
-                    image_prompts.append(english_cleaned)
-        
-        # 방법 2: 번호가 있는 형식에서 추출 (1. [한국어 번역] ... [영어 이미지 프롬프트] ...)
+        # Fallback 파싱 (번호 형식 등)
         if not final_script_lines:
-            numbered_pairs = re.findall(
-                r'\d+\.\s*\[한국어 번역\]\s*(.+?)\s*\[영어 이미지 프롬프트\]\s*(.+?)(?=\d+\.\s*\[한국어 번역\]|$)',
-                full_response,
-                re.DOTALL
-            )
-            for korean_text, english_prompt in numbered_pairs:
-                korean_cleaned = korean_text.strip()
-                korean_cleaned = re.sub(r'\(.*?\)', '', korean_cleaned)
-                korean_cleaned = re.sub(r'\[.*?\]', '', korean_cleaned)
-                korean_cleaned = korean_cleaned.strip()
-                
-                english_cleaned = english_prompt.strip()
-                english_cleaned = re.sub(r'\(.*?\)', '', english_cleaned)
-                english_cleaned = english_cleaned.strip()
-                
-                if korean_cleaned and len(korean_cleaned) > 3:
-                    final_script_lines.append(korean_cleaned)
-                    if english_cleaned:
-                        image_prompts.append(english_cleaned)
-        
-        # 방법 3: 한국어 번역만 추출 (fallback - 이미지 프롬프트 없이)
+             numbered_pairs = re.findall(r'\d+\.\s*\[한국어 번역\]\s*(.+?)\s*\[영어 이미지 프롬프트\]\s*(.+?)(?=\d+\.\s*\[한국어 번역\]|$)', full_response, re.DOTALL)
+             for k, e in numbered_pairs:
+                kc = re.sub(r'\(.*?\)|\[.*?\]', '', k).strip()
+                ec = re.sub(r'\(.*?\)', '', e).strip()
+                if kc: final_script_lines.append(kc)
+                if ec: image_prompts.append(ec)
+
+        # 최후의 수단: 그냥 줄별로
         if not final_script_lines:
-            korean_translations = re.findall(r'\[한국어 번역\]\s*(.+?)(?=\[영어 이미지 프롬프트\]|$|\n\n)', full_response, re.DOTALL)
-            for trans in korean_translations:
-                cleaned = trans.strip()
-                # 괄호와 대괄호 제거
-                cleaned = re.sub(r'\(.*?\)', '', cleaned)
-                cleaned = re.sub(r'\[.*?\]', '', cleaned)
-                cleaned = cleaned.strip()
-                if cleaned and len(cleaned) > 3:  # 너무 짧은 것은 제외
-                    final_script_lines.append(cleaned)
+             clean_text = re.sub(r'\[.*?\]', '', full_response)
+             lines = clean_text.split('\n')
+             final_script_lines = [l.strip() for l in lines if l.strip() and not l.strip().isdigit()]
+
+        final_script = '\n'.join(final_script_lines)
         
-        # 방법 4: 한국어 번역이 없으면 전체 응답에서 태그 제거 후 사용
-        if not final_script_lines:
-            # 모든 태그 제거
-            cleaned_response = re.sub(r'\[한국어 번역\]', '', full_response)
-            cleaned_response = re.sub(r'\[영어 이미지 프롬프트\]', '', cleaned_response)
-            cleaned_response = re.sub(r'\[.*?\]', '', cleaned_response)
-            cleaned_response = re.sub(r'\(.*?\)', '', cleaned_response)
-            
-            # 줄 단위로 분리하고 정제
-            lines = cleaned_response.split('\n')
-            for line in lines:
-                line = line.strip()
-                # 번호만 있는 줄이나 빈 줄 제외
-                if line and not line.isdigit() and not re.match(r'^\d+\.\s*$', line) and len(line) > 3:
-                    final_script_lines.append(line)
-        
-        # 최종 대본 생성
-        final_script = '\n'.join(final_script_lines) if final_script_lines else full_response
-        
-        # 최종 정제: 남은 태그나 특수 문자 제거
-        final_script = re.sub(r'\[.*?\]', '', final_script)
-        final_script = re.sub(r'\(.*?\)', '', final_script)
-        final_script = re.sub(r'\n{3,}', '\n\n', final_script)  # 연속된 줄바꿈 정리
-        final_script = final_script.strip()
-        
-        # 디버깅: 최종 추출 결과 확인
-        print(f"\n{'='*80}")
-        print(f"[최종 대본 생성] 추출 완료")
-        print(f"[DEBUG] 추출된 한국어 번역 개수: {len(final_script_lines)}개")
-        print(f"[DEBUG] 최종 대본 길이: {len(final_script)}자")
-        print(f"[DEBUG] 최종 대본 처음 1000자:\n{final_script[:1000]}")
-        print(f"{'='*80}\n")
-        
-        # 최종 대본이 여전히 비어있거나 너무 짧은 경우
-        if not final_script or len(final_script.strip()) < 50:
-            print(f"[최종 대본 생성] 경고: 생성된 대본이 너무 짧거나 비어있음 (길이: {len(final_script) if final_script else 0})")
-            print(f"[최종 대본 생성] 원본 응답 (처음 500자): {full_response[:500] if full_response else 'None'}")
-            # 원본 검수 대본을 그대로 사용 (최소한의 fallback)
-            final_script = draft_script
-        
-        # 썸네일 프롬프트 생성 (주제 추출)
+        # 썸네일 프롬프트
         topic_match = re.search(r'주제[:\s]+(.+?)(?:\n|$)', draft_script, re.IGNORECASE)
         topic = topic_match.group(1).strip() if topic_match else "video content"
-        thumbnail_prompt = f"YouTube thumbnail for video about: {topic}. High quality, eye-catching, professional thumbnail design. Bright colors, clear text area, engaging composition. 16:9 aspect ratio."
+        thumbnail_prompt = f"YouTube thumbnail for video about: {topic}. High quality..."
         
-        # 디버깅: 추출된 이미지 프롬프트 확인
-        print(f"\n{'='*80}")
-        print(f"[최종 대본 생성] 이미지 프롬프트 추출 완료")
-        print(f"[DEBUG] 추출된 이미지 프롬프트 개수: {len(image_prompts)}개")
-        if image_prompts:
-            print(f"[DEBUG] 첫 번째 이미지 프롬프트:\n{image_prompts[0][:200]}")
-        print(f"{'='*80}\n")
-        
-        # 응답 크기 확인 및 최적화
-        print(f"[최종 대본 생성] 응답 준비 중... (final_script: {len(final_script)}자, image_prompts: {len(image_prompts)}개, full_response: {len(full_response)}자)")
-        
-        # 응답 크기 사전 체크 및 최적화
-        # webview/브라우저 엔진의 60초 타임아웃 문제 해결을 위한 최적화
-        total_size_estimate = len(final_script) + sum(len(p) for p in image_prompts) + len(full_response)
-        print(f"[최종 대본 생성] 예상 응답 크기: 약 {total_size_estimate:,}자 ({total_size_estimate / 1024:.1f}KB)")
-        
-        # 타임아웃 방지를 위해 응답 크기 최적화
-        # full_response는 선택적으로만 포함 (너무 크면 제외)
-        response_data = {
-            "final_script": final_script,
-            "image_prompts": image_prompts,  # 영어 이미지 프롬프트 리스트 추가
-            "thumbnail_prompt": thumbnail_prompt
-        }
-        
-        # full_response 최적화: 타임아웃 방지를 위해 크기 제한
-        # webview/브라우저 엔진의 60초 타임아웃을 고려하여 응답 크기 최소화
-        # 30KB 이하만 포함하여 전체 응답 크기를 50KB 이하로 유지
-        if len(full_response) > 30000:
-            print(f"[최종 대본 생성] 경고: full_response가 너무 큼 ({len(full_response)}자), 요약 버전만 포함 (타임아웃 방지)")
-            response_data["full_response"] = full_response[:15000] + "\n\n[... 중간 생략 ...]\n\n" + full_response[-15000:]
-            response_data["full_response_truncated"] = True
-            response_data["full_response_note"] = f"전체 응답은 {len(full_response)}자였으나, 타임아웃 방지를 위해 요약 버전만 포함했습니다."
-        elif len(full_response) > 0:
-            response_data["full_response"] = full_response
-        else:
-            # full_response가 없으면 포함하지 않음
-            pass
-        
-        # 응답이 너무 크면 경고 및 최적화
-        if total_size_estimate > 500000:  # 500KB 이상
-            print(f"[최종 대본 생성] 경고: 응답이 매우 큼 ({total_size_estimate / 1024:.1f}KB), 전송에 시간이 걸릴 수 있습니다.")
-            # image_prompts가 너무 많으면 일부만 포함
-            if len(image_prompts) > 500:
-                print(f"[최종 대본 생성] image_prompts가 너무 많음 ({len(image_prompts)}개), 처음 500개만 포함")
-                response_data["image_prompts"] = image_prompts[:500]
-                response_data["image_prompts_truncated"] = True
-        
-        # 작업 완료 - 결과를 job에 저장
-        update_job(
-            job_id,
-            status="completed",
-            final_script=final_script,
-            visual_prompt=full_response,  # full_response 저장
-            image_prompts=image_prompts,
-            thumbnail_prompt=thumbnail_prompt,
-            stage_progress=100,
-            current_stage="완료"
-        )
-        print(f"[최종 대본 생성 작업] 완료: job_id={job_id}, final_script 길이={len(final_script)}자, image_prompts={len(image_prompts)}개")
+        # 작업 완료 저장
+        with jobs_lock:
+            jobs[job_id]["status"] = "completed"
+            jobs[job_id]["final_script"] = final_script
+            jobs[job_id]["visual_prompt"] = full_response # 전체 응답 보관
+            jobs[job_id]["image_prompts"] = image_prompts
+            jobs[job_id]["thumbnail_prompt"] = thumbnail_prompt
+            jobs[job_id]["current_stage"] = "완료"
+            jobs[job_id]["stage_progress"] = 100
         
     except Exception as e:
         print(f"[최종 대본 생성 작업 오류] {e}")
         import traceback
         traceback.print_exc()
         update_job(job_id, status="error", error=str(e))
+
+
+@app.route("/api/generate_final_script", methods=["POST"])
+def api_generate_final_script():
+    """최종 대본 생성 API (비동기 처리)"""
+    data = request.get_json(silent=True) or {}
+    draft_script = (data.get("draft_script") or "").strip()
+    
+    if not draft_script:
+        return jsonify({"error": "검수 대본을 입력해주세요."}), 400
+    
+    # API 키 확인
+    if not GEMINI_API_KEY:
+        return jsonify({"error": "Gemini API 키가 설정되지 않았습니다. 설정에서 키를 입력해주세요."}), 500
+
+    # 작업 ID 생성
+    job_id = create_job_record()
+    
+    # 백그라운드 스레드 실행
+    thread = threading.Thread(
+        target=run_final_script_job,
+        args=(job_id, draft_script),
+        daemon=True
+    )
+    thread.start()
+    
+    # 작업 시작했다는 응답만 즉시 반환
+    return jsonify({"job_id": job_id, "status": "processing"})
 
 
 @app.route("/start_job", methods=["POST"])
