@@ -248,37 +248,67 @@
             </div>
             <div id="metadataResult" style="display: none; margin-top: 20px;">
                 <div class="script-generator-section">
-                    <h4 style="color: #4b5563; font-size: 14px; border-bottom: 1px solid #eee; padding-bottom: 5px;">🧐 핵심 가치 분석</h4>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <h4 style="color: #4b5563; font-size: 14px; border-bottom: 1px solid #eee; padding-bottom: 5px; margin: 0; flex: 1;">🧐 핵심 가치 분석</h4>
+                        <button type="button" id="copyAnalysisBtn" style="background: #10b981; color: white; padding: 4px 10px; font-size: 11px; border-radius: 4px; border: none; cursor: pointer;">📋 복사</button>
+                    </div>
                     <p id="metaAnalysis" style="font-size: 13px; color: #374151; white-space: pre-wrap;"></p>
                 </div>
                 <div class="script-generator-section">
                     <h4 style="color: #dc2626; font-size: 14px; border-bottom: 1px solid #eee; padding-bottom: 5px;">🔥 필살기 제목 3선</h4>
                     
                     <div style="margin-bottom: 8px;">
-                        <span style="font-size: 11px; background: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 4px;">옵션 1: 검색 적중형</span>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <span style="font-size: 11px; background: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 4px;">옵션 1: 검색 적중형</span>
+                            <button type="button" class="copyTitleBtn" data-target="metaTitleSearch" style="background: #10b981; color: white; padding: 2px 8px; font-size: 10px; border-radius: 4px; border: none; cursor: pointer;">📋 복사</button>
+                        </div>
                         <p id="metaTitleSearch" style="font-weight: bold; font-size: 14px; margin: 4px 0; cursor: pointer;" onclick="copyText(this)" title="클릭해서 복사"></p>
                     </div>
                     <div style="margin-bottom: 8px;">
-                        <span style="font-size: 11px; background: #fef3c7; color: #92400e; padding: 2px 6px; border-radius: 4px;">옵션 2: 호기심/후킹형</span>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <span style="font-size: 11px; background: #fef3c7; color: #92400e; padding: 2px 6px; border-radius: 4px;">옵션 2: 호기심/후킹형</span>
+                            <button type="button" class="copyTitleBtn" data-target="metaTitleHook" style="background: #10b981; color: white; padding: 2px 8px; font-size: 10px; border-radius: 4px; border: none; cursor: pointer;">📋 복사</button>
+                        </div>
                         <p id="metaTitleHook" style="font-weight: bold; font-size: 14px; margin: 4px 0; cursor: pointer;" onclick="copyText(this)" title="클릭해서 복사"></p>
                     </div>
                     <div>
-                        <span style="font-size: 11px; background: #dbeafe; color: #1e40af; padding: 2px 6px; border-radius: 4px;">옵션 3: 권위/스토리형</span>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <span style="font-size: 11px; background: #dbeafe; color: #1e40af; padding: 2px 6px; border-radius: 4px;">옵션 3: 권위/스토리형</span>
+                            <button type="button" class="copyTitleBtn" data-target="metaTitleStory" style="background: #10b981; color: white; padding: 2px 8px; font-size: 10px; border-radius: 4px; border: none; cursor: pointer;">📋 복사</button>
+                        </div>
                         <p id="metaTitleStory" style="font-weight: bold; font-size: 14px; margin: 4px 0; cursor: pointer;" onclick="copyText(this)" title="클릭해서 복사"></p>
                     </div>
                 </div>
                 <div class="script-generator-section">
-                    <h4 style="color: #4b5563; font-size: 14px; border-bottom: 1px solid #eee; padding-bottom: 5px;">📝 설명란 (Description)</h4>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <h4 style="color: #4b5563; font-size: 14px; border-bottom: 1px solid #eee; padding-bottom: 5px; margin: 0; flex: 1;">📝 설명란 (Description)</h4>
+                        <button type="button" id="copyDescriptionBtn" style="background: #10b981; color: white; padding: 4px 10px; font-size: 11px; border-radius: 4px; border: none; cursor: pointer;">📋 복사</button>
+                    </div>
                     <textarea id="metaDescription" readonly style="width: 100%; height: 150px; font-size: 12px; background: #f9fafb; border: 1px solid #e5e7eb;"></textarea>
                     <div style="margin-top: 8px;">
-                        <span style="font-size: 12px; font-weight: bold;">태그:</span>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <span style="font-size: 12px; font-weight: bold;">태그:</span>
+                            <button type="button" id="copyTagsBtn" style="background: #10b981; color: white; padding: 2px 8px; font-size: 10px; border-radius: 4px; border: none; cursor: pointer;">📋 복사</button>
+                        </div>
                         <p id="metaTags" style="font-size: 12px; color: #2563eb; margin: 4px 0;"></p>
                     </div>
                 </div>
                 <div class="script-generator-section" style="background: #fffbeb; border: 1px solid #fcd34d;">
                     <h4 style="color: #92400e; font-size: 14px; margin-top: 0;">🎨 썸네일 가이드</h4>
-                    <p style="font-size: 13px; margin: 5px 0;"><b>텍스트:</b> <span id="metaThumbText" style="font-weight: bold; background: white; padding: 2px 5px;"></span></p>
-                    <p style="font-size: 13px; margin: 5px 0;"><b>이미지:</b> <span id="metaThumbImage"></span></p>
+                    <div style="margin: 5px 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <b style="font-size: 13px;">텍스트:</b>
+                            <button type="button" id="copyThumbTextBtn" style="background: #10b981; color: white; padding: 2px 8px; font-size: 10px; border-radius: 4px; border: none; cursor: pointer;">📋 복사</button>
+                        </div>
+                        <span id="metaThumbText" style="font-weight: bold; background: white; padding: 2px 5px; display: inline-block; margin-top: 4px;"></span>
+                    </div>
+                    <div style="margin: 5px 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <b style="font-size: 13px;">이미지:</b>
+                            <button type="button" id="copyThumbImageBtn" style="background: #10b981; color: white; padding: 2px 8px; font-size: 10px; border-radius: 4px; border: none; cursor: pointer;">📋 복사</button>
+                        </div>
+                        <span id="metaThumbImage" style="display: inline-block; margin-top: 4px;"></span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -2723,6 +2753,102 @@
                     setTimeout(() => {
                         element.style.backgroundColor = "transparent";
                     }, 300);
+                });
+            }
+
+            // 핵심 가치 분석 복사
+            const copyAnalysisBtn = document.getElementById('copyAnalysisBtn');
+            if (copyAnalysisBtn) {
+                copyAnalysisBtn.addEventListener('click', function() {
+                    const text = document.getElementById('metaAnalysis').textContent;
+                    navigator.clipboard.writeText(text).then(() => {
+                        copyAnalysisBtn.textContent = '✓ 복사됨';
+                        copyAnalysisBtn.style.background = '#10b981';
+                        setTimeout(() => {
+                            copyAnalysisBtn.textContent = '📋 복사';
+                            copyAnalysisBtn.style.background = '#10b981';
+                        }, 2000);
+                    });
+                });
+            }
+
+            // 제목 복사 버튼들 (제목 클릭도 가능하지만 버튼도 추가)
+            document.querySelectorAll('.copyTitleBtn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const targetId = this.getAttribute('data-target');
+                    const text = document.getElementById(targetId).textContent;
+                    navigator.clipboard.writeText(text).then(() => {
+                        this.textContent = '✓ 복사됨';
+                        this.style.background = '#10b981';
+                        setTimeout(() => {
+                            this.textContent = '📋 복사';
+                            this.style.background = '#10b981';
+                        }, 2000);
+                    });
+                });
+            });
+
+            // 설명란 복사
+            const copyDescriptionBtn = document.getElementById('copyDescriptionBtn');
+            if (copyDescriptionBtn) {
+                copyDescriptionBtn.addEventListener('click', function() {
+                    const text = document.getElementById('metaDescription').value;
+                    navigator.clipboard.writeText(text).then(() => {
+                        copyDescriptionBtn.textContent = '✓ 복사됨';
+                        copyDescriptionBtn.style.background = '#10b981';
+                        setTimeout(() => {
+                            copyDescriptionBtn.textContent = '📋 복사';
+                            copyDescriptionBtn.style.background = '#10b981';
+                        }, 2000);
+                    });
+                });
+            }
+
+            // 태그 복사
+            const copyTagsBtn = document.getElementById('copyTagsBtn');
+            if (copyTagsBtn) {
+                copyTagsBtn.addEventListener('click', function() {
+                    const text = document.getElementById('metaTags').textContent;
+                    navigator.clipboard.writeText(text).then(() => {
+                        copyTagsBtn.textContent = '✓ 복사됨';
+                        copyTagsBtn.style.background = '#10b981';
+                        setTimeout(() => {
+                            copyTagsBtn.textContent = '📋 복사';
+                            copyTagsBtn.style.background = '#10b981';
+                        }, 2000);
+                    });
+                });
+            }
+
+            // 썸네일 텍스트 복사
+            const copyThumbTextBtn = document.getElementById('copyThumbTextBtn');
+            if (copyThumbTextBtn) {
+                copyThumbTextBtn.addEventListener('click', function() {
+                    const text = document.getElementById('metaThumbText').textContent;
+                    navigator.clipboard.writeText(text).then(() => {
+                        copyThumbTextBtn.textContent = '✓ 복사됨';
+                        copyThumbTextBtn.style.background = '#10b981';
+                        setTimeout(() => {
+                            copyThumbTextBtn.textContent = '📋 복사';
+                            copyThumbTextBtn.style.background = '#10b981';
+                        }, 2000);
+                    });
+                });
+            }
+
+            // 썸네일 이미지 가이드 복사
+            const copyThumbImageBtn = document.getElementById('copyThumbImageBtn');
+            if (copyThumbImageBtn) {
+                copyThumbImageBtn.addEventListener('click', function() {
+                    const text = document.getElementById('metaThumbImage').textContent;
+                    navigator.clipboard.writeText(text).then(() => {
+                        copyThumbImageBtn.textContent = '✓ 복사됨';
+                        copyThumbImageBtn.style.background = '#10b981';
+                        setTimeout(() => {
+                            copyThumbImageBtn.textContent = '📋 복사';
+                            copyThumbImageBtn.style.background = '#10b981';
+                        }, 2000);
+                    });
                 });
             }
         });
