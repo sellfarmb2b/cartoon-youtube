@@ -4147,35 +4147,39 @@ def run_final_script_job(job_id: str, draft_script: str):
             print(f"[최종 대본 생성] 챕터 {idx}/{len(chapters)} 처리 중: {chapter_title} (길이: {len(chapter_content)}자)")
             update_job(job_id, message=f"챕터 {idx}/{len(chapters)}: '{chapter_title}' 처리 중...", stage_progress=15 + int((idx/len(chapters))*70))
             
-            # 챕터가 너무 길면 더 작은 단위로 분할 (5000자 단위)
-            max_chunk_length = 5000
+            # [수정됨] 챕터가 너무 길면 청크 분할 (1500자 단위로 줄임 - AI가 빼먹지 않도록)
+            max_chunk_length = 1500
+            chunks = []
+            
             if len(chapter_content) > max_chunk_length:
-                # 문장 단위로 분할
-                sentences = chapter_content.split('。')
-                chunks = []
+                # 1. 마침표(.) 또는 줄바꿈(\n)으로 문장 분리
+                import re
+                # 문장 끝(. ? !) 뒤에 공백이 있거나 줄바꿈이 있는 경우 분리
+                sentences = re.split(r'(?<=[.?!])\s+', chapter_content)
+                
                 current_chunk = []
                 current_length = 0
                 
                 for sentence in sentences:
                     sentence = sentence.strip()
-                    if not sentence:
-                        continue
-                    sentence_length = len(sentence)
+                    if not sentence: continue
                     
-                    if current_length + sentence_length > max_chunk_length and current_chunk:
-                        chunks.append('。'.join(current_chunk) + '。')
+                    # 현재 청크가 꽉 차면 저장하고 비움
+                    if current_length + len(sentence) > max_chunk_length and current_chunk:
+                        chunks.append(' '.join(current_chunk))
                         current_chunk = [sentence]
-                        current_length = sentence_length
+                        current_length = len(sentence)
                     else:
                         current_chunk.append(sentence)
-                        current_length += sentence_length
+                        current_length += len(sentence)
                 
-                if current_chunk:
-                    chunks.append('。'.join(current_chunk))
-                
-                print(f"[최종 대본 생성] 챕터 '{chapter_title}'를 {len(chunks)}개 청크로 분할")
+                if current_chunk: 
+                    chunks.append(' '.join(current_chunk))
             else:
                 chunks = [chapter_content]
+
+            # [디버깅용 로그] 분할 결과 확인
+            print(f"[DEBUG] 챕터 길이: {len(chapter_content)} -> 청크 {len(chunks)}개로 분할됨")
             
             # 각 청크 처리
             for chunk_idx, chunk_content in enumerate(chunks, 1):
