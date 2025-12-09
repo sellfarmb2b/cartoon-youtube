@@ -4018,47 +4018,36 @@ def split_draft_script_into_chapters(draft_script: str) -> List[Dict[str, str]]:
     return chapters
 
 
-@app.route("/api/generate_final_script", methods=["POST"])
-def api_generate_final_script():
-    """최종 대본 생성 API (TTS용 순수 대본 + 한국어 번역 + 영어 이미지 프롬프트)"""
-    global genai_client  # 전역 변수 사용 선언
+def run_final_script_job(job_id: str, draft_script: str):
+    """백그라운드에서 실행될 최종 대본 생성 작업"""
+    global genai_client
     try:
-        data = request.get_json(silent=True) or {}
-        draft_script = (data.get("draft_script") or "").strip()
+        update_job(job_id, status="running", current_stage="대본 분석 및 생성 중...", stage_progress=5, stage_total=100)
         
-        if not draft_script:
-            return jsonify({"error": "검수 대본을 입력해주세요."}), 400
-        
-        # 디버깅: API 키 상태 확인
-        print(f"[최종 대본 생성] gemini_available: {gemini_available}, GEMINI_API_KEY: {'있음' if GEMINI_API_KEY else '없음'} (길이: {len(GEMINI_API_KEY)})")
-        
-        # GEMINI_API_KEY가 있으면 사용 (패키지가 없어도 시도)
+        # Gemini 클라이언트 확인 및 재초기화
         if not GEMINI_API_KEY:
-            error_msg = f"Gemini API 키가 설정되지 않았습니다. (GEMINI_API_KEY 길이: {len(GEMINI_API_KEY)})"
-            print(f"[최종 대본 생성] {error_msg}")
-            return jsonify({"error": "Gemini API 키가 설정되지 않았습니다. 설정에서 Gemini API 키를 입력해주세요."}), 500
+            raise ValueError("Gemini API 키가 설정되지 않았습니다.")
         
-        # 새로운 라이브러리: genai_client 확인 및 재초기화
         if genai_client is None:
             try:
                 from google import genai
                 genai_client = genai.Client(api_key=GEMINI_API_KEY)
-                print(f"[최종 대본 생성] google.genai Client 재초기화 성공")
+                print(f"[최종 대본 생성 작업] google.genai Client 재초기화 성공")
             except ImportError as e:
-                error_msg = f"google-genai 패키지가 설치되지 않았습니다. pip install google-genai를 실행해주세요. ({e})"
-                print(f"[최종 대본 생성] {error_msg}")
-                return jsonify({"error": "google-genai 패키지가 설치되지 않았습니다. 패키지를 설치한 후 다시 시도해주세요."}), 500
+                raise ImportError(f"google-genai 패키지가 설치되지 않았습니다: {e}")
             except Exception as e:
-                error_msg = f"Gemini API Client 초기화 실패: {e}"
-                print(f"[최종 대본 생성] {error_msg}")
-                return jsonify({"error": f"Gemini API 초기화 실패: {str(e)}"}), 500
+                raise Exception(f"Gemini API Client 초기화 실패: {e}")
+        
+        update_job(job_id, message="챕터 분리 중...", stage_progress=10)
         
         # 챕터별로 분리
         chapters = split_draft_script_into_chapters(draft_script)
         print(f"[최종 대본 생성] 총 {len(chapters)}개 챕터로 분리됨")
         
         if not chapters:
-            return jsonify({"error": "챕터를 분리할 수 없습니다."}), 400
+            raise ValueError("챕터를 분리할 수 없습니다.")
+        
+        update_job(job_id, message=f"총 {len(chapters)}개 챕터로 분리하여 처리를 시작합니다.", stage_progress=15)
         
         # 최종 대본 프롬프트
         system_prompt = """[YOUR ROLE]
@@ -4156,6 +4145,7 @@ def api_generate_final_script():
             chapter_title = chapter.get("title", f"챕터 {chapter['chapter_num']}")
             
             print(f"[최종 대본 생성] 챕터 {idx}/{len(chapters)} 처리 중: {chapter_title} (길이: {len(chapter_content)}자)")
+            update_job(job_id, message=f"챕터 {idx}/{len(chapters)}: '{chapter_title}' 처리 중...", stage_progress=15 + int((idx/len(chapters))*70))
             
             # 챕터가 너무 길면 더 작은 단위로 분할 (5000자 단위)
             max_chunk_length = 5000
@@ -4253,7 +4243,7 @@ def api_generate_final_script():
                         
                         # 새로운 라이브러리 방식
                         if genai_client is None:
-                            return jsonify({"error": "Gemini API Client가 초기화되지 않았습니다."}), 500
+                            raise RuntimeError("Gemini API Client가 초기화되지 않았습니다.")
                         
                         from google.genai import types
                         target_model = 'gemini-2.5-flash'
@@ -4277,9 +4267,7 @@ def api_generate_final_script():
                             # 새로운 라이브러리는 safety_ratings를 다르게 제공할 수 있음
                             if hasattr(response, 'prompt_feedback') and response.prompt_feedback:
                                 if hasattr(response.prompt_feedback, 'block_reason') and response.prompt_feedback.block_reason:
-                                    return jsonify({
-                                        "error": f"챕터 {idx} 처리 중 콘텐츠 정책 위반으로 인해 대본 생성이 차단되었습니다. 검수 대본의 내용을 수정하거나 다른 주제로 시도해주세요."
-                                    }), 400
+                                    raise ValueError(f"챕터 {idx} 처리 중 콘텐츠 정책 위반으로 인해 대본 생성이 차단되었습니다. 검수 대본의 내용을 수정하거나 다른 주제로 시도해주세요.")
                             
                             # 디버깅: Gemini 응답 확인
                             if chunk_response:
@@ -4296,13 +4284,13 @@ def api_generate_final_script():
                             print(f"[최종 대본 생성] 챕터 {idx} 청크 {chunk_idx} Gemini API 오류: {error_text}")
                             import traceback
                             traceback.print_exc()
-                            return jsonify({"error": f"챕터 {idx} 처리 중 Gemini API 오류: {error_text}"}), 500
+                            raise RuntimeError(f"챕터 {idx} 처리 중 Gemini API 오류: {error_text}")
                         
                         # chunk_response가 None이거나 빈 문자열인 경우 처리
                         if not chunk_response:
                             error_msg = f"챕터 {idx} 청크 {chunk_idx} 처리 중 Gemini API 응답이 비어있습니다."
                             print(f"[최종 대본 생성] {error_msg}")
-                            return jsonify({"error": error_msg}), 500
+                            raise RuntimeError(error_msg)
                         
                         # Gemini 거부 응답 감지
                         refusal_keywords = [
@@ -4353,11 +4341,11 @@ def api_generate_final_script():
                                 else:
                                     error_msg = f"챕터 {idx} 처리 중 Gemini가 요청을 거부했습니다. 대본 내용을 확인하거나 다른 주제로 시도해주세요."
                                     print(f"[최종 대본 생성] 재시도 횟수 초과")
-                                    return jsonify({"error": error_msg}), 400
+                                    raise ValueError(error_msg)
                             else:
                                 error_msg = f"챕터 {idx} 처리 중 최종 대본 생성에 실패했습니다."
                                 print(f"[최종 대본 생성] 챕터 {idx} 응답 없음")
-                                return jsonify({"error": error_msg}), 500
+                                raise RuntimeError(error_msg)
                         
                         # 응답 저장
                         chunk_responses.append(chunk_response)
@@ -4498,7 +4486,7 @@ def api_generate_final_script():
                     print(f"[최종 대본 생성] 챕터 {idx} 청크 {chunk_idx} 처리 중 오류: {chunk_error}")
                     import traceback
                     traceback.print_exc()
-                    return jsonify({"error": f"챕터 {idx} 처리 중 오류가 발생했습니다: {str(chunk_error)}"}), 500
+                    raise chunk_error
         
         # 모든 챕터의 응답을 합치기
         full_response = "\n\n".join(all_full_responses)
@@ -4665,61 +4653,24 @@ def api_generate_final_script():
                 response_data["image_prompts"] = image_prompts[:500]
                 response_data["image_prompts_truncated"] = True
         
-        print(f"[최종 대본 생성] 응답 전송 시작... (데이터 직렬화 중)")
-        try:
-            # jsonify 전에 데이터 검증
-            import sys
-            import json as json_module
-            test_json = json_module.dumps(response_data, ensure_ascii=False)
-            print(f"[최종 대본 생성] JSON 직렬화 성공 (크기: {len(test_json):,}자, {len(test_json) / 1024:.1f}KB)")
-            
-            # 일반 jsonify 사용 (스트리밍은 webview에서 문제가 될 수 있음)
-            # 대신 응답 크기를 최적화하여 빠르게 전송
-            response = jsonify(response_data)
-            
-            # 응답 헤더 설정 (타임아웃 방지 및 최적화)
-            response.headers['Content-Type'] = 'application/json; charset=utf-8'
-            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            response.headers['Pragma'] = 'no-cache'
-            response.headers['Expires'] = '0'
-            response.headers['Connection'] = 'keep-alive'  # Keep-alive로 연결 유지
-            response.headers['X-Accel-Buffering'] = 'no'  # Nginx 버퍼링 비활성화 (있다면)
-            
-            print(f"[최종 대본 생성] Flask 스트리밍 응답 생성 완료, 응답 반환 중...")
-            print(f"[최종 대본 생성] 응답 전송 완료")
-            return response
-        except MemoryError as mem_error:
-            print(f"[최종 대본 생성] 메모리 부족 오류: {mem_error}")
-            import traceback
-            traceback.print_exc()
-            # 최소한의 응답이라도 반환
-            return jsonify({
-                "error": "응답이 너무 커서 메모리 부족이 발생했습니다. 대본을 더 작은 단위로 나누어 시도해주세요.",
-                "final_script": final_script[:5000] if final_script else "",
-                "image_prompts": image_prompts[:100] if image_prompts else [],
-                "partial": True,
-                "size_info": {
-                    "final_script_len": len(final_script),
-                    "image_prompts_count": len(image_prompts),
-                    "full_response_len": len(full_response)
-                }
-            }), 500
-        except Exception as json_error:
-            print(f"[최종 대본 생성] JSON 응답 생성 오류: {json_error}")
-            import traceback
-            traceback.print_exc()
-            # 최소한의 응답이라도 반환
-            return jsonify({
-                "error": f"응답 생성 중 오류 발생: {str(json_error)}",
-                "final_script": final_script[:1000] if final_script else "",
-                "partial": True
-            }), 500
+        # 작업 완료 - 결과를 job에 저장
+        update_job(
+            job_id,
+            status="completed",
+            final_script=final_script,
+            visual_prompt=full_response,  # full_response 저장
+            image_prompts=image_prompts,
+            thumbnail_prompt=thumbnail_prompt,
+            stage_progress=100,
+            current_stage="완료"
+        )
+        print(f"[최종 대본 생성 작업] 완료: job_id={job_id}, final_script 길이={len(final_script)}자, image_prompts={len(image_prompts)}개")
         
     except Exception as e:
-        print(f"[최종 대본 생성 오류] {e}")
+        print(f"[최종 대본 생성 작업 오류] {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({"error": f"최종 대본 생성 중 오류가 발생했습니다: {str(e)}"}), 500
+        update_job(job_id, status="error", error=str(e))
 
 
 @app.route("/start_job", methods=["POST"])
@@ -5720,6 +5671,16 @@ def job_status(job_id):
     # 이미지 생성 완료 시 이미지 파일 정보 포함
     if job.get("image_files"):
         result["image_files"] = job.get("image_files")
+    
+    # 최종 대본 생성 결과 포함 (비동기 작업용)
+    if job.get("final_script"):
+        result["final_script"] = job.get("final_script")
+    if job.get("visual_prompt"):  # full_response 저장용
+        result["visual_prompt"] = job.get("visual_prompt")
+    if job.get("image_prompts"):
+        result["image_prompts"] = job.get("image_prompts")
+    if job.get("thumbnail_prompt"):
+        result["thumbnail_prompt"] = job.get("thumbnail_prompt")
     
     return jsonify(result)
 

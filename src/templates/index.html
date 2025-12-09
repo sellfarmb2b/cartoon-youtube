@@ -2389,111 +2389,105 @@
                 }
 
                 generateFinalBtn.disabled = true;
-                generateFinalBtn.textContent = '생성 중...';
+                generateFinalBtn.textContent = '작업 시작 중...';
                 finalResult.style.display = 'none';
                 visualPromptResult.style.display = 'none';
                 thumbnailPromptResult.style.display = 'none';
-                showAILoading('최종 대본 생성 중...', 'AI가 한국어 번역과 영어 이미지 프롬프트를 생성하고 있습니다');
+                showAILoading('최종 대본 생성 요청 중...', '작업 ID를 생성하고 있습니다.');
 
                 try {
-                    console.log('[최종 대본 생성] 요청 시작...');
+                    // 1. 작업 시작 요청 (비동기)
                     const response = await fetch('/api/generate_final_script', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ draft_script: draftScript }),
-                        signal: AbortSignal.timeout(1200000) // 20분 타임아웃 (긴 대본 처리용)
-                    });
-
-                    console.log('[최종 대본 생성] 응답 받음:', response.status, response.statusText);
-                    console.log('[최종 대본 생성] 응답 헤더:', {
-                        'content-type': response.headers.get('content-type'),
-                        'content-length': response.headers.get('content-length')
+                        body: JSON.stringify({ draft_script: draftScript })
                     });
 
                     if (!response.ok) {
-                        let errorMessage = '최종 대본 생성 실패';
-                        try {
-                            const errorData = await response.json();
-                            errorMessage = errorData.error || errorMessage;
-                        } catch (e) {
-                            errorMessage = `서버 오류 (${response.status}): ${response.statusText}`;
-                        }
-                        throw new Error(errorMessage);
+                        const data = await response.json();
+                        throw new Error(data.error || '작업 시작 실패');
                     }
 
-                    console.log('[최종 대본 생성] 응답 본문 읽기 시작...');
-                    let data;
-                    try {
-                        // 응답 본문을 텍스트로 먼저 읽어서 확인
-                        const responseText = await response.text();
-                        console.log('[최종 대본 생성] 응답 본문 길이:', responseText.length, '자');
-                        console.log('[최종 대본 생성] 응답 본문 처음 500자:', responseText.substring(0, 500));
-                        
-                        // JSON 파싱
-                        data = JSON.parse(responseText);
-                        console.log('[최종 대본 생성] JSON 파싱 성공');
-                    } catch (parseError) {
-                        console.error('[최종 대본 생성] JSON 파싱 오류:', parseError);
-                        console.error('[최종 대본 생성] 파싱 오류 상세:', {
-                            name: parseError.name,
-                            message: parseError.message,
-                            stack: parseError.stack
-                        });
-                        throw new Error('서버 응답을 파싱할 수 없습니다. 응답이 너무 크거나 형식이 잘못되었습니다.');
-                    }
+                    const data = await response.json();
+                    const jobId = data.job_id;
+                    
+                    // 2. 폴링 시작
+                    showAILoading('최종 대본 생성 중...', 'AI가 열심히 글을 쓰고 있습니다. (시간이 걸릴 수 있습니다)');
+                    pollFinalScriptJob(jobId);
 
-                    finalScriptContent.textContent = data.final_script;
-                    finalResult.style.display = 'block';
-                    
-                    // 이미지 프롬프트 저장
-                    savedImagePrompts = data.image_prompts || [];
-                    savedFullResponse = data.full_response || '';
-                    console.log('[최종 대본 생성] 이미지 프롬프트 개수:', savedImagePrompts.length);
-                    
-                    // 시각화 프롬프트 표시 (full_response 또는 포맷팅된 버전)
-                    if (data.full_response) {
-                        visualPromptContent.textContent = data.full_response;
-                        visualPromptResult.style.display = 'block';
-                    } else if (data.image_prompts && data.image_prompts.length > 0) {
-                        // full_response가 없으면 한국어 번역과 이미지 프롬프트를 조합하여 표시
-                        const finalScriptLines = data.final_script.split('\n').filter(line => line.trim());
-                        let formattedOutput = '';
-                        finalScriptLines.forEach((line, idx) => {
-                            if (idx < savedImagePrompts.length) {
-                                formattedOutput += `${idx + 1}.\n`;
-                                formattedOutput += `[한국어 번역] ${line.trim()}\n`;
-                                formattedOutput += `[영어 이미지 프롬프트] ${savedImagePrompts[idx]}\n\n`;
-                            }
-                        });
-                        visualPromptContent.textContent = formattedOutput;
-                        visualPromptResult.style.display = 'block';
-                    }
-                    
-                    if (data.thumbnail_prompt) {
-                        thumbnailPromptContent.textContent = data.thumbnail_prompt;
-                        thumbnailPromptResult.style.display = 'block';
-                    }
-
-                    applyScriptBtn.disabled = false;
                 } catch (error) {
-                    console.error('[최종 대본 생성] 오류:', error);
-                    let errorMessage = '최종 대본 생성 중 오류가 발생했습니다.';
-                    
-                    if (error.name === 'AbortError' || error.name === 'TimeoutError') {
-                        errorMessage = '요청 시간이 초과되었습니다. 대본이 너무 길어서 처리하는 데 시간이 오래 걸립니다. 잠시 후 다시 시도해주세요.';
-                    } else if (error.message) {
-                        errorMessage = error.message;
-                    } else if (error instanceof TypeError && error.message.includes('fetch')) {
-                        errorMessage = '네트워크 오류가 발생했습니다. 인터넷 연결을 확인해주세요.';
-                    }
-                    
-                    alert('오류: ' + errorMessage);
-                } finally {
+                    console.error('오류:', error);
+                    alert('오류: ' + error.message);
                     hideAILoading();
                     generateFinalBtn.disabled = false;
                     generateFinalBtn.textContent = '최종 대본 생성';
                 }
             });
+
+            // 최종 대본 작업 상태 확인 함수
+            function pollFinalScriptJob(jobId) {
+                const interval = setInterval(async () => {
+                    try {
+                        const response = await fetch(`/job_status/${jobId}`);
+                        if (!response.ok) return;
+                        
+                        const jobData = await response.json();
+                        
+                        // 로딩 메시지 업데이트 (진행률 표시)
+                        const progress = jobData.stage_progress || 0;
+                        const msg = jobData.progress && jobData.progress.length > 0 
+                            ? jobData.progress[jobData.progress.length - 1].text 
+                            : '처리 중...';
+                        
+                        // 로딩 텍스트 업데이트
+                        const loadingText = document.getElementById('aiLoadingText');
+                        const loadingSubtext = document.getElementById('aiLoadingSubtext');
+                        if (loadingText) loadingText.textContent = `생성 중... (${progress}%)`;
+                        if (loadingSubtext) loadingSubtext.textContent = msg;
+
+                        if (jobData.status === 'completed') {
+                            clearInterval(interval);
+                            hideAILoading();
+                            
+                            // 결과 표시
+                            finalScriptContent.textContent = jobData.final_script || "결과 없음";
+                            finalResult.style.display = 'block';
+                            
+                            // 시각화 프롬프트 표시
+                            if (jobData.visual_prompt) {
+                                visualPromptContent.textContent = jobData.visual_prompt;
+                                visualPromptResult.style.display = 'block';
+                            }
+                            
+                            // 썸네일 프롬프트 표시
+                            if (jobData.thumbnail_prompt) {
+                                thumbnailPromptContent.textContent = jobData.thumbnail_prompt;
+                                thumbnailPromptResult.style.display = 'block';
+                            }
+                            
+                            // 저장된 프롬프트 전역 변수에 할당 (대본 적용 시 사용)
+                            savedImagePrompts = jobData.image_prompts || [];
+                            savedFullResponse = jobData.visual_prompt || '';
+                            
+                            generateFinalBtn.disabled = false;
+                            generateFinalBtn.textContent = '최종 대본 생성';
+                            applyScriptBtn.disabled = false;
+                            
+                            alert("대본 생성이 완료되었습니다!");
+                            
+                        } else if (jobData.status === 'error') {
+                            clearInterval(interval);
+                            hideAILoading();
+                            alert(`오류 발생: ${jobData.error}`);
+                            generateFinalBtn.disabled = false;
+                            generateFinalBtn.textContent = '최종 대본 생성';
+                        }
+                        
+                    } catch (e) {
+                        console.error("Polling error", e);
+                    }
+                }, 2000); // 2초마다 확인
+            }
 
             // 최종 대본 복사
             copyFinalBtn.addEventListener('click', function() {
