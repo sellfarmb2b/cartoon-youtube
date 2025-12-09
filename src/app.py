@@ -5944,7 +5944,7 @@ def api_generate_metadata():
 # -----------------------------------------------------------------------------
 @app.route("/api/generate_thumbnail_concepts", methods=["POST"])
 def api_generate_thumbnail_concepts():
-    """썸네일 기획안 3가지 생성 API (Gemini 1.5 Pro)"""
+    """썸네일 기획안 3가지 생성 API (Gemini 2.5 Flash)"""
     data = request.get_json(silent=True) or {}
     script_text = (data.get("script") or "").strip()
     character_setting = (data.get("character_setting") or "").strip()
@@ -6011,7 +6011,7 @@ def api_generate_thumbnail_concepts():
         user_prompt += "위 정보를 바탕으로 클릭률을 높일 수 있는 썸네일 기획안 3가지를 제안해주세요."
         
         response = genai_client.models.generate_content(
-            model='gemini-1.5-pro',
+            model='gemini-2.5-flash',  # 기존 코드와 동일한 모델 사용
             contents=user_prompt,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
