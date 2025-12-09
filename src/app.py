@@ -2465,24 +2465,23 @@ def create_video(
                         print(f"[경고] scene_{scene_id}: 비디오 정보 확인 실패, duration 사용: {probe_exc}")
                         video_duration = duration
                     
-                    # 비디오 입력
-                    video_input = ffmpeg.input(video_path)
+                    # 중요: stream_loop=-1로 무한 반복 설정 (오디오보다 짧을 경우 대비)
+                    # 오디오보다 길면 뒤에서 trim으로 잘림
+                    input_stream = ffmpeg.input(video_path, stream_loop=-1)
                     
-                    # TTS 길이에 맞게 비디오 조정 (강제로 duration에 맞춤)
-                    if video_duration >= duration:
-                        # 비디오가 더 길면 정확히 자르기
-                        base_stream = video_input.filter("trim", start=0, duration=duration).filter("setpts", "PTS-STARTPTS")
-                        print(f"[비디오 조정] scene_{scene_id}: 비디오 자르기 ({video_duration:.2f}초 -> {duration:.2f}초)")
-                    else:
-                        # 비디오가 더 짧으면 반복 (loop) 후 정확히 duration에 맞춤
-                        # loop 필터는 무한 루프를 생성하므로, 이후 trim으로 정확히 자름
-                        # 루프 카운트를 더 여유있게 설정하여 duration을 정확히 맞춤
-                        loop_count = max(int(math.ceil(duration / video_duration)) + 3, 5)  # 최소 5회, 여유있게 루프
-                        base_stream = video_input.filter("loop", loop=loop_count, size=32767).filter("trim", start=0, duration=duration).filter("setpts", "PTS-STARTPTS")
-                        print(f"[비디오 조정] scene_{scene_id}: 비디오 반복 후 정확히 자르기 ({video_duration:.2f}초 x {loop_count}회 -> {duration:.2f}초)")
-                    
-                    # 스케일 조정 (1920x1080으로 통일)
-                    base_stream = base_stream.filter("scale", 1920, 1080)
+                    # 비디오 스트림 처리
+                    # 1. scale: 해상도 통일
+                    # 2. fps: 프레임레이트 강제 통일 (중요)
+                    # 3. trim: 오디오 길이에 딱 맞게 자르기
+                    # 4. setpts: 타임스탬프 리셋
+                    base_stream = (
+                        input_stream['v']
+                        .filter("scale", 1920, 1080)
+                        .filter("fps", fps=VIDEO_FPS, round="up")
+                        .filter("trim", duration=duration)
+                        .filter("setpts", "PTS-STARTPTS")
+                    )
+                    print(f"[비디오 조정] scene_{scene_id}: 무한 루프 후 정확히 자르기 (목표: {duration:.2f}초)")
                 else:
                     # 이미지 파일 사용 (기존 로직)
                     if not os.path.exists(image_path):
@@ -2493,12 +2492,13 @@ def create_video(
                         img_width, img_height = img.size
                         print(f"[이미지 확인] scene_{scene_id}: 이미지 크기 {img_width}x{img_height}")
                     
-                    # FFmpeg 입력: PNG 형식 명시적으로 지정
-                    # loop=1은 무한 루프이므로, t=duration으로 제한하고 추가로 trim 필터로 정확히 duration에 맞춤
+                    # 이미지 입력 (loop=1, t=duration)
+                    input_stream = ffmpeg.input(image_path, loop=1, t=duration)
                     base_stream = (
-                        ffmpeg.input(image_path, format='image2', loop=1, framerate=VIDEO_FPS)
+                        input_stream
                         .filter("scale", 1920, 1080)
-                        .filter("trim", start=0, duration=duration)
+                        .filter("fps", fps=VIDEO_FPS, round="up")
+                        .filter("trim", duration=duration) # 중복 안전장치
                         .filter("setpts", "PTS-STARTPTS")
                     )
             except Exception as img_exc:
@@ -2540,14 +2540,20 @@ def create_video(
             # duration을 명시적으로 제한 (이미 base_stream에서 trim이 적용되었지만, 추가 안전장치)
             video_stream = video_with_subs.filter("trim", start=0, duration=duration).filter("setpts", "PTS-STARTPTS")
             
-            # 오디오 스트림 생성 (duration에 정확히 맞춤)
+            # 오디오 입력 스트림 설정
             if audio_file and os.path.exists(audio_file):
-                # 오디오도 정확히 duration에 맞춰서 자름
-                audio_stream = ffmpeg.input(audio_file).filter("atrim", start=0, duration=duration).filter("asetpts", "PTS-STARTPTS")
+                # 오디오도 정확히 duration에 맞춤 (약간의 오차 제거)
+                audio_stream = (
+                    ffmpeg.input(audio_file)
+                    .filter("atrim", duration=duration)
+                    .filter("asetpts", "PTS-STARTPTS")
+                )
             else:
-                audio_stream = ffmpeg.input('anullsrc=channel_layout=mono:sample_rate=44100', f='lavfi', t=duration)
-            
-            # 개별 씬 비디오 생성 (duration 명시적으로 제한 - 강제로 정확히 맞춤)
+                # 오디오 없으면 무음 생성
+                audio_stream = ffmpeg.input('anullsrc=channel_layout=stereo:sample_rate=44100', f='lavfi', t=duration)
+
+            # 개별 씬 인코딩 실행
+            # 여기서 포맷을 완전히 통일시켜야 나중에 concat할 때 문제가 안 생김
             scene_output = ffmpeg.output(
                 video_stream,
                 audio_stream,
@@ -2555,12 +2561,12 @@ def create_video(
                 vcodec="libx264",
                 acodec="aac",
                 pix_fmt="yuv420p",
-                t=duration,  # duration 명시적으로 제한 (최종 안전장치)
-                **{
-                    "preset": "ultrafast",  # 개별 씬은 빠르게 생성
-                    "crf": "23",
-                    "threads": "0",
-                }
+                r=VIDEO_FPS,       # 프레임레이트 강제
+                ar=44100,          # 오디오 샘플레이트 강제
+                ac=2,              # 오디오 채널 강제 (스테레오)
+                t=duration,        # 길이 강제 (최종 안전장치)
+                preset="ultrafast", # 속도 우선
+                crf=23
             )
             try:
                 # 오류 디버깅을 위해 quiet=False로 설정
@@ -2884,20 +2890,17 @@ def create_video(
         
         print(f"[create_video] concat demuxer로 {file_count}개 씬 비디오 합치는 중...")
         
-        # concat demuxer 사용 (메모리 효율적)
-        concat_input = ffmpeg.input(concat_list_file, format='concat', safe=0)
-        output = ffmpeg.output(
-            concat_input,
-            output_video_file,
-            vcodec="libx264",  # 재인코딩 (안정성 확보)
-            acodec="aac",  # 재인코딩 (안정성 확보)
-            pix_fmt="yuv420p",
-            **{
-                "preset": "fast",  # 빠른 인코딩
-                "crf": "23",  # 품질 설정
-                "threads": "0",  # 자동 스레드
-                "movflags": "+faststart",  # 웹 스트리밍 최적화
-            }
+        # Concat 실행
+        # 모든 파일이 동일한 코덱/해상도/fps를 가지므로 concat demuxer가 안전하게 작동함
+        (
+            ffmpeg
+            .input(concat_list_file, format='concat', safe=0)
+            .output(
+                output_video_file, 
+                c="copy", # 스트림 복사 (재인코딩 없음 -> 매우 빠르고 화질 저하 없음)
+                movflags="+faststart"
+            )
+            .run(overwrite_output=True, quiet=False)
         )
         try:
             ffmpeg.run(output, overwrite_output=True, quiet=False)
