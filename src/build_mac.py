@@ -30,8 +30,7 @@ def build_mac():
         shutil.rmtree("dist")
     if os.path.exists("Launcher.spec"):
         os.remove("Launcher.spec")
-    if os.path.exists("YouTubeMaker.spec"):
-        os.remove("YouTubeMaker.spec")
+    # YouTubeMaker.spec은 유지 (수정된 설정을 사용하기 위해)
     
     # 템플릿과 static 폴더 확인
     if not os.path.exists("src/templates"):
@@ -66,45 +65,57 @@ def build_mac():
         print(f"❌ Launcher 빌드 실패: {e}")
         return False
     
-    # 2. YouTubeMaker 빌드
+    # 2. YouTubeMaker 빌드 (spec 파일 사용)
     print("\n[2/2] YouTubeMaker 빌드 중...")
-    app_cmd = [
-        "pyinstaller",
-        "--name=YouTubeMaker",
-        "--onedir",
-        "--noconsole",
-        "--add-data=src/templates:src/templates",
-        "--add-data=src/static:src/static",
-        "--add-data=bin/mac/ffmpeg:bin/mac",
-        "--hidden-import=requests",
-        "--hidden-import=ffmpeg",
-        "--hidden-import=PIL",
-        "--hidden-import=PIL.Image",
-        "--hidden-import=PIL.ImageOps",
-        "--hidden-import=mutagen",
-        "--hidden-import=mutagen.mp3",
-        "--hidden-import=elevenlabs",
-        "--hidden-import=elevenlabs.client",
-        "--hidden-import=replicate",
-        "--collect-all=replicate",  # replicate 패키지의 모든 서브모듈과 메타데이터 포함
-        "--hidden-import=openai",
-        "--hidden-import=pywebview",
-        "--hidden-import=appdirs",
-        "--hidden-import=webbrowser",
-        "--hidden-import=socket",
-        "--hidden-import=threading",
-        "--hidden-import=concurrent.futures",
-        "--hidden-import=uuid",
-        "--hidden-import=pyexpat",  # XML 파싱 모듈 포함
-        "--hidden-import=xml.parsers.expat",
-        "--hidden-import=xml.parsers",
-        "--hidden-import=xml",
-        "--exclude-module=tkinter",
-        "--exclude-module=matplotlib",
-        "--exclude-module=scipy",
-        "--exclude-module=pandas",
-        "src/app.py"
-    ]
+    
+    # spec 파일이 있으면 사용, 없으면 생성
+    spec_file = "YouTubeMaker.spec"
+    if os.path.exists(spec_file):
+        print(f"✅ {spec_file} 파일을 사용하여 빌드합니다.")
+        app_cmd = ["pyinstaller", spec_file]
+    else:
+        print(f"⚠️  {spec_file} 파일이 없어 기본 옵션으로 빌드합니다.")
+        app_cmd = [
+            "pyinstaller",
+            "--name=YouTubeMaker",
+            "--onedir",
+            "--noconsole",
+            "--add-data=src/templates:src/templates",
+            "--add-data=src/static:src/static",
+            "--add-data=bin/mac/ffmpeg:bin/mac",
+            "--hidden-import=requests",
+            "--hidden-import=ffmpeg",
+            "--hidden-import=PIL",
+            "--hidden-import=PIL.Image",
+            "--hidden-import=PIL.ImageOps",
+            "--hidden-import=mutagen",
+            "--hidden-import=mutagen.mp3",
+            "--hidden-import=elevenlabs",
+            "--hidden-import=elevenlabs.client",
+            "--hidden-import=replicate",
+            "--collect-all=replicate",  # replicate 패키지의 모든 서브모듈과 메타데이터 포함
+            "--hidden-import=google",
+            "--hidden-import=google.generativeai",
+            "--collect-all=google.generativeai",  # google-generativeai 패키지의 모든 서브모듈과 메타데이터 포함
+            "--hidden-import=openai",
+            "--hidden-import=pywebview",
+            "--hidden-import=appdirs",
+            "--hidden-import=webbrowser",
+            "--hidden-import=socket",
+            "--hidden-import=threading",
+            "--hidden-import=concurrent.futures",
+            "--hidden-import=uuid",
+            "--hidden-import=pyexpat",  # XML 파싱 모듈 포함
+            "--hidden-import=xml.parsers.expat",
+            "--hidden-import=xml.parsers",
+            "--hidden-import=xml",
+            "--exclude-module=tkinter",
+            "--exclude-module=matplotlib",
+            "--exclude-module=scipy",
+            "--exclude-module=pandas",
+            "src/app.py"
+        ]
+    
     print(f"명령: {' '.join(app_cmd)}")
     try:
         subprocess.check_call(app_cmd)
