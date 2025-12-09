@@ -558,6 +558,13 @@
                 </table>
             </section>
 
+            <div id="progressPanel" class="card" style="display:none;">
+                <h3 style="margin-top:0;">영상 생성 진행도</h3>
+                <progress id="progressBar" value="0" max="100"></progress>
+                <div id="progressMessage" style="margin-top:12px; font-weight:600; color:#1f2937;"></div>
+                <ul id="progressLog"></ul>
+            </div>
+
             <div id="resultContainer">
                 {% if video_filename %}
                 <div class="card" style="border: 2px solid #2563eb;">
@@ -1573,6 +1580,7 @@
             }
 
             function resetProgressPanel() {
+                if (!progressPanel || !progressBar || !progressMessage || !progressLog) return;
                 progressPanel.style.display = 'block';
                 progressBar.value = 0;
                 progressMessage.textContent = '작업을 준비 중입니다.';
@@ -1580,6 +1588,7 @@
             }
 
             function appendProgressLog(text) {
+                if (!progressLog) return;
                 const li = document.createElement('li');
                 li.textContent = text;
                 progressLog.appendChild(li);
@@ -1587,6 +1596,7 @@
             }
 
             function updateProgressBar(status, messageCount) {
+                if (!progressBar) return;
                 let value = 0;
                 if (status === 'pending') value = 5;
                 else if (status === 'running') value = Math.min(95, 10 + messageCount * 5);
@@ -1634,7 +1644,7 @@
                     generateImagesBtn.textContent = '2단계: 이미지 생성';
                     generateVideoBtn.disabled = true;
                     generateVideoBtn.textContent = '3단계: 영상 생성';
-                    progressPanel.style.display = 'none';
+                    if (progressPanel) progressPanel.style.display = 'none';
                     resultContainer.innerHTML = '';
                 });
             });
@@ -1667,10 +1677,10 @@
                         promptSection.style.display = 'none';
                         promptTableBody.innerHTML = '';
                         resultContainer.innerHTML = '';
-                        progressPanel.style.display = 'none';
-                        progressBar.value = 0;
-                        progressMessage.textContent = '';
-                        progressLog.innerHTML = '';
+                        if (progressPanel) progressPanel.style.display = 'none';
+                        if (progressBar) progressBar.value = 0;
+                        if (progressMessage) progressMessage.textContent = '';
+                        if (progressLog) progressLog.innerHTML = '';
                         statusMessage.style.display = 'none';
                         statusMessage.textContent = '';
                         previewText.value = '';
@@ -1918,7 +1928,7 @@
                 }));
                 renderPromptRows();
                 resultContainer.innerHTML = '';
-                progressPanel.style.display = 'none';
+                if (progressPanel) progressPanel.style.display = 'none';
                 if (pollingInterval) {
                     clearInterval(pollingInterval);
                 }
@@ -2128,7 +2138,7 @@
                 promptItems = [];
                 renderPromptRows();
                 resultContainer.innerHTML = '';
-                progressPanel.style.display = 'none';
+                if (progressPanel) progressPanel.style.display = 'none';
                 if (pollingInterval) {
                     clearInterval(pollingInterval);
                 }
@@ -2301,7 +2311,7 @@
                     setStatus(error.message || '영상 생성 작업 시작 중 오류가 발생했습니다.', 'error');
                     generateVideoBtn.disabled = false;
                     generateVideoBtn.textContent = '3단계: 영상 생성';
-                    progressPanel.style.display = 'none';
+                    if (progressPanel) progressPanel.style.display = 'none';
                 }
             });
 
@@ -2317,13 +2327,17 @@
                         }
                         const data = await response.json();
                         updateProgressBar(data.status, data.progress.length || 0);
-                        progressMessage.textContent = data.status === 'completed'
-                            ? '작업이 완료되었습니다.'
-                            : data.status === 'error'
-                                ? '작업 중 오류가 발생했습니다.'
-                                : '작업이 진행 중입니다.';
-                        progressLog.innerHTML = '';
-                        (data.progress || []).forEach(item => appendProgressLog(item.text));
+                        if (progressMessage) {
+                            progressMessage.textContent = data.status === 'completed'
+                                ? '작업이 완료되었습니다.'
+                                : data.status === 'error'
+                                    ? '작업 중 오류가 발생했습니다.'
+                                    : '작업이 진행 중입니다.';
+                        }
+                        if (progressLog) {
+                            progressLog.innerHTML = '';
+                            (data.progress || []).forEach(item => appendProgressLog(item.text));
+                        }
 
                         if (typeof data.stage_progress !== 'undefined') {
                             updateStageModal(data.stage_progress, data.current_stage || '', data.status);
@@ -2336,7 +2350,7 @@
                                 generateVideoBtn.disabled = false;
                                 generateVideoBtn.textContent = '3단계: 영상 생성';
                                 setStatus('영상이 성공적으로 생성되었습니다.', 'success');
-                                progressMessage.textContent = '🎉 영상이 성공적으로 생성되었습니다.';
+                                if (progressMessage) progressMessage.textContent = '🎉 영상이 성공적으로 생성되었습니다.';
                                 stageModal.classList.add('stage-complete');
                                 stageCloseBtn.style.display = 'block';
                                 const videoPreviewUrl = data.video_url;
@@ -2360,7 +2374,7 @@
                                 `;
                             } else {
                                 // video_url이 없으면 아직 생성 중이거나 오류
-                                progressMessage.textContent = '영상 생성 중... (최종 파일 확인 중)';
+                                if (progressMessage) progressMessage.textContent = '영상 생성 중... (최종 파일 확인 중)';
                             }
                         } else if (data.status === 'error') {
                             clearInterval(pollingInterval);
