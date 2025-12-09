@@ -3352,20 +3352,36 @@
                                     const byteArray = new Uint8Array(byteNumbers);
                                     const blob = new Blob([byteArray], { type: data.mime_type || 'image/png' });
                                     
-                                    // Blob URL 생성 및 다운로드
+                                    // 파일 확장자 결정
+                                    const mimeType = data.mime_type || 'image/png';
+                                    const extension = mimeType.includes('jpeg') || mimeType.includes('jpg') ? 'jpg' : 'png';
+                                    const filename = `thumbnail_${Date.now()}.${extension}`;
+                                    
+                                    // Blob URL 생성 및 다운로드 (이미지 열림 방지)
                                     const url = URL.createObjectURL(blob);
                                     const link = document.createElement('a');
                                     link.href = url;
-                                    link.download = `thumbnail_${Date.now()}.png`;
+                                    link.setAttribute('download', filename);  // 명시적으로 download 속성 설정
+                                    link.setAttribute('target', '_self');  // 새 탭 열림 방지
                                     link.style.display = 'none';
+                                    link.style.visibility = 'hidden';
                                     document.body.appendChild(link);
-                                    link.click();
+                                    
+                                    // 강제로 다운로드 트리거
+                                    if (typeof link.download !== 'undefined') {
+                                        link.click();
+                                    } else {
+                                        // download 속성을 지원하지 않는 브라우저 대비
+                                        window.location.href = url;
+                                    }
                                     
                                     // 약간의 지연 후 정리 (다운로드가 시작되도록)
                                     setTimeout(() => {
-                                        document.body.removeChild(link);
+                                        if (document.body.contains(link)) {
+                                            document.body.removeChild(link);
+                                        }
                                         URL.revokeObjectURL(url);
-                                    }, 100);
+                                    }, 200);
                                 } catch (err) {
                                     console.error('다운로드 오류:', err);
                                     alert('다운로드 중 오류가 발생했습니다: ' + err.message);
