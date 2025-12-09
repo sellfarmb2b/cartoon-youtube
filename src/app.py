@@ -5988,6 +5988,30 @@ if __name__ == "__main__":
     print(f"주소: {window_url}")
     print(f"{'=' * 60}\n")
 
+    # Flask 서버가 완전히 시작될 때까지 대기
+    import time
+    max_wait = 10  # 최대 10초 대기
+    wait_count = 0
+    while wait_count < max_wait:
+        try:
+            import socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(0.5)
+            result = sock.connect_ex(("127.0.0.1", selected_port))
+            sock.close()
+            if result == 0:
+                print(f"[서버 준비 완료] 포트 {selected_port}에서 서버가 응답합니다.")
+                break
+        except Exception:
+            pass
+        time.sleep(0.5)
+        wait_count += 0.5
+        print(f"[서버 대기 중] {wait_count:.1f}초...")
+    
+    if wait_count >= max_wait:
+        print(f"[경고] 서버 시작 확인 실패, webview를 시작합니다.")
+
     _webview_window = webview.create_window("YouTube Maker", window_url, width=1280, height=800, resizable=True)
     # JavaScript에서 호출할 수 있도록 함수 등록
-    webview.start(debug=False)
+    # debug=True로 설정하여 webview 콘솔 로그 확인 가능
+    webview.start(debug=True)
