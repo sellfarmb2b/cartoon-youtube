@@ -3307,6 +3307,7 @@
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 prompt: prompt,
+                                copy_text: copy,  // 카피 텍스트 전달
                                 reference_image: referenceImageBase64
                             })
                         });

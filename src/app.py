@@ -6035,10 +6035,24 @@ def api_generate_thumbnail_image():
     try:
         data = request.get_json(silent=True) or {}
         prompt = (data.get("prompt") or "").strip()
+        copy_text = (data.get("copy_text") or "").strip()  # 카피 텍스트
         reference_image_base64 = data.get("reference_image")  # base64 인코딩된 이미지
         
         if not prompt:
             return jsonify({"error": "프롬프트를 입력해주세요."}), 400
+        
+        # 카피 텍스트가 있으면 프롬프트에 포함
+        if copy_text:
+            # 프롬프트에 텍스트 삽입 지시사항 추가
+            enhanced_prompt = f"""{prompt}
+
+IMPORTANT: Add the following text overlay on the image in a prominent, readable font:
+Text to display: "{copy_text}"
+- Place the text in a visible area (top, center, or bottom)
+- Use high contrast colors (white text on dark background or vice versa)
+- Make the text bold and large enough to be clearly readable
+- Ensure the text does not interfere with the main visual elements but is clearly visible"""
+            prompt = enhanced_prompt
         
         # API 키 확인
         if not GEMINI_API_KEY:
