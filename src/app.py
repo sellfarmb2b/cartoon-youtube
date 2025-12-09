@@ -278,6 +278,9 @@ KOREAN_CHAR_PATTERN = json.loads(
 
 
 app = Flask(__name__, template_folder=TEMPLATE_FOLDER, static_folder=STATIC_FOLDER)
+# Flask 타임아웃 설정 (긴 요청 처리용)
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB 최대 요청 크기
 
 
 # =============================================================================
@@ -4624,6 +4627,8 @@ def api_generate_final_script():
         print(f"{'='*80}\n")
         
         # 응답 크기 확인 및 최적화
+        print(f"[최종 대본 생성] 응답 준비 중... (final_script: {len(final_script)}자, image_prompts: {len(image_prompts)}개, full_response: {len(full_response)}자)")
+        
         response_data = {
             "final_script": final_script,
             "image_prompts": image_prompts,  # 영어 이미지 프롬프트 리스트 추가
@@ -4638,7 +4643,21 @@ def api_generate_final_script():
         else:
             response_data["full_response"] = full_response
         
-        return jsonify(response_data)
+        print(f"[최종 대본 생성] 응답 전송 시작...")
+        try:
+            response = jsonify(response_data)
+            print(f"[최종 대본 생성] 응답 전송 완료")
+            return response
+        except Exception as json_error:
+            print(f"[최종 대본 생성] JSON 응답 생성 오류: {json_error}")
+            import traceback
+            traceback.print_exc()
+            # 최소한의 응답이라도 반환
+            return jsonify({
+                "error": f"응답 생성 중 오류 발생: {str(json_error)}",
+                "final_script": final_script[:1000] if final_script else "",
+                "partial": True
+            }), 500
         
     except Exception as e:
         print(f"[최종 대본 생성 오류] {e}")
