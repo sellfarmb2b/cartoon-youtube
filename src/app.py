@@ -122,6 +122,7 @@ def reload_api_keys() -> None:
     """Load API keys from the persistent config store."""
     global ELEVENLABS_API_KEY, REPLICATE_API_TOKEN, GEMINI_API_KEY
     global genai_client  # 새로운 라이브러리의 Client 객체
+    global genai  # genai 모듈을 전역으로 사용
     
     settings = config_manager.get_all()
     ELEVENLABS_API_KEY = (
@@ -145,17 +146,29 @@ def reload_api_keys() -> None:
     if GEMINI_API_KEY:
         try:
             # import가 실패했을 수 있으므로 다시 시도
-            # genai가 None이거나 GEMINI_AVAILABLE이 False인 경우 재import 시도
-            try:
-                # genai 모듈이 있는지 확인 (전역 변수로 선언되어 있지 않을 수 있음)
-                if 'genai' not in globals() or globals().get('genai') is None:
+            # genai 모듈을 전역에서 가져오거나 재import
+            global genai  # 전역 genai 변수 사용 선언
+            
+            # genai 모듈이 없거나 None인 경우 재import 시도
+            if 'genai' not in globals() or globals().get('genai') is None:
+                try:
                     from google import genai
                     print(f"[API 키 로드] google.genai 재import 성공")
-            except (ImportError, NameError) as e:
-                print(f"[API 키 로드] google.genai import 실패: {e}")
-                print(f"[API 키 로드] pip install google-genai를 실행해주세요.")
-                genai_client = None
-                return
+                except (ImportError, NameError) as e:
+                    print(f"[API 키 로드] google.genai import 실패: {e}")
+                    print(f"[API 키 로드] pip install google-genai를 실행해주세요.")
+                    genai_client = None
+                    return
+            
+            # genai가 여전히 None인 경우 (import는 성공했지만 모듈이 None)
+            if genai is None:
+                try:
+                    from google import genai
+                    print(f"[API 키 로드] google.genai 재import 성공 (genai가 None이었음)")
+                except (ImportError, NameError) as e:
+                    print(f"[API 키 로드] google.genai import 실패: {e}")
+                    genai_client = None
+                    return
             
             # 새로운 라이브러리: Client 객체 생성
             genai_client = genai.Client(api_key=GEMINI_API_KEY)
