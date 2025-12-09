@@ -3322,21 +3322,48 @@
                         // 이미지 표시 (이미지만 표시)
                         thumbnailImageContainer.innerHTML = `
                             <div style="text-align: center; margin-bottom: 20px;">
-                                <div style="background: #f9fafb; border: 2px solid #e5e7eb; border-radius: 12px; padding: 20px; display: inline-block;">
-                                    <img id="thumbnailGeneratedImage" src="data:${data.mime_type || 'image/png'};base64,${data.image}" alt="썸네일" style="max-width: 100%; max-height: 600px; border-radius: 8px; pointer-events: none; user-select: none;">
+                                <div id="thumbnailImageWrapper" style="background: #f9fafb; border: 2px solid #e5e7eb; border-radius: 12px; padding: 20px; display: inline-block; pointer-events: none;">
+                                    <img id="thumbnailGeneratedImage" src="data:${data.mime_type || 'image/png'};base64,${data.image}" alt="썸네일" style="max-width: 100%; max-height: 600px; border-radius: 8px; pointer-events: none; user-select: none; -webkit-user-drag: none;">
                                 </div>
                             </div>
-                            <button type="button" id="downloadThumbnailBtn" class="success-btn" style="width: 100%; margin-top: 16px; padding: 12px;">
+                            <button type="button" id="downloadThumbnailBtn" class="success-btn" style="width: 100%; margin-top: 16px; padding: 12px; z-index: 10; position: relative;">
                                 💾 썸네일 다운로드
                             </button>
                         `;
                         
+                        // 이미지 클릭 이벤트 완전 차단
+                        const thumbnailImg = document.getElementById('thumbnailGeneratedImage');
+                        const thumbnailWrapper = document.getElementById('thumbnailImageWrapper');
+                        if (thumbnailImg) {
+                            thumbnailImg.addEventListener('click', function(e) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                e.stopImmediatePropagation();
+                                return false;
+                            }, true);  // capture phase에서 차단
+                            
+                            thumbnailImg.addEventListener('mousedown', function(e) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                return false;
+                            }, true);
+                        }
+                        if (thumbnailWrapper) {
+                            thumbnailWrapper.addEventListener('click', function(e) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                return false;
+                            }, true);
+                        }
+                        
                         // 다운로드 버튼 이벤트 (Blob 사용 - 화면 전환 없이 다운로드만)
                         const downloadBtn = document.getElementById('downloadThumbnailBtn');
                         if (downloadBtn) {
-                            downloadBtn.addEventListener('click', async function(e) {
+                            // 기존 이벤트 리스너 제거 후 새로 추가
+                            downloadBtn.onclick = async function(e) {
                                 e.preventDefault();
                                 e.stopPropagation();
+                                e.stopImmediatePropagation();
                                 
                                 try {
                                     // base64를 Blob으로 변환
@@ -3385,7 +3412,8 @@
                                     console.error('다운로드 오류:', err);
                                     alert('다운로드에 실패했습니다. 다시 시도해주세요.');
                                 }
-                            });
+                                return false;
+                            };
                         }
                         
                         thumbnailImageResult.style.display = 'block';
