@@ -145,14 +145,17 @@ def reload_api_keys() -> None:
     if GEMINI_API_KEY:
         try:
             # import가 실패했을 수 있으므로 다시 시도
-            if genai is None:
-                try:
+            # genai가 None이거나 GEMINI_AVAILABLE이 False인 경우 재import 시도
+            try:
+                # genai 모듈이 있는지 확인 (전역 변수로 선언되어 있지 않을 수 있음)
+                if 'genai' not in globals() or globals().get('genai') is None:
                     from google import genai
                     print(f"[API 키 로드] google.genai 재import 성공")
-                except ImportError as e:
-                    print(f"[API 키 로드] google.genai import 실패: {e}")
-                    print(f"[API 키 로드] pip install google-genai를 실행해주세요.")
-                    return
+            except (ImportError, NameError) as e:
+                print(f"[API 키 로드] google.genai import 실패: {e}")
+                print(f"[API 키 로드] pip install google-genai를 실행해주세요.")
+                genai_client = None
+                return
             
             # 새로운 라이브러리: Client 객체 생성
             genai_client = genai.Client(api_key=GEMINI_API_KEY)
@@ -4390,23 +4393,59 @@ def api_generate_final_script():
                         # 간단한 휴리스틱: 검수 대본의 문장 수와 생성된 번역 수 비교
                         if not needs_continuation:
                             import re
-                            # 검수 대본의 문장 수 추정 (한국어 문장 종결어미와 마침표로 분리)
-                            # 한국어는 마침표만으로는 부정확하므로, 실제 의미 단위로 분리
-                            draft_sentences = re.split(r'[.!?。！？]\s+', chunk_content)
-                            draft_sentences = [s.strip() for s in draft_sentences if s.strip() and len(s.strip()) > 5]  # 너무 짧은 것은 제외
                             
-                            # 생성된 번역 수 추정
-                            generated_translations = re.findall(r'\[한국어 번역\]', ''.join(chunk_responses))
+                            # Gemini가 완료 메시지를 보냈는지 확인 (무한 루프 방지)
+                            completion_keywords = [
+                                "모든 대본을 처리했습니다",
+                                "모든 대본을 성공적으로 처리",
+                                "더 이상 처리할 남은 문장이 없습니다",
+                                "더 이상 이어서 처리할 남은 문장이 없습니다",
+                                "모든 문장을 빠짐없이",
+                                "단 한 문장도 빠뜨리지 않고 모두",
+                                "처리 완료했습니다",
+                                "완료했습니다"
+                            ]
                             
-                            # 문장 수 비교 (더 관대한 기준 사용)
-                            if len(generated_translations) > 0 and len(draft_sentences) > 0:
-                                completion_ratio = len(generated_translations) / len(draft_sentences)
-                                # 70% 이상이면 충분하다고 간주 (한 문장이 여러 번역으로 나뉠 수 있음)
-                                if completion_ratio < 0.7:
-                                    needs_continuation = True
-                                    print(f"[최종 대본 생성] 문장 수 불일치 (검수: {len(draft_sentences)}개, 생성: {len(generated_translations)}개, 비율: {completion_ratio:.2%}), 계속 요청 필요")
+                            last_response_lower = chunk_response.lower()
+                            has_completion_message = any(keyword in last_response_lower for keyword in [kw.lower() for kw in completion_keywords])
+                            
+                            if has_completion_message:
+                                # 완료 메시지가 있지만 문장 수를 확인
+                                draft_sentences = re.split(r'[.!?。！？]\s+', chunk_content)
+                                draft_sentences = [s.strip() for s in draft_sentences if s.strip() and len(s.strip()) > 5]
+                                generated_translations = re.findall(r'\[한국어 번역\]', ''.join(chunk_responses))
+                                
+                                if len(generated_translations) > 0 and len(draft_sentences) > 0:
+                                    completion_ratio = len(generated_translations) / len(draft_sentences)
+                                    # 완료 메시지가 있고 50% 이상이면 충분하다고 간주 (무한 루프 방지)
+                                    if completion_ratio >= 0.5:
+                                        print(f"[최종 대본 생성] 완료 메시지 감지 및 문장 수 충분 (검수: {len(draft_sentences)}개, 생성: {len(generated_translations)}개, 비율: {completion_ratio:.2%}), 완료로 간주")
+                                        needs_continuation = False
+                                    else:
+                                        # 완료 메시지가 있지만 문장 수가 너무 부족하면 경고 후 계속
+                                        print(f"[최종 대본 생성] 완료 메시지 있으나 문장 수 부족 (검수: {len(draft_sentences)}개, 생성: {len(generated_translations)}개, 비율: {completion_ratio:.2%}), 계속 시도")
+                                        # 하지만 연속 요청이 너무 많으면 중단
+                                        if continuation_count >= 3:
+                                            print(f"[최종 대본 생성] 완료 메시지 있으나 문장 수 부족, 연속 요청 {continuation_count}회 도달로 중단")
+                                            needs_continuation = False
                                 else:
-                                    print(f"[최종 대본 생성] 문장 수 충분 (검수: {len(draft_sentences)}개, 생성: {len(generated_translations)}개, 비율: {completion_ratio:.2%}), 완료로 간주")
+                                    # 문장 수를 계산할 수 없으면 완료 메시지를 신뢰
+                                    print(f"[최종 대본 생성] 완료 메시지 감지, 문장 수 계산 불가, 완료로 간주")
+                                    needs_continuation = False
+                            else:
+                                # 완료 메시지가 없으면 기존 로직대로 문장 수 확인
+                                draft_sentences = re.split(r'[.!?。！？]\s+', chunk_content)
+                                draft_sentences = [s.strip() for s in draft_sentences if s.strip() and len(s.strip()) > 5]
+                                generated_translations = re.findall(r'\[한국어 번역\]', ''.join(chunk_responses))
+                                
+                                if len(generated_translations) > 0 and len(draft_sentences) > 0:
+                                    completion_ratio = len(generated_translations) / len(draft_sentences)
+                                    # 70% 이상이면 충분하다고 간주
+                                    if completion_ratio < 0.7:
+                                        needs_continuation = True
+                                        print(f"[최종 대본 생성] 문장 수 불일치 (검수: {len(draft_sentences)}개, 생성: {len(generated_translations)}개, 비율: {completion_ratio:.2%}), 계속 요청 필요")
+                                    else:
+                                        print(f"[최종 대본 생성] 문장 수 충분 (검수: {len(draft_sentences)}개, 생성: {len(generated_translations)}개, 비율: {completion_ratio:.2%}), 완료로 간주")
                             
                             # 연속된 같은 응답이 나오면 중단 (무한 루프 방지)
                             if continuation_count >= 2:
@@ -4414,6 +4453,11 @@ def api_generate_final_script():
                                 if len(last_responses) == 2 and last_responses[0] == last_responses[1]:
                                     print(f"[최종 대본 생성] 연속된 같은 응답 감지, 무한 루프 방지를 위해 중단")
                                     needs_continuation = False
+                            
+                            # 최대 연속 요청 횟수 체크 (추가 안전장치)
+                            if continuation_count >= 5:
+                                print(f"[최종 대본 생성] 최대 연속 요청 횟수(5회) 도달, 무한 루프 방지를 위해 중단")
+                                needs_continuation = False
                         
                         if not needs_continuation:
                             # 완료
