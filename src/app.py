@@ -6088,8 +6088,14 @@ def api_generate_thumbnail_image():
             if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
                 for part in candidate.content.parts:
                     if hasattr(part, 'inline_data'):
-                        # 이미지 데이터를 base64로 반환
-                        image_base64 = part.inline_data.data
+                        # 이미지 데이터를 base64 문자열로 변환
+                        image_data = part.inline_data.data
+                        # bytes 타입이면 base64로 인코딩
+                        if isinstance(image_data, bytes):
+                            image_base64 = base64.b64encode(image_data).decode('utf-8')
+                        else:
+                            # 이미 문자열이면 그대로 사용
+                            image_base64 = image_data
                         return jsonify({
                             "image": image_base64,
                             "mime_type": part.inline_data.mime_type or "image/png"
