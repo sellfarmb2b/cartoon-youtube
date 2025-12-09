@@ -2341,14 +2341,13 @@ def create_video(
             progress_cb("자막 파일 생성에 실패했습니다.")
         return False
 
-    # 메모리 효율적인 방식: 각 씬을 개별 비디오로 생성한 후 concat demuxer로 합침
     scene_video_files = []
     temp_scene_folder = os.path.join(assets_folder, "temp_scenes")
     os.makedirs(temp_scene_folder, exist_ok=True)
     
-    print(f"[create_video] 총 {len(scene_data_with_timestamps)}개 씬을 개별 비디오로 생성 중...")
-    
-    # 각 씬을 개별 비디오로 생성
+    print(f"[create_video] 총 {len(scene_data_with_timestamps)}개 씬 처리 시작")
+
+    # 2. 개별 씬 렌더링 (가장 중요한 수정 부분)
     for idx, scene in enumerate(scene_data_with_timestamps, 1):
         scene_id = scene.get('scene_id')
         image_path = scene.get("image_file")
