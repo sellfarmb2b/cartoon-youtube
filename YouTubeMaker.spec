@@ -3,11 +3,12 @@ from PyInstaller.utils.hooks import collect_all
 
 datas = [('src/templates', 'src/templates'), ('src/static', 'src/static'), ('bin/mac/ffmpeg', 'bin/mac')]
 binaries = []
-hiddenimports = ['requests', 'ffmpeg', 'PIL', 'PIL.Image', 'PIL.ImageOps', 'mutagen', 'mutagen.mp3', 'elevenlabs', 'elevenlabs.client', 'replicate', 'openai', 'google', 'google.generativeai', 'google.api_core', 'google.api_core.gapic_v1', 'google.api_core.retry', 'pywebview', 'appdirs', 'webbrowser', 'socket', 'threading', 'concurrent.futures', 'uuid', 'pyexpat', 'xml.parsers.expat', 'xml.parsers', 'xml']
+hiddenimports = ['requests', 'ffmpeg', 'PIL', 'PIL.Image', 'PIL.ImageOps', 'mutagen', 'mutagen.mp3', 'elevenlabs', 'elevenlabs.client', 'replicate', 'openai', 'pywebview', 'appdirs', 'webbrowser', 'socket', 'threading', 'concurrent.futures', 'uuid', 'pyexpat', 'xml.parsers.expat', 'xml.parsers', 'xml', 'google', 'google.generativeai', 'google.api_core', 'google.api_core.gapic_v1', 'google.api_core.retry']
 tmp_ret = collect_all('replicate')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-tmp_ret = collect_all('google.generativeai')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+# google-generativeai 패키지 수집
+tmp_ret_genai = collect_all('google.generativeai')
+datas += tmp_ret_genai[0]; binaries += tmp_ret_genai[1]; hiddenimports += tmp_ret_genai[2]
 
 
 a = Analysis(

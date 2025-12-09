@@ -3811,8 +3811,8 @@ def api_generate_draft_script():
             try:
                 import google.generativeai as genai_module
                 print(f"[검수 대본 생성] google.generativeai 재import 성공")
-                # API 키 설정
-                genai_module.configure(api_key=GEMINI_API_KEY)
+                # API 키 설정 (REST 모드로 안정성 확보)
+                genai_module.configure(api_key=GEMINI_API_KEY, transport='rest')
             except ImportError as e:
                 error_msg = f"google-generativeai 패키지가 설치되지 않았습니다. pip install google-generativeai를 실행해주세요. ({e})"
                 print(f"[검수 대본 생성] {error_msg}")
@@ -4006,8 +4006,8 @@ def api_generate_final_script():
             try:
                 import google.generativeai as genai_module
                 print(f"[최종 대본 생성] google.generativeai 재import 성공")
-                # API 키 설정
-                genai_module.configure(api_key=GEMINI_API_KEY)
+                # API 키 설정 (REST 모드로 안정성 확보)
+                genai_module.configure(api_key=GEMINI_API_KEY, transport='rest')
             except ImportError as e:
                 error_msg = f"google-generativeai 패키지가 설치되지 않았습니다. pip install google-generativeai를 실행해주세요. ({e})"
                 print(f"[최종 대본 생성] {error_msg}")
