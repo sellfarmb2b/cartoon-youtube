@@ -3331,10 +3331,10 @@
                             </button>
                         `;
                         
-                        // 다운로드 버튼 이벤트 (Blob 사용)
+                        // 다운로드 버튼 이벤트 (Blob 사용 - 화면 전환 없이 다운로드만)
                         const downloadBtn = document.getElementById('downloadThumbnailBtn');
                         if (downloadBtn) {
-                            downloadBtn.addEventListener('click', function(e) {
+                            downloadBtn.addEventListener('click', async function(e) {
                                 e.preventDefault();
                                 e.stopPropagation();
                                 
@@ -3353,34 +3353,37 @@
                                     const extension = mimeType.includes('jpeg') || mimeType.includes('jpg') ? 'jpg' : 'png';
                                     const filename = `thumbnail_${Date.now()}.${extension}`;
                                     
-                                    // Blob URL 생성 및 다운로드 (이미지 열림 방지)
-                                    const url = URL.createObjectURL(blob);
+                                    // Blob URL 생성
+                                    const objectUrl = URL.createObjectURL(blob);
+                                    
+                                    // 가상의 다운로드 링크 생성
                                     const link = document.createElement('a');
-                                    link.href = url;
-                                    link.setAttribute('download', filename);  // 명시적으로 download 속성 설정
-                                    link.setAttribute('target', '_self');  // 새 탭 열림 방지
+                                    link.href = objectUrl;
+                                    link.download = filename;  // 다운로드 속성 명시
                                     link.style.display = 'none';
-                                    link.style.visibility = 'hidden';
+                                    link.style.position = 'absolute';
+                                    link.style.left = '-9999px';
+                                    
+                                    // DOM에 추가
                                     document.body.appendChild(link);
                                     
-                                    // 강제로 다운로드 트리거
-                                    if (typeof link.download !== 'undefined') {
-                                        link.click();
-                                    } else {
-                                        // download 속성을 지원하지 않는 브라우저 대비
-                                        window.location.href = url;
-                                    }
+                                    // 다운로드 실행
+                                    link.click();
                                     
-                                    // 약간의 지연 후 정리 (다운로드가 시작되도록)
+                                    // 다운로드가 시작되도록 약간의 지연 후 정리
                                     setTimeout(() => {
                                         if (document.body.contains(link)) {
                                             document.body.removeChild(link);
                                         }
-                                        URL.revokeObjectURL(url);
-                                    }, 200);
+                                        URL.revokeObjectURL(objectUrl);
+                                        
+                                        // 성공 팝업 표시
+                                        alert('다운로드가 성공적으로 완료되었습니다!');
+                                    }, 100);
+                                    
                                 } catch (err) {
                                     console.error('다운로드 오류:', err);
-                                    alert('다운로드 중 오류가 발생했습니다: ' + err.message);
+                                    alert('다운로드에 실패했습니다. 다시 시도해주세요.');
                                 }
                             });
                         }
