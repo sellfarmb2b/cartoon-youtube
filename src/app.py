@@ -6125,6 +6125,50 @@ Text to display: "{copy_text}"
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/download_thumbnail", methods=["POST"])
+def api_download_thumbnail():
+    """썸네일 이미지 다운로드 API (서버를 통해 직접 다운로드)"""
+    try:
+        data = request.get_json(silent=True) or {}
+        image_base64 = data.get("image")
+        mime_type = data.get("mime_type") or "image/png"
+        
+        if not image_base64:
+            return jsonify({"error": "이미지 데이터가 없습니다."}), 400
+        
+        # base64 디코딩
+        import base64
+        from io import BytesIO
+        
+        try:
+            image_data = base64.b64decode(image_base64)
+        except Exception as decode_err:
+            return jsonify({"error": f"이미지 디코딩 실패: {decode_err}"}), 400
+        
+        # 파일 확장자 결정
+        extension = "png"
+        if "jpeg" in mime_type or "jpg" in mime_type:
+            extension = "jpg"
+        
+        # BytesIO로 파일 객체 생성
+        file_obj = BytesIO(image_data)
+        filename = f"thumbnail_{int(time.time())}.{extension}"
+        
+        # send_file로 직접 다운로드
+        return send_file(
+            file_obj,
+            mimetype=mime_type,
+            as_attachment=True,
+            download_name=filename
+        )
+        
+    except Exception as e:
+        print(f"[썸네일 다운로드 오류] {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
 if __name__ == "__main__":
     selected_port = find_available_port()
     flask_thread = threading.Thread(target=run_flask_server, args=(selected_port,), daemon=True)

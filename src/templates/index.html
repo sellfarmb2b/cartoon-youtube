@@ -3356,61 +3356,57 @@
                             }, true);
                         }
                         
-                        // 다운로드 버튼 이벤트 (Blob 사용 - 화면 전환 없이 다운로드만)
+                        // 다운로드 버튼 이벤트 (서버를 통해 다운로드)
                         const downloadBtn = document.getElementById('downloadThumbnailBtn');
                         if (downloadBtn) {
-                            // 기존 이벤트 리스너 제거 후 새로 추가
                             downloadBtn.onclick = async function(e) {
                                 e.preventDefault();
                                 e.stopPropagation();
                                 e.stopImmediatePropagation();
                                 
                                 try {
-                                    // base64를 Blob으로 변환
-                                    const byteCharacters = atob(data.image);
-                                    const byteNumbers = new Array(byteCharacters.length);
-                                    for (let i = 0; i < byteCharacters.length; i++) {
-                                        byteNumbers[i] = byteCharacters.charCodeAt(i);
+                                    // 서버를 통해 다운로드 (이미지가 열리지 않도록)
+                                    const downloadResponse = await fetch('/api/download_thumbnail', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                            image: data.image,
+                                            mime_type: data.mime_type
+                                        })
+                                    });
+                                    
+                                    if (!downloadResponse.ok) {
+                                        const err = await downloadResponse.json();
+                                        throw new Error(err.error || "다운로드 실패");
                                     }
-                                    const byteArray = new Uint8Array(byteNumbers);
-                                    const blob = new Blob([byteArray], { type: data.mime_type || 'image/png' });
+                                    
+                                    // 응답을 Blob으로 변환
+                                    const blob = await downloadResponse.blob();
                                     
                                     // 파일 확장자 결정
                                     const mimeType = data.mime_type || 'image/png';
                                     const extension = mimeType.includes('jpeg') || mimeType.includes('jpg') ? 'jpg' : 'png';
                                     const filename = `thumbnail_${Date.now()}.${extension}`;
                                     
-                                    // Blob URL 생성
-                                    const objectUrl = URL.createObjectURL(blob);
-                                    
-                                    // 가상의 다운로드 링크 생성
+                                    // Blob URL 생성 및 다운로드
+                                    const url = URL.createObjectURL(blob);
                                     const link = document.createElement('a');
-                                    link.href = objectUrl;
-                                    link.download = filename;  // 다운로드 속성 명시
+                                    link.href = url;
+                                    link.download = filename;
                                     link.style.display = 'none';
-                                    link.style.position = 'absolute';
-                                    link.style.left = '-9999px';
-                                    
-                                    // DOM에 추가
                                     document.body.appendChild(link);
-                                    
-                                    // 다운로드 실행
                                     link.click();
                                     
-                                    // 다운로드가 시작되도록 약간의 지연 후 정리
+                                    // 정리
                                     setTimeout(() => {
-                                        if (document.body.contains(link)) {
-                                            document.body.removeChild(link);
-                                        }
-                                        URL.revokeObjectURL(objectUrl);
-                                        
-                                        // 성공 팝업 표시
+                                        document.body.removeChild(link);
+                                        URL.revokeObjectURL(url);
                                         alert('다운로드가 성공적으로 완료되었습니다!');
                                     }, 100);
                                     
                                 } catch (err) {
                                     console.error('다운로드 오류:', err);
-                                    alert('다운로드에 실패했습니다. 다시 시도해주세요.');
+                                    alert('다운로드에 실패했습니다: ' + err.message);
                                 }
                                 return false;
                             };
