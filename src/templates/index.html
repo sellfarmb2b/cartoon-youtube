@@ -2396,11 +2396,18 @@
                 showAILoading('최종 대본 생성 중...', 'AI가 한국어 번역과 영어 이미지 프롬프트를 생성하고 있습니다');
 
                 try {
+                    console.log('[최종 대본 생성] 요청 시작...');
                     const response = await fetch('/api/generate_final_script', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ draft_script: draftScript }),
                         signal: AbortSignal.timeout(1200000) // 20분 타임아웃 (긴 대본 처리용)
+                    });
+
+                    console.log('[최종 대본 생성] 응답 받음:', response.status, response.statusText);
+                    console.log('[최종 대본 생성] 응답 헤더:', {
+                        'content-type': response.headers.get('content-type'),
+                        'content-length': response.headers.get('content-length')
                     });
 
                     if (!response.ok) {
@@ -2414,11 +2421,24 @@
                         throw new Error(errorMessage);
                     }
 
+                    console.log('[최종 대본 생성] 응답 본문 읽기 시작...');
                     let data;
                     try {
-                        data = await response.json();
+                        // 응답 본문을 텍스트로 먼저 읽어서 확인
+                        const responseText = await response.text();
+                        console.log('[최종 대본 생성] 응답 본문 길이:', responseText.length, '자');
+                        console.log('[최종 대본 생성] 응답 본문 처음 500자:', responseText.substring(0, 500));
+                        
+                        // JSON 파싱
+                        data = JSON.parse(responseText);
+                        console.log('[최종 대본 생성] JSON 파싱 성공');
                     } catch (parseError) {
                         console.error('[최종 대본 생성] JSON 파싱 오류:', parseError);
+                        console.error('[최종 대본 생성] 파싱 오류 상세:', {
+                            name: parseError.name,
+                            message: parseError.message,
+                            stack: parseError.stack
+                        });
                         throw new Error('서버 응답을 파싱할 수 없습니다. 응답이 너무 크거나 형식이 잘못되었습니다.');
                     }
 
