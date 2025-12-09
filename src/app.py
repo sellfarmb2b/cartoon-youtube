@@ -4629,6 +4629,10 @@ def api_generate_final_script():
         # 응답 크기 확인 및 최적화
         print(f"[최종 대본 생성] 응답 준비 중... (final_script: {len(final_script)}자, image_prompts: {len(image_prompts)}개, full_response: {len(full_response)}자)")
         
+        # 응답 크기 사전 체크 및 최적화
+        total_size_estimate = len(final_script) + sum(len(p) for p in image_prompts) + len(full_response)
+        print(f"[최종 대본 생성] 예상 응답 크기: 약 {total_size_estimate:,}자 ({total_size_estimate / 1024:.1f}KB)")
+        
         response_data = {
             "final_script": final_script,
             "image_prompts": image_prompts,  # 영어 이미지 프롬프트 리스트 추가
@@ -4643,11 +4647,48 @@ def api_generate_final_script():
         else:
             response_data["full_response"] = full_response
         
-        print(f"[최종 대본 생성] 응답 전송 시작...")
+        # 응답이 너무 크면 경고 및 최적화
+        if total_size_estimate > 500000:  # 500KB 이상
+            print(f"[최종 대본 생성] 경고: 응답이 매우 큼 ({total_size_estimate / 1024:.1f}KB), 전송에 시간이 걸릴 수 있습니다.")
+            # image_prompts가 너무 많으면 일부만 포함
+            if len(image_prompts) > 500:
+                print(f"[최종 대본 생성] image_prompts가 너무 많음 ({len(image_prompts)}개), 처음 500개만 포함")
+                response_data["image_prompts"] = image_prompts[:500]
+                response_data["image_prompts_truncated"] = True
+        
+        print(f"[최종 대본 생성] 응답 전송 시작... (데이터 직렬화 중)")
         try:
+            # jsonify 전에 데이터 검증
+            import sys
+            import json as json_module
+            test_json = json_module.dumps(response_data, ensure_ascii=False)
+            print(f"[최종 대본 생성] JSON 직렬화 성공 (크기: {len(test_json):,}자, {len(test_json) / 1024:.1f}KB)")
+            
             response = jsonify(response_data)
+            print(f"[최종 대본 생성] Flask jsonify 완료, 응답 반환 중...")
+            
+            # 응답 헤더 설정 (타임아웃 방지)
+            response.headers['Content-Type'] = 'application/json; charset=utf-8'
+            response.headers['Cache-Control'] = 'no-cache'
+            
             print(f"[최종 대본 생성] 응답 전송 완료")
             return response
+        except MemoryError as mem_error:
+            print(f"[최종 대본 생성] 메모리 부족 오류: {mem_error}")
+            import traceback
+            traceback.print_exc()
+            # 최소한의 응답이라도 반환
+            return jsonify({
+                "error": "응답이 너무 커서 메모리 부족이 발생했습니다. 대본을 더 작은 단위로 나누어 시도해주세요.",
+                "final_script": final_script[:5000] if final_script else "",
+                "image_prompts": image_prompts[:100] if image_prompts else [],
+                "partial": True,
+                "size_info": {
+                    "final_script_len": len(final_script),
+                    "image_prompts_count": len(image_prompts),
+                    "full_response_len": len(full_response)
+                }
+            }), 500
         except Exception as json_error:
             print(f"[최종 대본 생성] JSON 응답 생성 오류: {json_error}")
             import traceback
