@@ -4630,22 +4630,31 @@ def api_generate_final_script():
         print(f"[최종 대본 생성] 응답 준비 중... (final_script: {len(final_script)}자, image_prompts: {len(image_prompts)}개, full_response: {len(full_response)}자)")
         
         # 응답 크기 사전 체크 및 최적화
+        # webview/브라우저 엔진의 60초 타임아웃 문제 해결을 위한 최적화
         total_size_estimate = len(final_script) + sum(len(p) for p in image_prompts) + len(full_response)
         print(f"[최종 대본 생성] 예상 응답 크기: 약 {total_size_estimate:,}자 ({total_size_estimate / 1024:.1f}KB)")
         
+        # 타임아웃 방지를 위해 응답 크기 최적화
+        # full_response는 선택적으로만 포함 (너무 크면 제외)
         response_data = {
             "final_script": final_script,
             "image_prompts": image_prompts,  # 영어 이미지 프롬프트 리스트 추가
             "thumbnail_prompt": thumbnail_prompt
         }
         
-        # full_response가 너무 크면 (100KB 이상) 요약 버전만 포함
-        if len(full_response) > 100000:
-            print(f"[최종 대본 생성] 경고: full_response가 너무 큼 ({len(full_response)}자), 요약 버전만 포함")
-            response_data["full_response"] = full_response[:50000] + "\n\n[... 중간 생략 ...]\n\n" + full_response[-50000:]
+        # full_response 최적화: 타임아웃 방지를 위해 크기 제한
+        # webview/브라우저 엔진의 60초 타임아웃을 고려하여 응답 크기 최소화
+        # 30KB 이하만 포함하여 전체 응답 크기를 50KB 이하로 유지
+        if len(full_response) > 30000:
+            print(f"[최종 대본 생성] 경고: full_response가 너무 큼 ({len(full_response)}자), 요약 버전만 포함 (타임아웃 방지)")
+            response_data["full_response"] = full_response[:15000] + "\n\n[... 중간 생략 ...]\n\n" + full_response[-15000:]
             response_data["full_response_truncated"] = True
-        else:
+            response_data["full_response_note"] = f"전체 응답은 {len(full_response)}자였으나, 타임아웃 방지를 위해 요약 버전만 포함했습니다."
+        elif len(full_response) > 0:
             response_data["full_response"] = full_response
+        else:
+            # full_response가 없으면 포함하지 않음
+            pass
         
         # 응답이 너무 크면 경고 및 최적화
         if total_size_estimate > 500000:  # 500KB 이상
@@ -4664,13 +4673,19 @@ def api_generate_final_script():
             test_json = json_module.dumps(response_data, ensure_ascii=False)
             print(f"[최종 대본 생성] JSON 직렬화 성공 (크기: {len(test_json):,}자, {len(test_json) / 1024:.1f}KB)")
             
+            # 일반 jsonify 사용 (스트리밍은 webview에서 문제가 될 수 있음)
+            # 대신 응답 크기를 최적화하여 빠르게 전송
             response = jsonify(response_data)
-            print(f"[최종 대본 생성] Flask jsonify 완료, 응답 반환 중...")
             
-            # 응답 헤더 설정 (타임아웃 방지)
+            # 응답 헤더 설정 (타임아웃 방지 및 최적화)
             response.headers['Content-Type'] = 'application/json; charset=utf-8'
-            response.headers['Cache-Control'] = 'no-cache'
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+            response.headers['Connection'] = 'keep-alive'  # Keep-alive로 연결 유지
+            response.headers['X-Accel-Buffering'] = 'no'  # Nginx 버퍼링 비활성화 (있다면)
             
+            print(f"[최종 대본 생성] Flask 스트리밍 응답 생성 완료, 응답 반환 중...")
             print(f"[최종 대본 생성] 응답 전송 완료")
             return response
         except MemoryError as mem_error:
