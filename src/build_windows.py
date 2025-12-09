@@ -61,6 +61,10 @@ def build_windows():
         "--hidden-import=elevenlabs.client",
         "--hidden-import=replicate",
         "--hidden-import=openai",
+        "--hidden-import=google",
+        "--hidden-import=google.genai",
+        "--hidden-import=google.genai.types",
+        "--collect-all=google.genai",  # google-genai 패키지의 모든 서브모듈과 메타데이터 포함
         "--hidden-import=webbrowser",
         "--hidden-import=socket",
         "--hidden-import=threading",

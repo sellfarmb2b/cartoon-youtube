@@ -8,13 +8,13 @@ echo "=========================================="
 # 1. 필수 패키지 설치 확인
 echo ""
 echo "[1단계] 필수 패키지 설치 확인 중..."
-pip3 install google-generativeai pyinstaller
+pip3 install google-genai pyinstaller
 
 # 2. 패키지 설치 확인
 echo ""
 echo "[2단계] 패키지 설치 확인 중..."
-python3 -c "import google.generativeai; print('✅ google-generativeai 설치됨:', google.generativeai.__version__)" || {
-    echo "❌ google-generativeai 패키지 설치 실패"
+python3 -c "from google import genai; print('✅ google-genai 설치됨')" || {
+    echo "❌ google-genai 패키지 설치 실패"
     exit 1
 }
 

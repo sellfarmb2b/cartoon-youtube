@@ -28,9 +28,9 @@ try:
     import replicate
 except ImportError:
     replicate = None
-# Google Generative AI (Gemini) SDK
+# Google GenAI SDK (새로운 라이브러리)
 try:
-    import google.generativeai as genai
+    from google import genai
     GEMINI_AVAILABLE = True
 except ImportError:
     genai = None
@@ -115,10 +115,13 @@ def get_default_download_folder() -> str:
     return ""
 
 
+# 전역 Gemini Client (새로운 라이브러리 사용)
+genai_client = None
+
 def reload_api_keys() -> None:
     """Load API keys from the persistent config store."""
     global ELEVENLABS_API_KEY, REPLICATE_API_TOKEN, GEMINI_API_KEY
-    global genai  # [수정] 전역 변수 genai를 업데이트하기 위해 추가
+    global genai_client  # 새로운 라이브러리의 Client 객체
     
     settings = config_manager.get_all()
     ELEVENLABS_API_KEY = (
@@ -138,26 +141,27 @@ def reload_api_keys() -> None:
     print(f"[API 키 로드] Gemini API 키: {'설정됨' if GEMINI_API_KEY else '없음'} (길이: {len(GEMINI_API_KEY)})")
     print(f"[API 키 로드] settings에서 gemini_api_key: {settings.get('gemini_api_key', 'NOT_FOUND')[:20]}...")
     
-    # Gemini API 설정 (GEMINI_AVAILABLE이 False여도 다시 시도)
+    # Gemini API Client 초기화 (새로운 라이브러리 방식)
     if GEMINI_API_KEY:
         try:
             # import가 실패했을 수 있으므로 다시 시도
-            if genai is None:  # [수정] 전역 변수 genai 확인
+            if genai is None:
                 try:
-                    import google.generativeai as genai
-                    print(f"[API 키 로드] google.generativeai 재import 성공")
+                    from google import genai
+                    print(f"[API 키 로드] google.genai 재import 성공")
                 except ImportError as e:
-                    print(f"[API 키 로드] google.generativeai import 실패: {e}")
-                    print(f"[API 키 로드] pip install google-generativeai를 실행해주세요.")
+                    print(f"[API 키 로드] google.genai import 실패: {e}")
+                    print(f"[API 키 로드] pip install google-genai를 실행해주세요.")
                     return
             
-            # [중요 수정] transport='rest' 옵션 추가 (연결 안정성 확보)
-            genai.configure(api_key=GEMINI_API_KEY, transport='rest')
-            print(f"[API 키 로드] Gemini API 설정 완료 (REST 모드)")
+            # 새로운 라이브러리: Client 객체 생성
+            genai_client = genai.Client(api_key=GEMINI_API_KEY)
+            print(f"[API 키 로드] Gemini API Client 초기화 완료")
         except Exception as e:
-            print(f"[API 키 로드] Gemini API 설정 실패: {e}")
+            print(f"[API 키 로드] Gemini API Client 초기화 실패: {e}")
             import traceback
             traceback.print_exc()
+            genai_client = None
 
 
 reload_api_keys()
@@ -171,16 +175,16 @@ def refresh_service_flags() -> None:
     # GEMINI_AVAILABLE이 False인 경우 다시 확인
     if not GEMINI_AVAILABLE:
         try:
-            import google.generativeai as genai
+            from google import genai
             # import 성공하면 사용 가능
-            gemini_available = bool(GEMINI_API_KEY)
+            gemini_available = bool(GEMINI_API_KEY) and genai_client is not None
         except ImportError:
             gemini_available = False
     else:
-        gemini_available = bool(GEMINI_API_KEY) and GEMINI_AVAILABLE
+        gemini_available = bool(GEMINI_API_KEY) and GEMINI_AVAILABLE and genai_client is not None
     
     # 디버깅: 서비스 플래그 상태 확인
-    print(f"[서비스 플래그] GEMINI_AVAILABLE: {GEMINI_AVAILABLE}, GEMINI_API_KEY: {'있음' if GEMINI_API_KEY else '없음'}, gemini_available: {gemini_available}")
+    print(f"[서비스 플래그] GEMINI_AVAILABLE: {GEMINI_AVAILABLE}, GEMINI_API_KEY: {'있음' if GEMINI_API_KEY else '없음'}, genai_client: {'있음' if genai_client else '없음'}, gemini_available: {gemini_available}")
 
 
 refresh_service_flags()
@@ -391,17 +395,18 @@ def ensure_english_text(text: str) -> str:
     else:
         return text
 
-    if not gemini_available or not GEMINI_API_KEY:
+    if not gemini_available or not GEMINI_API_KEY or genai_client is None:
         return text
 
     try:
-        # 사용할 모델 선택 (Flash가 속도와 안정성 면에서 유리함)
-        target_model = 'gemini-1.5-flash'
-        model = genai.GenerativeModel(target_model)
+        # 새로운 라이브러리 방식
+        from google.genai import types
+        target_model = 'gemini-2.5-flash'  # 새로운 라이브러리는 2.5 모델 사용
         prompt = f"You are a translator. Translate the following text into fluent English.\n\n{text}"
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.types.GenerationConfig(
+        response = genai_client.models.generate_content(
+            model=target_model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
                 temperature=0.1,
                 max_output_tokens=200,
             )
@@ -870,12 +875,16 @@ def extract_scene_context(scene_text: str, mode: str = "animation") -> Dict[str,
         user_prompt = f"Extract context from this scene:\n\n{scene_text[:800]}"
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
         
-        # 사용할 모델 선택 (Flash가 속도와 안정성 면에서 유리함)
-        target_model = 'gemini-1.5-flash'
-        model = genai.GenerativeModel(target_model)
-        response = model.generate_content(
-            full_prompt,
-            generation_config=genai.types.GenerationConfig(
+        # 새로운 라이브러리 방식
+        from google.genai import types
+        if genai_client is None:
+            return {}
+        
+        target_model = 'gemini-2.5-flash'
+        response = genai_client.models.generate_content(
+            model=target_model,
+            contents=full_prompt,
+            config=types.GenerateContentConfig(
                 temperature=0.3,
                 max_output_tokens=400,
                 response_mime_type="application/json",
@@ -1096,20 +1105,24 @@ IMPORTANT: Ensure all JSON strings are properly escaped and closed. Avoid unesca
                 user_content += context_info
             user_content += "\n\n[ENGLISH IMAGE PROMPT]\nReturn output strictly as JSON object with proper escaping."
 
-            # Gemini API 호출
+            # Gemini API 호출 (새로운 라이브러리 방식)
             full_prompt = f"{system_content}\n\n{user_content}"
             
             # 사용할 모델 선택 (Flash가 속도와 안정성 면에서 유리함)
             # 3 Pro를 꼭 쓰고 싶으시면 아래 target_model을 'gemini-3-pro-preview'로 변경하세요.
-            target_model = 'gemini-1.5-flash'
+            target_model = 'gemini-2.5-flash'
             # target_model = 'gemini-3-pro-preview'
             
-            model = genai.GenerativeModel(target_model)
+            if genai_client is None:
+                raise RuntimeError("Gemini API Client가 초기화되지 않았습니다.")
+            
+            from google.genai import types
             
             try:
-                response = model.generate_content(
-                    full_prompt,
-                    generation_config=genai.types.GenerationConfig(
+                response = genai_client.models.generate_content(
+                    model=target_model,
+                    contents=full_prompt,
+                    config=types.GenerateContentConfig(
                         temperature=temperature,
                         max_output_tokens=2000,
                         response_mime_type="application/json",
@@ -1120,10 +1133,6 @@ IMPORTANT: Ensure all JSON strings are properly escaped and closed. Avoid unesca
                 print(f"[Gemini API 오류] 모델: {target_model}, 에러: {e}")
                 if attempt < max_retries - 1:
                     import time
-                    time.sleep(2 ** attempt)
-                    continue
-                raise RuntimeError(f"Gemini API request failed: {str(e)}")
-                if attempt < max_retries - 1:
                     time.sleep(2 ** attempt)
                     continue
                 raise RuntimeError(f"Gemini API request failed: {str(e)}")
@@ -1242,13 +1251,17 @@ def generate_semantic_segments(text: str, max_segments: int = 4) -> List[str]:
         )
         full_prompt = f"{system_prompt}\n\n{text}"
         
-        # 사용할 모델 선택 (Flash가 속도와 안정성 면에서 유리함)
-        target_model = 'gemini-1.5-flash'
-        model = genai.GenerativeModel(target_model)
+        # 새로운 라이브러리 방식
+        if genai_client is None:
+            return fallback
+        
+        from google.genai import types
+        target_model = 'gemini-2.5-flash'
         try:
-            response = model.generate_content(
-                full_prompt,
-                generation_config=genai.types.GenerationConfig(
+            response = genai_client.models.generate_content(
+                model=target_model,
+                contents=full_prompt,
+                config=types.GenerateContentConfig(
                     temperature=0.2,
                     max_output_tokens=600,
                     response_mime_type="application/json",
@@ -3805,18 +3818,20 @@ def api_generate_draft_script():
             print(f"[검수 대본 생성] {error_msg}")
             return jsonify({"error": "Gemini API 키가 설정되지 않았습니다. 설정에서 Gemini API 키를 입력해주세요."}), 500
         
-        # 패키지가 없으면 다시 import 시도
-        genai_module = None
-        if not GEMINI_AVAILABLE or genai is None:
+        # 새로운 라이브러리: genai_client 확인 및 재초기화
+        if genai_client is None:
             try:
-                import google.generativeai as genai_module
-                print(f"[검수 대본 생성] google.generativeai 재import 성공")
-                # API 키 설정 (REST 모드로 안정성 확보)
-                genai_module.configure(api_key=GEMINI_API_KEY, transport='rest')
+                from google import genai
+                genai_client = genai.Client(api_key=GEMINI_API_KEY)
+                print(f"[검수 대본 생성] google.genai Client 재초기화 성공")
             except ImportError as e:
-                error_msg = f"google-generativeai 패키지가 설치되지 않았습니다. pip install google-generativeai를 실행해주세요. ({e})"
+                error_msg = f"google-genai 패키지가 설치되지 않았습니다. pip install google-genai를 실행해주세요. ({e})"
                 print(f"[검수 대본 생성] {error_msg}")
-                return jsonify({"error": "google-generativeai 패키지가 설치되지 않았습니다. 패키지를 설치한 후 다시 시도해주세요."}), 500
+                return jsonify({"error": "google-genai 패키지가 설치되지 않았습니다. 패키지를 설치한 후 다시 시도해주세요."}), 500
+            except Exception as e:
+                error_msg = f"Gemini API Client 초기화 실패: {e}"
+                print(f"[검수 대본 생성] {error_msg}")
+                return jsonify({"error": f"Gemini API 초기화 실패: {str(e)}"}), 500
         
         # 검수 대본 프롬프트
         system_prompt = """당신은 '지식 스토리텔러' 전문 유튜브 대본 작가입니다.
@@ -3876,17 +3891,19 @@ D. 아웃트로: [최종 요약 및 CTA]
         
         try:
             full_prompt = f"{system_prompt}\n\n{user_prompt}"
-            # genai 모듈 사용 (전역 또는 재import된 모듈)
-            current_genai = genai_module if genai_module is not None else (genai if GEMINI_AVAILABLE and genai is not None else None)
-            if current_genai is None:
-                return jsonify({"error": "Gemini API 모듈을 로드할 수 없습니다."}), 500
-            # 사용할 모델 선택 (Flash가 속도와 안정성 면에서 유리함)
-            target_model = 'gemini-1.5-flash'
+            
+            # 새로운 라이브러리 방식
+            if genai_client is None:
+                return jsonify({"error": "Gemini API Client가 초기화되지 않았습니다."}), 500
+            
+            from google.genai import types
+            target_model = 'gemini-2.5-flash'
             # target_model = 'gemini-3-pro-preview'  # 3 Pro를 사용하려면 주석 해제
-            model = current_genai.GenerativeModel(target_model)
-            response = model.generate_content(
-                full_prompt,
-                generation_config=genai.types.GenerationConfig(
+            
+            response = genai_client.models.generate_content(
+                model=target_model,
+                contents=full_prompt,
+                config=types.GenerateContentConfig(
                     temperature=0.7,
                     max_output_tokens=8000,
                 )
@@ -3894,8 +3911,8 @@ D. 아웃트로: [최종 요약 및 CTA]
             
             script = response.text.strip()
             
-            # Gemini는 finish_reason이 다르게 제공됨
-            # safety_ratings 확인
+            # 새로운 라이브러리는 safety_ratings를 다르게 제공할 수 있음
+            # response 객체의 속성 확인
             if hasattr(response, 'prompt_feedback') and response.prompt_feedback:
                 if hasattr(response.prompt_feedback, 'block_reason') and response.prompt_feedback.block_reason:
                     return jsonify({
@@ -4000,18 +4017,20 @@ def api_generate_final_script():
             print(f"[최종 대본 생성] {error_msg}")
             return jsonify({"error": "Gemini API 키가 설정되지 않았습니다. 설정에서 Gemini API 키를 입력해주세요."}), 500
         
-        # 패키지가 없으면 다시 import 시도
-        genai_module = None
-        if not GEMINI_AVAILABLE or genai is None:
+        # 새로운 라이브러리: genai_client 확인 및 재초기화
+        if genai_client is None:
             try:
-                import google.generativeai as genai_module
-                print(f"[최종 대본 생성] google.generativeai 재import 성공")
-                # API 키 설정 (REST 모드로 안정성 확보)
-                genai_module.configure(api_key=GEMINI_API_KEY, transport='rest')
+                from google import genai
+                genai_client = genai.Client(api_key=GEMINI_API_KEY)
+                print(f"[최종 대본 생성] google.genai Client 재초기화 성공")
             except ImportError as e:
-                error_msg = f"google-generativeai 패키지가 설치되지 않았습니다. pip install google-generativeai를 실행해주세요. ({e})"
+                error_msg = f"google-genai 패키지가 설치되지 않았습니다. pip install google-genai를 실행해주세요. ({e})"
                 print(f"[최종 대본 생성] {error_msg}")
-                return jsonify({"error": "google-generativeai 패키지가 설치되지 않았습니다. 패키지를 설치한 후 다시 시도해주세요."}), 500
+                return jsonify({"error": "google-genai 패키지가 설치되지 않았습니다. 패키지를 설치한 후 다시 시도해주세요."}), 500
+            except Exception as e:
+                error_msg = f"Gemini API Client 초기화 실패: {e}"
+                print(f"[최종 대본 생성] {error_msg}")
+                return jsonify({"error": f"Gemini API 초기화 실패: {str(e)}"}), 500
         
         # 챕터별로 분리
         chapters = split_draft_script_into_chapters(draft_script)
@@ -4211,14 +4230,18 @@ def api_generate_final_script():
                                 full_prompt_parts.append(f"[ASSISTANT]\n{msg['content']}\n")
                         full_prompt = "\n".join(full_prompt_parts)
                         
-                        # 사용할 모델 선택 (Flash가 속도와 안정성 면에서 유리함)
-                        target_model = 'gemini-1.5-flash'
-                        model = genai.GenerativeModel(target_model)
+                        # 새로운 라이브러리 방식
+                        if genai_client is None:
+                            return jsonify({"error": "Gemini API Client가 초기화되지 않았습니다."}), 500
+                        
+                        from google.genai import types
+                        target_model = 'gemini-2.5-flash'
                         chunk_response = None
                         try:
-                            response = model.generate_content(
-                                full_prompt,
-                                generation_config=genai.types.GenerationConfig(
+                            response = genai_client.models.generate_content(
+                                model=target_model,
+                                contents=full_prompt,
+                                config=types.GenerateContentConfig(
                                     temperature=0.7,
                                     max_output_tokens=16000,
                                 )
@@ -4230,7 +4253,7 @@ def api_generate_final_script():
                             
                             chunk_response = response.text.strip() if response.text else ""
                             
-                            # Gemini는 safety_ratings로 필터링 확인
+                            # 새로운 라이브러리는 safety_ratings를 다르게 제공할 수 있음
                             if hasattr(response, 'prompt_feedback') and response.prompt_feedback:
                                 if hasattr(response.prompt_feedback, 'block_reason') and response.prompt_feedback.block_reason:
                                     return jsonify({

@@ -23,21 +23,21 @@ def build_mac():
         print("PyInstaller가 설치되지 않았습니다. 설치 중...")
         subprocess.check_call([sys.executable, "-m", "pip", "install", "pyinstaller"])
     
-    # google-generativeai 패키지 설치 확인 (Gemini API 사용을 위해 필수)
+    # google-genai 패키지 설치 확인 (Gemini API 사용을 위해 필수)
     try:
-        import google.generativeai
-        print(f"✅ google-generativeai 설치 확인됨 (버전: {google.generativeai.__version__ if hasattr(google.generativeai, '__version__') else '확인 불가'})")
+        from google import genai
+        print(f"✅ google-genai 설치 확인됨")
     except ImportError:
-        print("⚠️  google-generativeai 패키지가 설치되지 않았습니다.")
+        print("⚠️  google-genai 패키지가 설치되지 않았습니다.")
         print("   Gemini API를 사용하려면 이 패키지가 필요합니다.")
         response = input("   지금 설치하시겠습니까? (y/n): ").strip().lower()
         if response == 'y':
-            print("   google-generativeai 설치 중...")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "google-generativeai"])
+            print("   google-genai 설치 중...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "google-genai"])
             print("   ✅ 설치 완료")
         else:
-            print("   ⚠️  google-generativeai 없이 빌드하면 Gemini API 기능이 작동하지 않습니다.")
-            print("   나중에 'pip install google-generativeai'를 실행하여 설치하세요.")
+            print("   ⚠️  google-genai 없이 빌드하면 Gemini API 기능이 작동하지 않습니다.")
+            print("   나중에 'pip install google-genai'를 실행하여 설치하세요.")
     
     # 기존 빌드 폴더 정리
     if os.path.exists("build"):
@@ -111,8 +111,9 @@ def build_mac():
             "--hidden-import=replicate",
             "--collect-all=replicate",  # replicate 패키지의 모든 서브모듈과 메타데이터 포함
             "--hidden-import=google",
-            "--hidden-import=google.generativeai",
-            "--collect-all=google.generativeai",  # google-generativeai 패키지의 모든 서브모듈과 메타데이터 포함
+            "--hidden-import=google.genai",
+            "--hidden-import=google.genai.types",
+            "--collect-all=google.genai",  # google-genai 패키지의 모든 서브모듈과 메타데이터 포함
             "--hidden-import=openai",
             "--hidden-import=pywebview",
             "--hidden-import=appdirs",
