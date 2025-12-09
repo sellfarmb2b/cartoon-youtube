@@ -3322,8 +3322,8 @@
                         // 이미지 표시 (이미지만 표시)
                         thumbnailImageContainer.innerHTML = `
                             <div style="text-align: center; margin-bottom: 20px;">
-                                <div id="thumbnailImageWrapper" style="background: #f9fafb; border: 2px solid #e5e7eb; border-radius: 12px; padding: 20px; display: inline-block; pointer-events: none;">
-                                    <img id="thumbnailGeneratedImage" src="data:${data.mime_type || 'image/png'};base64,${data.image}" alt="썸네일" style="max-width: 100%; max-height: 600px; border-radius: 8px; pointer-events: none; user-select: none; -webkit-user-drag: none;">
+                                <div id="thumbnailImageWrapper" style="background: #f9fafb; border: 2px solid #e5e7eb; border-radius: 12px; padding: 20px; display: inline-block;">
+                                    <img id="thumbnailGeneratedImage" src="data:${data.mime_type || 'image/png'};base64,${data.image}" alt="썸네일" style="max-width: 100%; max-height: 600px; border-radius: 8px; user-select: none; -webkit-user-drag: none;">
                                 </div>
                             </div>
                             <button type="button" id="downloadThumbnailBtn" class="success-btn" style="width: 100%; margin-top: 16px; padding: 12px; z-index: 10; position: relative;">
@@ -3331,38 +3331,40 @@
                             </button>
                         `;
                         
-                        // 이미지 클릭 이벤트 완전 차단
+                        // 이미지 클릭 이벤트 완전 차단 (캡처링 단계에서 차단)
                         const thumbnailImg = document.getElementById('thumbnailGeneratedImage');
                         const thumbnailWrapper = document.getElementById('thumbnailImageWrapper');
+                        
+                        function preventAll(e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            e.stopImmediatePropagation();
+                            return false;
+                        }
+                        
                         if (thumbnailImg) {
-                            thumbnailImg.addEventListener('click', function(e) {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                e.stopImmediatePropagation();
-                                return false;
-                            }, true);  // capture phase에서 차단
-                            
-                            thumbnailImg.addEventListener('mousedown', function(e) {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                return false;
-                            }, true);
+                            thumbnailImg.addEventListener('click', preventAll, true);
+                            thumbnailImg.addEventListener('mousedown', preventAll, true);
+                            thumbnailImg.addEventListener('contextmenu', preventAll, true); // 우클릭 방지
                         }
                         if (thumbnailWrapper) {
-                            thumbnailWrapper.addEventListener('click', function(e) {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                return false;
-                            }, true);
+                            thumbnailWrapper.addEventListener('click', preventAll, true);
                         }
                         
                         // 다운로드 버튼 이벤트 (서버를 통해 다운로드)
                         const downloadBtn = document.getElementById('downloadThumbnailBtn');
                         if (downloadBtn) {
-                            downloadBtn.onclick = async function(e) {
+                            // 기존 이벤트 리스너 제거를 위해 노드 복제 후 교체
+                            const newBtn = downloadBtn.cloneNode(true);
+                            downloadBtn.parentNode.replaceChild(newBtn, downloadBtn);
+                            
+                            newBtn.addEventListener('click', async function(e) {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                e.stopImmediatePropagation();
+                                
+                                const originalText = this.textContent;
+                                this.disabled = true;
+                                this.textContent = "다운로드 중...";
                                 
                                 try {
                                     // 서버를 통해 다운로드 (이미지가 열리지 않도록)
@@ -3389,27 +3391,28 @@
                                     const filename = `thumbnail_${Date.now()}.${extension}`;
                                     
                                     // Blob URL 생성 및 다운로드
-                                    const url = URL.createObjectURL(blob);
+                                    const url = window.URL.createObjectURL(blob);
                                     const link = document.createElement('a');
                                     link.href = url;
-                                    link.download = filename;
-                                    link.style.display = 'none';
+                                    link.setAttribute('download', filename); // download 속성 명시
                                     document.body.appendChild(link);
                                     link.click();
                                     
                                     // 정리
                                     setTimeout(() => {
                                         document.body.removeChild(link);
-                                        URL.revokeObjectURL(url);
+                                        window.URL.revokeObjectURL(url);
                                         alert('다운로드가 성공적으로 완료되었습니다!');
                                     }, 100);
                                     
                                 } catch (err) {
                                     console.error('다운로드 오류:', err);
                                     alert('다운로드에 실패했습니다: ' + err.message);
+                                } finally {
+                                    this.disabled = false;
+                                    this.textContent = originalText;
                                 }
-                                return false;
-                            };
+                            });
                         }
                         
                         thumbnailImageResult.style.display = 'block';
