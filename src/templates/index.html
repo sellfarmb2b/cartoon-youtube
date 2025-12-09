@@ -2766,8 +2766,8 @@
                 generateFinalBtn.disabled = true;
                 generateFinalBtn.textContent = '작업 시작 중...';
                 finalResult.style.display = 'none';
-                visualPromptResult.style.display = 'none';
-                thumbnailPromptResult.style.display = 'none';
+                if (visualPromptResult) visualPromptResult.style.display = 'none';
+                if (thumbnailPromptResult) thumbnailPromptResult.style.display = 'none';
                 showAILoading('최종 대본 생성 요청 중...', '작업 ID를 생성하고 있습니다.');
 
                 try {
@@ -2835,7 +2835,7 @@
                             }
                             
                             // 썸네일 프롬프트 표시
-                            if (jobData.thumbnail_prompt) {
+                            if (jobData.thumbnail_prompt && thumbnailPromptContent && thumbnailPromptResult) {
                                 thumbnailPromptContent.textContent = jobData.thumbnail_prompt;
                                 thumbnailPromptResult.style.display = 'block';
                             }
@@ -2885,14 +2885,16 @@
             });
 
             // 썸네일 프롬프트 복사
-            copyThumbnailBtn.addEventListener('click', function() {
-                navigator.clipboard.writeText(thumbnailPromptContent.textContent).then(() => {
-                    copyThumbnailBtn.textContent = '✓ 복사됨';
-                    setTimeout(() => {
-                        copyThumbnailBtn.textContent = '📋 썸네일 프롬프트 복사';
-                    }, 2000);
+            if (copyThumbnailBtn && thumbnailPromptContent) {
+                copyThumbnailBtn.addEventListener('click', function() {
+                    navigator.clipboard.writeText(thumbnailPromptContent.textContent).then(() => {
+                        copyThumbnailBtn.textContent = '✓ 복사됨';
+                        setTimeout(() => {
+                            copyThumbnailBtn.textContent = '📋 썸네일 프롬프트 복사';
+                        }, 2000);
+                    });
                 });
-            });
+            }
 
             // 메인 영역에 대본 적용
             applyScriptBtn.addEventListener('click', function() {
