@@ -118,6 +118,8 @@ def get_default_download_folder() -> str:
 def reload_api_keys() -> None:
     """Load API keys from the persistent config store."""
     global ELEVENLABS_API_KEY, REPLICATE_API_TOKEN, GEMINI_API_KEY
+    global genai  # [수정] 전역 변수 genai를 업데이트하기 위해 추가
+    
     settings = config_manager.get_all()
     ELEVENLABS_API_KEY = (
         settings.get("elevenlabs_api_key")
@@ -140,7 +142,7 @@ def reload_api_keys() -> None:
     if GEMINI_API_KEY:
         try:
             # import가 실패했을 수 있으므로 다시 시도
-            if not GEMINI_AVAILABLE:
+            if genai is None:  # [수정] 전역 변수 genai 확인
                 try:
                     import google.generativeai as genai
                     print(f"[API 키 로드] google.generativeai 재import 성공")
@@ -149,8 +151,9 @@ def reload_api_keys() -> None:
                     print(f"[API 키 로드] pip install google-generativeai를 실행해주세요.")
                     return
             
-            genai.configure(api_key=GEMINI_API_KEY)
-            print(f"[API 키 로드] Gemini API 설정 완료")
+            # [중요 수정] transport='rest' 옵션 추가 (연결 안정성 확보)
+            genai.configure(api_key=GEMINI_API_KEY, transport='rest')
+            print(f"[API 키 로드] Gemini API 설정 완료 (REST 모드)")
         except Exception as e:
             print(f"[API 키 로드] Gemini API 설정 실패: {e}")
             import traceback
@@ -392,7 +395,9 @@ def ensure_english_text(text: str) -> str:
         return text
 
     try:
-        model = genai.GenerativeModel('gemini-3-pro-preview')
+        # 사용할 모델 선택 (Flash가 속도와 안정성 면에서 유리함)
+        target_model = 'gemini-1.5-flash'
+        model = genai.GenerativeModel(target_model)
         prompt = f"You are a translator. Translate the following text into fluent English.\n\n{text}"
         response = model.generate_content(
             prompt,
@@ -865,7 +870,9 @@ def extract_scene_context(scene_text: str, mode: str = "animation") -> Dict[str,
         user_prompt = f"Extract context from this scene:\n\n{scene_text[:800]}"
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
         
-        model = genai.GenerativeModel('gemini-3-pro-preview')
+        # 사용할 모델 선택 (Flash가 속도와 안정성 면에서 유리함)
+        target_model = 'gemini-1.5-flash'
+        model = genai.GenerativeModel(target_model)
         response = model.generate_content(
             full_prompt,
             generation_config=genai.types.GenerationConfig(
@@ -1091,7 +1098,13 @@ IMPORTANT: Ensure all JSON strings are properly escaped and closed. Avoid unesca
 
             # Gemini API 호출
             full_prompt = f"{system_content}\n\n{user_content}"
-            model = genai.GenerativeModel('gemini-3-pro-preview')
+            
+            # 사용할 모델 선택 (Flash가 속도와 안정성 면에서 유리함)
+            # 3 Pro를 꼭 쓰고 싶으시면 아래 target_model을 'gemini-3-pro-preview'로 변경하세요.
+            target_model = 'gemini-1.5-flash'
+            # target_model = 'gemini-3-pro-preview'
+            
+            model = genai.GenerativeModel(target_model)
             
             try:
                 response = model.generate_content(
@@ -1104,6 +1117,12 @@ IMPORTANT: Ensure all JSON strings are properly escaped and closed. Avoid unesca
                 )
                 content = response.text.strip()
             except Exception as e:
+                print(f"[Gemini API 오류] 모델: {target_model}, 에러: {e}")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(2 ** attempt)
+                    continue
+                raise RuntimeError(f"Gemini API request failed: {str(e)}")
                 if attempt < max_retries - 1:
                     time.sleep(2 ** attempt)
                     continue
@@ -1223,7 +1242,9 @@ def generate_semantic_segments(text: str, max_segments: int = 4) -> List[str]:
         )
         full_prompt = f"{system_prompt}\n\n{text}"
         
-        model = genai.GenerativeModel('gemini-3-pro-preview')
+        # 사용할 모델 선택 (Flash가 속도와 안정성 면에서 유리함)
+        target_model = 'gemini-1.5-flash'
+        model = genai.GenerativeModel(target_model)
         try:
             response = model.generate_content(
                 full_prompt,
@@ -3859,7 +3880,10 @@ D. 아웃트로: [최종 요약 및 CTA]
             current_genai = genai_module if genai_module is not None else (genai if GEMINI_AVAILABLE and genai is not None else None)
             if current_genai is None:
                 return jsonify({"error": "Gemini API 모듈을 로드할 수 없습니다."}), 500
-            model = current_genai.GenerativeModel('gemini-3-pro-preview')
+            # 사용할 모델 선택 (Flash가 속도와 안정성 면에서 유리함)
+            target_model = 'gemini-1.5-flash'
+            # target_model = 'gemini-3-pro-preview'  # 3 Pro를 사용하려면 주석 해제
+            model = current_genai.GenerativeModel(target_model)
             response = model.generate_content(
                 full_prompt,
                 generation_config=genai.types.GenerationConfig(
@@ -4187,7 +4211,9 @@ def api_generate_final_script():
                                 full_prompt_parts.append(f"[ASSISTANT]\n{msg['content']}\n")
                         full_prompt = "\n".join(full_prompt_parts)
                         
-                        model = genai.GenerativeModel('gemini-3-pro-preview')
+                        # 사용할 모델 선택 (Flash가 속도와 안정성 면에서 유리함)
+                        target_model = 'gemini-1.5-flash'
+                        model = genai.GenerativeModel(target_model)
                         chunk_response = None
                         try:
                             response = model.generate_content(
