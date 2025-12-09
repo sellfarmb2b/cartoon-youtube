@@ -190,7 +190,23 @@
             padding: 32px;
             text-align: center;
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-            max-width: 400px;
+            max-width: 450px;
+            min-width: 350px;
+        }
+        .ai-loading-progress {
+            width: 100%;
+            height: 8px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 16px 0;
+        }
+        .ai-loading-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #2563eb, #3b82f6);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+            width: 0%;
         }
         .ai-loading-spinner {
             width: 60px;
@@ -665,6 +681,9 @@
         <div class="ai-loading-content">
             <div class="ai-loading-spinner"></div>
             <div class="ai-loading-text" id="aiLoadingText">AI가 작업 중입니다...</div>
+            <div class="ai-loading-progress" id="aiLoadingProgress" style="display: none;">
+                <div class="ai-loading-progress-bar" id="aiLoadingProgressBar"></div>
+            </div>
             <div class="ai-loading-subtext" id="aiLoadingSubtext">잠시만 기다려주세요</div>
         </div>
     </div>
@@ -1937,6 +1956,9 @@
                 resetStageModal();
                 openStageModal();
                 updateStageModal(0, '이미지 생성 중', 'running');
+                
+                // AI 로딩 오버레이 표시
+                showAILoading('🖼️ 이미지 생성 시작', `총 ${sentences.length}개의 이미지를 생성합니다...`, 0);
 
                 try {
                     // 프롬프트 생성 단계를 건너뛰고 바로 이미지 생성
@@ -2001,6 +2023,9 @@
                                 clearInterval(pollingInterval);
                                 pollingInterval = null;
                                 
+                                // AI 로딩 오버레이 숨김
+                                hideAILoading();
+                                
                                 // 이미지 데이터 가져오기
                                 const job = statusData;
                                 imageItems = {};
@@ -2064,6 +2089,10 @@
                             } else if (statusData.status === 'error') {
                                 clearInterval(pollingInterval);
                                 pollingInterval = null;
+                                
+                                // AI 로딩 오버레이 숨김
+                                hideAILoading();
+                                
                                 const errorMsg = statusData.error || '이미지 생성 중 오류가 발생했습니다.';
                                 setStatus(errorMsg, 'error');
                                 
@@ -2089,12 +2118,39 @@
                                 if (typeof statusData.stage_progress !== 'undefined') {
                                     updateStageModal(statusData.stage_progress, statusData.current_stage || '이미지 생성 중', statusData.status);
                                 }
+                                
+                                // AI 로딩 오버레이 업데이트
+                                const currentStage = statusData.current_stage || '이미지 생성 중';
+                                const stageProgress = statusData.stage_progress || 0;
+                                
+                                // current_stage에서 "이미지 생성 중... (N/M)" 패턴 추출
+                                let progressText = currentStage;
+                                let subText = 'AI가 이미지를 생성하고 있습니다...';
+                                let progressPercent = null;
+                                
+                                const progressMatch = currentStage.match(/\((\d+)\/(\d+)\)/);
+                                if (progressMatch) {
+                                    const current = parseInt(progressMatch[1]);
+                                    const total = parseInt(progressMatch[2]);
+                                    progressPercent = Math.round((current / total) * 100);
+                                    progressText = `🖼️ 이미지 생성 중 (${current}/${total})`;
+                                    subText = `${current}번째 이미지를 생성하고 있습니다...`;
+                                } else if (stageProgress > 0) {
+                                    progressPercent = stageProgress;
+                                    progressText = `🖼️ 이미지 생성 중... (${stageProgress}%)`;
+                                    subText = 'AI가 이미지를 생성하고 있습니다...';
+                                }
+                                
+                                showAILoading(progressText, subText, progressPercent);
+                                
                                 if (statusData.progress && statusData.progress.length > 0) {
-                                    progressLog.innerHTML = '';
-                                    statusData.progress.forEach(msg => {
-                                        const text = typeof msg === 'string' ? msg : msg.text || msg;
-                                        appendProgressLog(text);
-                                    });
+                                    if (progressLog) {
+                                        progressLog.innerHTML = '';
+                                        statusData.progress.forEach(msg => {
+                                            const text = typeof msg === 'string' ? msg : msg.text || msg;
+                                            appendProgressLog(text);
+                                        });
+                                    }
                                 }
                             }
                         } catch (err) {
@@ -2108,6 +2164,10 @@
                 } catch (error) {
                     console.error('[이미지 생성] 오류 발생:', error);
                     console.error('[이미지 생성] 오류 스택:', error.stack);
+                    
+                    // AI 로딩 오버레이 숨김
+                    hideAILoading();
+                    
                     setStatus(error.message || '이미지 생성 중 오류가 발생했습니다.', 'error');
                     currentJobId = null;
                     if (pollingInterval) {
@@ -2557,15 +2617,30 @@
             const aiLoadingOverlay = document.getElementById('aiLoadingOverlay');
             const aiLoadingText = document.getElementById('aiLoadingText');
             const aiLoadingSubtext = document.getElementById('aiLoadingSubtext');
+            const aiLoadingProgress = document.getElementById('aiLoadingProgress');
+            const aiLoadingProgressBar = document.getElementById('aiLoadingProgressBar');
             
-            function showAILoading(text, subtext) {
+            function showAILoading(text, subtext, progressPercent = null) {
                 aiLoadingText.textContent = text || 'AI가 작업 중입니다...';
                 aiLoadingSubtext.textContent = subtext || '잠시만 기다려주세요';
+                
+                // 진행도가 있으면 진행도 바 표시
+                if (progressPercent !== null && progressPercent !== undefined) {
+                    if (aiLoadingProgress) aiLoadingProgress.style.display = 'block';
+                    if (aiLoadingProgressBar) {
+                        aiLoadingProgressBar.style.width = `${Math.min(100, Math.max(0, progressPercent))}%`;
+                    }
+                } else {
+                    if (aiLoadingProgress) aiLoadingProgress.style.display = 'none';
+                }
+                
                 aiLoadingOverlay.classList.add('active');
             }
             
             function hideAILoading() {
                 aiLoadingOverlay.classList.remove('active');
+                if (aiLoadingProgress) aiLoadingProgress.style.display = 'none';
+                if (aiLoadingProgressBar) aiLoadingProgressBar.style.width = '0%';
             }
 
             // 검수 대본 생성
