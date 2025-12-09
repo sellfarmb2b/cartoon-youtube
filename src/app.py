@@ -3802,6 +3802,7 @@ def select_download_folder():
 @app.route("/api/generate_draft_script", methods=["POST"])
 def api_generate_draft_script():
     """검수 대본 생성 API"""
+    global genai_client  # 전역 변수 사용 선언
     try:
         data = request.get_json(silent=True) or {}
         topic = (data.get("topic") or "").strip()
@@ -4001,6 +4002,7 @@ def split_draft_script_into_chapters(draft_script: str) -> List[Dict[str, str]]:
 @app.route("/api/generate_final_script", methods=["POST"])
 def api_generate_final_script():
     """최종 대본 생성 API (TTS용 순수 대본 + 한국어 번역 + 영어 이미지 프롬프트)"""
+    global genai_client  # 전역 변수 사용 선언
     try:
         data = request.get_json(silent=True) or {}
         draft_script = (data.get("draft_script") or "").strip()
