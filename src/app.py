@@ -2892,16 +2892,14 @@ def create_video(
         
         # Concat 실행
         # 모든 파일이 동일한 코덱/해상도/fps를 가지므로 concat demuxer가 안전하게 작동함
-        (
-            ffmpeg
-            .input(concat_list_file, format='concat', safe=0)
-            .output(
-                output_video_file, 
-                c="copy", # 스트림 복사 (재인코딩 없음 -> 매우 빠르고 화질 저하 없음)
-                movflags="+faststart"
-            )
-            .run(overwrite_output=True, quiet=False)
+        concat_input = ffmpeg.input(concat_list_file, format='concat', safe=0)
+        output = ffmpeg.output(
+            concat_input,
+            output_video_file, 
+            c="copy", # 스트림 복사 (재인코딩 없음 -> 매우 빠르고 화질 저하 없음)
+            movflags="+faststart"
         )
+        ffmpeg.run(output, overwrite_output=True, quiet=False)
         try:
             ffmpeg.run(output, overwrite_output=True, quiet=False)
         except ffmpeg.Error as ffmpeg_exc:
