@@ -3323,7 +3323,7 @@
                             <div style="margin-bottom: 20px;">
                                 <h4>생성된 썸네일</h4>
                                 <div style="background: #f9fafb; border: 2px solid #e5e7eb; border-radius: 12px; padding: 20px; display: inline-block;">
-                                    <img src="data:${data.mime_type || 'image/png'};base64,${data.image}" alt="썸네일" style="max-width: 100%; max-height: 600px; border-radius: 8px;">
+                                    <img id="thumbnailGeneratedImage" src="data:${data.mime_type || 'image/png'};base64,${data.image}" alt="썸네일" style="max-width: 100%; max-height: 600px; border-radius: 8px; pointer-events: none; user-select: none;">
                                 </div>
                             </div>
                             <div style="margin-top: 16px;">
@@ -3338,7 +3338,10 @@
                         // 다운로드 버튼 이벤트 (Blob 사용)
                         const downloadBtn = document.getElementById('downloadThumbnailBtn');
                         if (downloadBtn) {
-                            downloadBtn.addEventListener('click', function() {
+                            downloadBtn.addEventListener('click', function(e) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                
                                 try {
                                     // base64를 Blob으로 변환
                                     const byteCharacters = atob(data.image);
@@ -3354,10 +3357,15 @@
                                     const link = document.createElement('a');
                                     link.href = url;
                                     link.download = `thumbnail_${Date.now()}.png`;
+                                    link.style.display = 'none';
                                     document.body.appendChild(link);
                                     link.click();
-                                    document.body.removeChild(link);
-                                    URL.revokeObjectURL(url);
+                                    
+                                    // 약간의 지연 후 정리 (다운로드가 시작되도록)
+                                    setTimeout(() => {
+                                        document.body.removeChild(link);
+                                        URL.revokeObjectURL(url);
+                                    }, 100);
                                 } catch (err) {
                                     console.error('다운로드 오류:', err);
                                     alert('다운로드 중 오류가 발생했습니다: ' + err.message);
