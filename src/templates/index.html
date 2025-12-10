@@ -373,6 +373,23 @@
                 <label for="finalDraftScript">검수 대본 입력 (수정 가능)</label>
                 <textarea id="finalDraftScript" placeholder="위에서 생성된 검수 대본이 여기에 들어갑니다. 직접 수정할 수 있습니다."></textarea>
                 
+                <div style="margin-top:16px;">
+                    <label for="groupingSizeSelect" style="display:block; margin-bottom:8px; font-weight:600; color:#374151;">이미지 생성 단위 (문장 수)</label>
+                    <select id="groupingSizeSelect" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:6px; font-size:14px; background-color:#fff;">
+                        <option value="1">1문장마다 (기본)</option>
+                        <option value="2">2문장씩 묶어서</option>
+                        <option value="3">3문장씩 묶어서</option>
+                        <option value="4">4문장씩 묶어서</option>
+                        <option value="5">5문장씩 묶어서</option>
+                        <option value="6">6문장씩 묶어서</option>
+                        <option value="7">7문장씩 묶어서</option>
+                        <option value="8">8문장씩 묶어서</option>
+                        <option value="9">9문장씩 묶어서</option>
+                        <option value="10">10문장씩 묶어서</option>
+                    </select>
+                    <p style="font-size:12px; color:#6b7280; margin-top:6px;">선택한 숫자만큼의 문장을 묶어서 하나의 한국어 번역과 하나의 영어 이미지 프롬프트를 생성합니다.</p>
+                </div>
+                
                 <div style="margin-top:16px; text-align:right;">
                     <button type="button" id="generateFinalBtn" class="purple-btn">최종 대본 및 프롬프트 생성</button>
                 </div>
@@ -2763,6 +2780,10 @@
                     return;
                 }
 
+                // 이미지 생성 단위 선택값 가져오기
+                const groupingSizeSelect = document.getElementById('groupingSizeSelect');
+                const groupingSize = parseInt(groupingSizeSelect.value) || 1;
+
                 generateFinalBtn.disabled = true;
                 generateFinalBtn.textContent = '작업 시작 중...';
                 finalResult.style.display = 'none';
@@ -2775,7 +2796,10 @@
                     const response = await fetch('/api/generate_final_script', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ draft_script: draftScript })
+                        body: JSON.stringify({ 
+                            draft_script: draftScript,
+                            grouping_size: groupingSize
+                        })
                     });
 
                     if (!response.ok) {

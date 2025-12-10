@@ -4018,7 +4018,7 @@ def split_draft_script_into_chapters(draft_script: str) -> List[Dict[str, str]]:
     return chapters
 
 
-def run_final_script_job(job_id: str, draft_script: str):
+def run_final_script_job(job_id: str, draft_script: str, grouping_size: int = 1):
     """백그라운드에서 실행될 최종 대본 생성 작업"""
     global genai_client
     try:
@@ -4049,8 +4049,10 @@ def run_final_script_job(job_id: str, draft_script: str):
         
         update_job(job_id, message=f"총 {len(chapters)}개 챕터로 분리하여 처리를 시작합니다.", stage_progress=15)
         
-        # 최종 대본 프롬프트
-        system_prompt = """[YOUR ROLE]
+        # grouping_size에 따라 프롬프트 동적 생성
+        if grouping_size == 1:
+            # 기존 로직: 각 문장마다 처리
+            system_prompt = """[YOUR ROLE]
 
 당신은 '스크립트-투-이미지 프롬프트 전문 엔지니어'입니다. 당신의 임무는 사용자가 제공하는 영어 대본(Script)을 받아, 이를 시각화하기 위한 두 가지 핵심 결과물을 순서대로 제공하는 것입니다.
 
@@ -4135,6 +4137,96 @@ def run_final_script_job(job_id: str, draft_script: str):
 [요구사항]
 - 자연스럽고 매력적인 대화체로 작성
 - 괄호나 대괄호를 사용하지 마세요 (TTS를 이용할 것이기 때문)"""
+        else:
+            # 묶음 처리 로직: grouping_size개 문장씩 묶어서 처리
+            system_prompt = f"""[YOUR ROLE]
+
+당신은 '스크립트-투-이미지 프롬프트 전문 엔지니어'입니다. 당신의 임무는 사용자가 제공하는 대본(Script)을 받아, 이를 시각화하기 위한 두 가지 핵심 결과물을 순서대로 제공하는 것입니다.
+
+당신은 단순한 번역기가 아닙니다. 당신은 문장들의 **'문맥(Context)'**을 파악하고, 이것이 **'장면 묘사(Scene)'**인지 **'인물 묘사(Character)'**인지를 분석하여, 우리가 사전에 정의한 **'스타일 래퍼(Style Wrapper)'**와 결합한 최고 품질의 이미지 생성 프롬프트를 만들어야 합니다.
+
+[CRITICAL: COMPLETENESS PROTOCOL]이 섹션은 가장 중요합니다. 반드시 준수하십시오.
+
+전체 출력 의무: 사용자가 제공한 대본이 아무리 길더라도, 첫 문장부터 마지막 문장까지 단 한 문장도 빠뜨리지 않고 처리해야 합니다.
+
+요약 금지: "나머지는 생략함(...)" 또는 "이하 동일"과 같은 요약 행위를 엄격히 금지합니다.
+
+분할 출력 대응: 만약 답변 길이가 AI의 출력 토큰 제한(Output Token Limit)에 도달할 것 같으면, 묶음의 중간에서 끊지 말고 완전한 [한국어 번역]-[영어 이미지 프롬프트] 세트가 끝나는 지점에서 멈추십시오. 그리고 답변 끝에 **"[...계속하려면 '계속'이라고 말해주세요]"**라고 명시하여 사용자가 이어서 출력받을 수 있도록 안내하십시오.
+
+[CRITICAL: FORMATTING PROTOCOL - 태그 엄수]이 섹션은 출력의 일관성을 위해 가장 중요합니다. 반드시 준수하십시오.
+
+긴 글을 출력할 때 [영어 이미지 프롬프트] 태그가 영어 이미지 프롬pt, 영어 이미지 prompt, [영어 이미지 prompt] 등과 같이 변형되는 오류를 엄격히 금지합니다.
+
+영어 이미지 프롬프트의 출력 태그는 대괄호([])를 포함하여 정확히 [영어 이미지 프롬프트] 로만 출력되어야 하며, 일체의 오타나 변형을 허용하지 않습니다.
+
+정확한 예시: [영어 이미지 프롬프트]
+
+[WORKFLOW & RULES]
+
+입력 처리:
+
+   - 사용자가 대본을 제공합니다. (언어 무관, 주로 영어/한국어 혼용 가능성 있음)
+
+   - 대본에 00:01:23 --> 00:01:25와 같은 타임스탬프(Timestamp)가 포함되어 있다면, 반드시 모두 제거하고 순수 텍스트 내용만 처리합니다.
+
+문맥 분석 (내부 단계):
+
+   - 작업을 시작하기 전, 대본 전체를 빠르게 훑어보며 이 장면의 전반적인 **문맥(Context)**을 파악합니다. (예: 시대, 장소, 분위기, 주요 인물)
+
+   - 아래의 '스타일 래퍼 4가지' 중 이 대본의 분위기에 가장 적합한 것을 내부적으로 하나 선택하여 일관되게 적용합니다.
+
+     1. 빈티지 아날로그 (Vintage Analog)
+
+     2. 다큐멘터리 (Documentary)
+
+     3. 모던 시네마틱 (Modern Cinematic)
+
+     4. 디지털 리얼리즘 (Digital Realism)
+
+묶음 단위 출력 (필수 형식):
+
+   - 입력된 대본을 순서대로 **{grouping_size}개의 문장씩 묶어서** 처리하세요.
+
+   - 각 묶음(Group)에 대해 다음 형식을 출력하세요:
+
+   A. 한국어 번역:
+
+   - 묶인 {grouping_size}개 문장의 내용을 합쳐서 자연스럽게 번역하거나 원문을 유지합니다. (대본이 한국어인 경우 원문 유지, 영어인 경우 번역)
+
+   B. 영어 이미지 프롬프트:
+
+   - [CRITICAL: FORMATTING PROTOCOL - 태그 엄수] 섹션의 지침에 따라, 태그를 **정확히 [영어 이미지 프롬프트]**로만 출력해야 합니다.
+
+   - 묶인 {grouping_size}개 문장들의 내용을 포괄하여 시각화하는 **단 하나의** 영어 프롬프트를 작성합니다.
+
+   - 구성 요소: [Style Wrapper] + [Context & Subject] + [Visual Details]
+
+   - [Style Wrapper]: 2단계에서 선택한 스타일 (예: Shot on 35mm analog film, grainy texture...)
+
+   - [Context & Subject]: 묶인 문장들의 문맥(시대/장소)과 묘사(인물/행동)를 종합하여 결합 (예: 1950s office, A weary detective looking at...)
+
+   - [Visual Details]: 카메라 앵글, 조명 등 (예: wide shot, cinematic lighting, shallow depth of field)
+
+[최종 출력 형식 예시]
+
+1.
+
+[한국어 번역] (첫 번째부터 {grouping_size}번째 문장까지 묶인 내용의 번역 또는 원문)
+
+[영어 이미지 프롬프트] (묶인 {grouping_size}개 문장을 포괄하는 하나의 영어 프롬프트)
+
+2.
+
+[한국어 번역] ({grouping_size+1}번째부터 {grouping_size*2}번째 문장까지 묶인 내용의 번역 또는 원문)
+
+[영어 이미지 프롬프트] (묶인 {grouping_size}개 문장을 포괄하는 하나의 영어 프롬프트)
+
+…(대본의 마지막 문장까지 반복. 절대 중단하지 말 것)…
+
+[요구사항]
+- 자연스럽고 매력적인 대화체로 작성
+- 괄호나 대괄호를 사용하지 마세요 (TTS를 이용할 것이기 때문)
+- 각 묶음은 정확히 {grouping_size}개의 문장을 포함해야 합니다 (마지막 묶음은 남은 문장 수가 {grouping_size}개 미만일 수 있음)"""
 
         # 각 챕터별로 처리
         all_final_scripts = []
@@ -4183,7 +4275,9 @@ def run_final_script_job(job_id: str, draft_script: str):
             
             # 각 청크 처리
             for chunk_idx, chunk_content in enumerate(chunks, 1):
-                base_user_prompt = f"""다음 검수 대본을 최종 대본으로 변환해주세요.
+                if grouping_size == 1:
+                    # 기존 로직: 각 문장마다 처리
+                    base_user_prompt = f"""다음 검수 대본을 최종 대본으로 변환해주세요.
 
 [중요 지침]
 1. 검수 대본의 언어를 먼저 확인하세요.
@@ -4205,6 +4299,36 @@ def run_final_script_job(job_id: str, draft_script: str):
 - 괄호나 대괄호를 사용하지 마세요 (TTS를 이용할 것이기 때문)
 - 모든 문장을 빠뜨리지 말고 순서대로 처리하세요
 - [한국어 번역]과 [영어 이미지 프롬프트] 태그를 정확히 사용하세요
+
+검수 대본:
+{chunk_content}"""
+                else:
+                    # 묶음 처리 로직: grouping_size개 문장씩 묶어서 처리
+                    base_user_prompt = f"""다음 검수 대본을 최종 대본으로 변환해주세요.
+
+[중요 지침]
+1. 검수 대본의 언어를 먼저 확인하세요.
+2. 입력된 대본을 순서대로 **{grouping_size}개의 문장씩 묶어서** 처리하세요.
+3. 검수 대본이 한국어인 경우: 각 묶음의 {grouping_size}개 문장을 [한국어 번역] 태그로 감싸고, 그 다음에 [영어 이미지 프롬프트]를 제공하세요.
+4. 검수 대본이 영어인 경우: 각 묶음의 {grouping_size}개 문장을 [한국어 번역]으로 번역하고, 그 다음에 [영어 이미지 프롬프트]를 제공하세요.
+5. 반드시 아래 형식을 정확히 따르세요:
+
+[출력 형식]
+1.
+[한국어 번역] (첫 번째부터 {grouping_size}번째 문장까지 묶인 내용의 한국어 번역 또는 원문)
+[영어 이미지 프롬프트] (묶인 {grouping_size}개 문장을 포괄하여 시각화하는 하나의 영어 프롬프트)
+
+2.
+[한국어 번역] ({grouping_size+1}번째부터 {grouping_size*2}번째 문장까지 묶인 내용의 한국어 번역 또는 원문)
+[영어 이미지 프롬프트] (묶인 {grouping_size}개 문장을 포괄하여 시각화하는 하나의 영어 프롬프트)
+
+[요구사항]
+- 자연스럽고 매력적인 대화체로 작성
+- 괄호나 대괄호를 사용하지 마세요 (TTS를 이용할 것이기 때문)
+- 모든 문장을 빠뜨리지 말고 순서대로 처리하세요
+- 각 묶음은 정확히 {grouping_size}개의 문장을 포함해야 합니다 (마지막 묶음은 남은 문장 수가 {grouping_size}개 미만일 수 있음)
+- [한국어 번역]과 [영어 이미지 프롬프트] 태그를 정확히 사용하세요
+- 각 묶음에 대해 하나의 [한국어 번역]과 하나의 [영어 이미지 프롬프트]만 제공하세요
 
 검수 대본:
 {chunk_content}"""
@@ -4461,6 +4585,15 @@ def api_generate_final_script():
     """최종 대본 생성 API (비동기 처리)"""
     data = request.get_json(silent=True) or {}
     draft_script = (data.get("draft_script") or "").strip()
+    grouping_size = data.get("grouping_size", 1)
+    
+    # grouping_size 유효성 검사
+    try:
+        grouping_size = int(grouping_size)
+        if grouping_size < 1 or grouping_size > 10:
+            grouping_size = 1
+    except (ValueError, TypeError):
+        grouping_size = 1
     
     if not draft_script:
         return jsonify({"error": "검수 대본을 입력해주세요."}), 400
@@ -4475,7 +4608,7 @@ def api_generate_final_script():
     # 백그라운드 스레드 실행
     thread = threading.Thread(
         target=run_final_script_job,
-        args=(job_id, draft_script),
+        args=(job_id, draft_script, grouping_size),
         daemon=True
     )
     thread.start()
