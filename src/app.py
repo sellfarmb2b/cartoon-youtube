@@ -4629,6 +4629,121 @@ def api_generate_final_script():
     return jsonify({"job_id": job_id, "status": "processing"})
 
 
+@app.route("/api/analyze_image_style", methods=["POST"])
+def api_analyze_image_style():
+    """이미지 스타일 분석 API"""
+    global genai_client
+    
+    try:
+        # API 키 확인
+        if not GEMINI_API_KEY:
+            return jsonify({"error": "Gemini API 키가 설정되지 않았습니다. 설정에서 키를 입력해주세요."}), 500
+        
+        # 파일 확인
+        if 'image' not in request.files:
+            return jsonify({"error": "이미지 파일이 없습니다."}), 400
+        
+        image_file = request.files['image']
+        if image_file.filename == '':
+            return jsonify({"error": "이미지 파일이 선택되지 않았습니다."}), 400
+        
+        # Gemini 클라이언트 확인 및 재초기화
+        if genai_client is None:
+            try:
+                from google import genai
+                genai_client = genai.Client(api_key=GEMINI_API_KEY)
+                print(f"[이미지 스타일 분석] google.genai Client 초기화 성공")
+            except ImportError as e:
+                return jsonify({"error": f"google-genai 패키지가 설치되지 않았습니다: {e}"}), 500
+            except Exception as e:
+                return jsonify({"error": f"Gemini API Client 초기화 실패: {e}"}), 500
+        
+        # 이미지 파일 읽기
+        image_data = image_file.read()
+        image_file.seek(0)  # 파일 포인터 리셋
+        
+        # System Prompt
+        system_prompt = """당신은 전문 아트 디렉터이자 프롬프트 엔지니어입니다. 사용자가 제공한 이미지를 분석하여 '내용(인물, 피사체)'은 철저히 배제하고, 오직 '시각적 스타일(Visual Style)'만 추출하세요. 결과는 반드시 아래의 JSON 구조로만 출력해야 합니다.
+
+필수 JSON 구조:
+{
+  "prompt_style": {
+    "art_medium": ["매체 예: Charcoal drawing, Oil painting..."],
+    "visual_style": ["스타일 예: Monochromatic, Chiaroscuro..."],
+    "lighting_and_atmosphere": ["조명 예: Volumetric lighting, God rays..."],
+    "texture_and_details": ["질감 예: Grainy paper texture, Sketch lines..."],
+    "color_palette": ["색상 예: Greyscale, Muted tones..."]
+  }
+}
+
+중요:
+- 인물, 사물, 배경의 구체적인 내용은 절대 포함하지 마세요
+- 오직 시각적 스타일, 화풍, 기법만 추출하세요
+- 각 배열에는 관련 키워드들을 영어로 나열하세요
+- JSON 형식만 출력하고 다른 설명은 하지 마세요"""
+        
+        # Gemini API 호출
+        print(f"[이미지 스타일 분석] Gemini API 호출 시작...")
+        
+        # 이미지를 base64로 인코딩
+        import base64
+        image_base64 = base64.b64encode(image_data).decode('utf-8')
+        mime_type = image_file.content_type or "image/jpeg"
+        
+        # Gemini 2.0 Flash 모델 사용
+        response = genai_client.models.generate_content(
+            model="gemini-2.0-flash-exp",
+            contents=[
+                {
+                    "role": "user",
+                    "parts": [
+                        {"text": system_prompt},
+                        {
+                            "inline_data": {
+                                "mime_type": mime_type,
+                                "data": image_base64
+                            }
+                        }
+                    ]
+                }
+            ]
+        )
+        
+        response_text = response.text.strip() if hasattr(response, 'text') else str(response)
+        print(f"[이미지 스타일 분석] Gemini 응답 받음 (길이: {len(response_text)}자)")
+        
+        # JSON 파싱 시도
+        import json
+        import re
+        
+        # JSON 부분만 추출 (코드 블록 제거)
+        json_match = re.search(r'\{[\s\S]*\}', response_text)
+        if json_match:
+            json_str = json_match.group(0)
+        else:
+            json_str = response_text
+        
+        try:
+            style_data = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            print(f"[이미지 스타일 분석] JSON 파싱 오류: {e}")
+            print(f"[이미지 스타일 분석] 원본 응답: {response_text[:500]}")
+            return jsonify({"error": f"AI 응답을 파싱할 수 없습니다: {str(e)}", "raw_response": response_text[:500]}), 500
+        
+        return jsonify({
+            "success": True,
+            "style_data": style_data,
+            "raw_response": response_text
+        })
+        
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"[이미지 스타일 분석] 오류 발생: {e}")
+        print(f"[이미지 스타일 분석] 상세 오류:\n{error_trace}")
+        return jsonify({"error": f"이미지 스타일 분석 중 오류가 발생했습니다: {str(e)}"}), 500
+
+
 @app.route("/start_job", methods=["POST"])
 def start_job():
     payload = request.get_json(silent=True) or {}

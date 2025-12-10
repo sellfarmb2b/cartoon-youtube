@@ -334,6 +334,9 @@
             <button class="nav-item" onclick="switchView('thumbnailView')">
                 <span>🖼️ 썸네일 제작</span>
             </button>
+            <button class="nav-item" onclick="switchView('visualCategoryView')">
+                <span>🎨 비주얼 프롬프트</span>
+            </button>
         </div>
         <div class="sidebar-footer">
             <button class="nav-item" id="openSettingsBtn" style="width: 100%; justify-content: center; background: #374151;">
@@ -668,6 +671,54 @@
                         <!-- 생성된 이미지가 여기에 표시됩니다 -->
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- 비주얼 프롬프트 뷰 -->
+        <div id="visualCategoryView" class="content-view">
+            <div class="section-header">
+                <h2>비주얼 프롬프트</h2>
+                <p>레퍼런스 이미지에서 시각적 스타일만 추출하여 AI 이미지 생성에 활용하세요.</p>
+            </div>
+
+            <div class="card">
+                <h3 style="margin-top:0;">1단계: 레퍼런스 이미지 업로드</h3>
+                <p style="color:#6b7280; font-size:14px; margin-bottom:16px;">스타일을 추출하고 싶은 이미지를 업로드하세요. 인물이나 사물의 내용은 제외되고 오직 화풍만 분석됩니다.</p>
+                
+                <div id="imageUploadArea" style="border: 2px dashed #d1d5db; border-radius: 8px; padding: 40px; text-align: center; background: #f9fafb; cursor: pointer; transition: all 0.2s ease;" onmouseover="this.style.borderColor='#6366f1'; this.style.background='#f0f9ff';" onmouseout="this.style.borderColor='#d1d5db'; this.style.background='#f9fafb';">
+                    <input type="file" id="styleImageInput" accept="image/*" style="display: none;">
+                    <div id="imageUploadContent">
+                        <div style="font-size: 48px; margin-bottom: 12px;">📸</div>
+                        <p style="color: #6b7280; margin: 0; font-size: 14px;">이미지를 클릭하거나 드래그하여 업로드하세요</p>
+                    </div>
+                    <div id="imagePreviewContainer" style="display: none; margin-top: 20px;">
+                        <img id="imagePreview" src="" alt="미리보기" style="max-width: 100%; max-height: 400px; border-radius: 8px; border: 1px solid #e5e7eb;">
+                        <button type="button" id="removeImageBtn" class="danger-btn" style="margin-top: 12px; padding: 8px 16px;">이미지 제거</button>
+                    </div>
+                </div>
+
+                <button type="button" id="analyzeStyleBtn" class="purple-btn" style="width: 100%; margin-top: 20px; padding: 16px; font-size: 16px;" disabled>
+                    🎨 스타일 분석하기
+                </button>
+            </div>
+
+            <div id="styleAnalysisResult" class="card" style="display: none; margin-top: 24px;">
+                <h3 style="margin-top:0;">2단계: 분석 결과</h3>
+                
+                <div style="margin-bottom: 20px;">
+                    <label style="font-weight: 600; margin-bottom: 8px; display: block;">JSON 데이터</label>
+                    <pre id="styleJsonData" style="background: #f9fafb; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb; max-height: 300px; overflow-y: auto; font-size: 12px; white-space: pre-wrap; word-wrap: break-word;"></pre>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <label for="combinedPrompt" style="font-weight: 600; margin-bottom: 8px; display: block;">통합 프롬프트 (Combined Prompt)</label>
+                    <textarea id="combinedPrompt" rows="4" style="width: 100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; font-family: inherit;" readonly></textarea>
+                    <button type="button" id="copyCombinedPromptBtn" class="secondary-btn" style="margin-top: 8px; padding: 8px 16px;">프롬프트 복사</button>
+                </div>
+
+                <button type="button" id="applyStyleBtn" class="success-btn" style="width: 100%; padding: 16px; font-size: 16px;">
+                    ✨ 이 스타일 적용하기
+                </button>
             </div>
         </div>
     </main>
@@ -3591,6 +3642,206 @@
                 }
             };
         });
+
+        // 비주얼 프롬프트 뷰 JavaScript
+        (function() {
+            const imageUploadArea = document.getElementById('imageUploadArea');
+            const styleImageInput = document.getElementById('styleImageInput');
+            const imagePreviewContainer = document.getElementById('imagePreviewContainer');
+            const imagePreview = document.getElementById('imagePreview');
+            const imageUploadContent = document.getElementById('imageUploadContent');
+            const removeImageBtn = document.getElementById('removeImageBtn');
+            const analyzeStyleBtn = document.getElementById('analyzeStyleBtn');
+            const styleAnalysisResult = document.getElementById('styleAnalysisResult');
+            const styleJsonData = document.getElementById('styleJsonData');
+            const combinedPrompt = document.getElementById('combinedPrompt');
+            const copyCombinedPromptBtn = document.getElementById('copyCombinedPromptBtn');
+            const applyStyleBtn = document.getElementById('applyStyleBtn');
+
+            let uploadedImageFile = null;
+
+            // 이미지 업로드 영역 클릭
+            if (imageUploadArea && styleImageInput) {
+                imageUploadArea.addEventListener('click', () => {
+                    styleImageInput.click();
+                });
+
+                // 드래그 앤 드롭
+                imageUploadArea.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    imageUploadArea.style.borderColor = '#6366f1';
+                    imageUploadArea.style.background = '#f0f9ff';
+                });
+
+                imageUploadArea.addEventListener('dragleave', (e) => {
+                    e.preventDefault();
+                    imageUploadArea.style.borderColor = '#d1d5db';
+                    imageUploadArea.style.background = '#f9fafb';
+                });
+
+                imageUploadArea.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    imageUploadArea.style.borderColor = '#d1d5db';
+                    imageUploadArea.style.background = '#f9fafb';
+                    
+                    const files = e.dataTransfer.files;
+                    if (files.length > 0 && files[0].type.startsWith('image/')) {
+                        handleImageFile(files[0]);
+                    }
+                });
+
+                styleImageInput.addEventListener('change', (e) => {
+                    if (e.target.files && e.target.files[0]) {
+                        handleImageFile(e.target.files[0]);
+                    }
+                });
+            }
+
+            // 이미지 파일 처리
+            function handleImageFile(file) {
+                uploadedImageFile = file;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    imagePreview.src = e.target.result;
+                    imageUploadContent.style.display = 'none';
+                    imagePreviewContainer.style.display = 'block';
+                    analyzeStyleBtn.disabled = false;
+                };
+                reader.readAsDataURL(file);
+            }
+
+            // 이미지 제거
+            if (removeImageBtn) {
+                removeImageBtn.addEventListener('click', () => {
+                    uploadedImageFile = null;
+                    styleImageInput.value = '';
+                    imagePreview.src = '';
+                    imageUploadContent.style.display = 'block';
+                    imagePreviewContainer.style.display = 'none';
+                    analyzeStyleBtn.disabled = true;
+                    styleAnalysisResult.style.display = 'none';
+                });
+            }
+
+            // 스타일 분석
+            if (analyzeStyleBtn) {
+                analyzeStyleBtn.addEventListener('click', async () => {
+                    if (!uploadedImageFile) {
+                        alert('이미지를 업로드해주세요.');
+                        return;
+                    }
+
+                    analyzeStyleBtn.disabled = true;
+                    analyzeStyleBtn.textContent = '분석 중...';
+
+                    // AI 로딩 표시
+                    const aiLoadingOverlay = document.getElementById('aiLoadingOverlay');
+                    const aiLoadingText = document.getElementById('aiLoadingText');
+                    const aiLoadingSubtext = document.getElementById('aiLoadingSubtext');
+                    if (aiLoadingOverlay) {
+                        aiLoadingOverlay.style.display = 'flex';
+                        if (aiLoadingText) aiLoadingText.textContent = '🎨 이미지 스타일 분석 중...';
+                        if (aiLoadingSubtext) aiLoadingSubtext.textContent = 'Gemini AI가 이미지의 시각적 스타일을 분석하고 있습니다.';
+                    }
+
+                    try {
+                        const formData = new FormData();
+                        formData.append('image', uploadedImageFile);
+
+                        const response = await fetch('/api/analyze_image_style', {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        const data = await response.json();
+
+                        if (!response.ok) {
+                            throw new Error(data.error || '스타일 분석에 실패했습니다.');
+                        }
+
+                        // 결과 표시
+                        styleJsonData.textContent = JSON.stringify(data.style_data, null, 2);
+                        
+                        // 통합 프롬프트 생성
+                        const promptParts = [];
+                        if (data.style_data && data.style_data.prompt_style) {
+                            const style = data.style_data.prompt_style;
+                            if (style.art_medium && style.art_medium.length > 0) {
+                                promptParts.push(style.art_medium.join(', '));
+                            }
+                            if (style.visual_style && style.visual_style.length > 0) {
+                                promptParts.push(style.visual_style.join(', '));
+                            }
+                            if (style.lighting_and_atmosphere && style.lighting_and_atmosphere.length > 0) {
+                                promptParts.push(style.lighting_and_atmosphere.join(', '));
+                            }
+                            if (style.texture_and_details && style.texture_and_details.length > 0) {
+                                promptParts.push(style.texture_and_details.join(', '));
+                            }
+                            if (style.color_palette && style.color_palette.length > 0) {
+                                promptParts.push(style.color_palette.join(', '));
+                            }
+                        }
+                        
+                        combinedPrompt.value = promptParts.join(', ');
+                        styleAnalysisResult.style.display = 'block';
+                        styleAnalysisResult.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+                    } catch (error) {
+                        console.error('스타일 분석 오류:', error);
+                        alert('스타일 분석 중 오류가 발생했습니다: ' + error.message);
+                    } finally {
+                        analyzeStyleBtn.disabled = false;
+                        analyzeStyleBtn.textContent = '🎨 스타일 분석하기';
+                        
+                        // AI 로딩 숨기기
+                        if (aiLoadingOverlay) {
+                            aiLoadingOverlay.style.display = 'none';
+                        }
+                    }
+                });
+            }
+
+            // 프롬프트 복사
+            if (copyCombinedPromptBtn) {
+                copyCombinedPromptBtn.addEventListener('click', () => {
+                    combinedPrompt.select();
+                    document.execCommand('copy');
+                    copyCombinedPromptBtn.textContent = '✓ 복사됨';
+                    setTimeout(() => {
+                        copyCombinedPromptBtn.textContent = '프롬프트 복사';
+                    }, 2000);
+                });
+            }
+
+            // 스타일 적용
+            if (applyStyleBtn) {
+                applyStyleBtn.addEventListener('click', () => {
+                    const promptText = combinedPrompt.value.trim();
+                    if (!promptText) {
+                        alert('분석된 프롬프트가 없습니다.');
+                        return;
+                    }
+
+                    // 영상 제작 탭으로 전환
+                    switchView('videoGenView');
+
+                    // 커스텀 스타일 프롬프트 입력란에 값 설정
+                    setTimeout(() => {
+                        const customStylePromptInput = document.getElementById('customStylePrompt');
+                        if (customStylePromptInput) {
+                            customStylePromptInput.value = promptText;
+                        }
+
+                        // 커스텀 모드 탭 활성화
+                        const customModeTab = document.querySelector('[data-mode="custom"]');
+                        if (customModeTab) {
+                            customModeTab.click();
+                        }
+                    }, 300);
+                });
+            }
+        })();
     </script>
     </main>
     </div>
