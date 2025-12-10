@@ -521,7 +521,10 @@
         <div id="promptInputSection" style="display:none; margin-top:20px;">
             <label>문장별 영어 프롬프트 입력 (선택사항)</label>
             <p style="color:#6b7280; font-size:14px; margin:6px 0 12px;">각 문장에 대한 영어 프롬프트를 직접 입력하거나, 아래 '1단계: 프롬프트 생성' 버튼을 눌러 자동 생성할 수 있습니다.</p>
-            <button type="button" id="selectAllBananaBtn" style="display:none; margin-bottom:12px; padding:8px 16px; background-color:#fbbf24; color:#1f2937; border:none; border-radius:6px; cursor:pointer; font-weight:600; font-size:14px; transition:all 0.2s ease;" onmouseover="this.style.backgroundColor='#f59e0b'" onmouseout="this.style.backgroundColor='#fbbf24'">🍌 나노바나나 전체선택</button>
+            <div style="display:flex; gap:8px; margin-bottom:12px;">
+                <button type="button" id="selectAllBananaProBtn" style="display:none; padding:8px 16px; background-color:#fbbf24; color:#1f2937; border:none; border-radius:6px; cursor:pointer; font-weight:600; font-size:14px; transition:all 0.2s ease;" onmouseover="this.style.backgroundColor='#f59e0b'" onmouseout="this.style.backgroundColor='#fbbf24'">🍌 나노바나나 PRO 전체선택</button>
+                <button type="button" id="selectAllBananaNormalBtn" style="display:none; padding:8px 16px; background-color:#84cc16; color:#1f2937; border:none; border-radius:6px; cursor:pointer; font-weight:600; font-size:14px; transition:all 0.2s ease;" onmouseover="this.style.backgroundColor='#65a30d'" onmouseout="this.style.backgroundColor='#84cc16'">🍌 나노바나나 노말 전체선택</button>
+            </div>
             <div id="promptInputs" style="max-height:400px; overflow-y:auto; border:1px solid #d1d5db; border-radius:8px; padding:12px; background:#f9fafb;"></div>
         </div>
 
@@ -1125,20 +1128,27 @@
                     return;
                 }
                 
-                const selectAllBananaBtn = document.getElementById('selectAllBananaBtn');
+                const selectAllBananaProBtn = document.getElementById('selectAllBananaProBtn');
+                const selectAllBananaNormalBtn = document.getElementById('selectAllBananaNormalBtn');
                 
                 if (!sentences || sentences.length === 0) {
                     promptInputSection.style.display = 'none';
                     promptInputs.innerHTML = '';
-                    if (selectAllBananaBtn) {
-                        selectAllBananaBtn.style.display = 'none';
+                    if (selectAllBananaProBtn) {
+                        selectAllBananaProBtn.style.display = 'none';
+                    }
+                    if (selectAllBananaNormalBtn) {
+                        selectAllBananaNormalBtn.style.display = 'none';
                     }
                     return;
                 }
                 
                 promptInputSection.style.display = 'block';
-                if (selectAllBananaBtn) {
-                    selectAllBananaBtn.style.display = 'block';
+                if (selectAllBananaProBtn) {
+                    selectAllBananaProBtn.style.display = 'block';
+                }
+                if (selectAllBananaNormalBtn) {
+                    selectAllBananaNormalBtn.style.display = 'block';
                 }
                 
                 // 기존 입력값 저장
@@ -1168,29 +1178,62 @@
                     labelContainer.style.gap = '8px';
                     labelContainer.style.marginBottom = '6px';
                     
-                    const checkbox = document.createElement('input');
-                    checkbox.type = 'checkbox';
-                    checkbox.id = `banana-checkbox-${index}`;
-                    checkbox.dataset.index = index;
-                    checkbox.className = 'banana-checkbox';
-                    checkbox.style.width = '20px';
-                    checkbox.style.height = '20px';
-                    checkbox.style.cursor = 'pointer';
-                    checkbox.style.accentColor = '#fbbf24';
-                    checkbox.style.transition = 'transform 0.15s ease';
+                    // 나노바나나 PRO 체크박스
+                    const checkboxPro = document.createElement('input');
+                    checkboxPro.type = 'checkbox';
+                    checkboxPro.id = `banana-pro-checkbox-${index}`;
+                    checkboxPro.dataset.index = index;
+                    checkboxPro.className = 'banana-pro-checkbox';
+                    checkboxPro.style.width = '20px';
+                    checkboxPro.style.height = '20px';
+                    checkboxPro.style.cursor = 'pointer';
+                    checkboxPro.style.accentColor = '#fbbf24';
+                    checkboxPro.style.transition = 'transform 0.15s ease';
+                    
+                    // 나노바나나 노말 체크박스
+                    const checkboxNormal = document.createElement('input');
+                    checkboxNormal.type = 'checkbox';
+                    checkboxNormal.id = `banana-normal-checkbox-${index}`;
+                    checkboxNormal.dataset.index = index;
+                    checkboxNormal.className = 'banana-normal-checkbox';
+                    checkboxNormal.style.width = '20px';
+                    checkboxNormal.style.height = '20px';
+                    checkboxNormal.style.cursor = 'pointer';
+                    checkboxNormal.style.accentColor = '#84cc16';
+                    checkboxNormal.style.transition = 'transform 0.15s ease';
                     
                     const sentenceLabel = document.createElement('label');
-                    sentenceLabel.htmlFor = `banana-checkbox-${index}`;
                     sentenceLabel.style.display = 'flex';
                     sentenceLabel.style.alignItems = 'center';
                     sentenceLabel.style.gap = '6px';
                     sentenceLabel.style.fontWeight = '600';
                     sentenceLabel.style.color = '#1f2937';
                     sentenceLabel.style.cursor = 'pointer';
-                    sentenceLabel.innerHTML = `문장 ${index + 1}: <span>🍌</span>`;
+                    sentenceLabel.textContent = `문장 ${index + 1}:`;
                     
-                    labelContainer.appendChild(checkbox);
+                    // PRO 라벨
+                    const proLabel = document.createElement('label');
+                    proLabel.htmlFor = `banana-pro-checkbox-${index}`;
+                    proLabel.textContent = '🍌 PRO';
+                    proLabel.style.marginLeft = '8px';
+                    proLabel.style.cursor = 'pointer';
+                    proLabel.style.fontSize = '12px';
+                    proLabel.style.color = '#f59e0b';
+                    
+                    // 노말 라벨
+                    const normalLabel = document.createElement('label');
+                    normalLabel.htmlFor = `banana-normal-checkbox-${index}`;
+                    normalLabel.textContent = '🍌 노말';
+                    normalLabel.style.marginLeft = '8px';
+                    normalLabel.style.cursor = 'pointer';
+                    normalLabel.style.fontSize = '12px';
+                    normalLabel.style.color = '#65a30d';
+                    
                     labelContainer.appendChild(sentenceLabel);
+                    labelContainer.appendChild(checkboxPro);
+                    labelContainer.appendChild(proLabel);
+                    labelContainer.appendChild(checkboxNormal);
+                    labelContainer.appendChild(normalLabel);
                     
                     const sentenceText = document.createElement('div');
                     sentenceText.textContent = sentence;
@@ -1227,56 +1270,82 @@
                 });
             }
             
-            // 나노바나나 전체선택 버튼 이벤트 리스너 (이벤트 위임 사용)
-            // 동적으로 생성된 버튼에도 작동하도록 document에 이벤트 위임
+            // 나노바나나 PRO 전체선택 버튼 이벤트 리스너
             document.addEventListener('click', function(e) {
-                if (e.target && e.target.id === 'selectAllBananaBtn') {
+                if (e.target && e.target.id === 'selectAllBananaProBtn') {
                     e.preventDefault();
                     e.stopPropagation();
                     
-                    const selectAllBananaBtn = e.target;
-                    // 프롬프트 입력 섹션 내부의 모든 체크박스 찾기
+                    const selectAllBananaProBtn = e.target;
                     const promptInputs = document.getElementById('promptInputs');
                     if (!promptInputs) {
                         console.warn('프롬프트 입력 섹션을 찾을 수 없습니다.');
                         return;
                     }
                     
-                    const checkboxes = promptInputs.querySelectorAll('.banana-checkbox');
+                    const checkboxes = promptInputs.querySelectorAll('.banana-pro-checkbox');
                     if (checkboxes.length === 0) {
-                        console.warn('체크박스를 찾을 수 없습니다. 체크박스 개수: 0');
+                        console.warn('PRO 체크박스를 찾을 수 없습니다.');
                         return;
                     }
                     
-                    console.log(`전체선택 버튼 클릭: ${checkboxes.length}개의 체크박스 발견`);
-                    
-                    // 모든 체크박스가 체크되어 있는지 확인
                     const allChecked = Array.from(checkboxes).every(cb => cb.checked);
                     const newCheckedState = !allChecked;
                     
-                    console.log(`현재 상태: ${allChecked ? '전체 체크됨' : '일부 또는 전체 미체크'}, 새 상태: ${newCheckedState ? '전체 체크' : '전체 해제'}`);
-                    
-                    // 전체선택 또는 전체해제 (시각적 피드백을 위해 하나씩 처리)
                     checkboxes.forEach((checkbox, idx) => {
                         setTimeout(() => {
                             checkbox.checked = newCheckedState;
-                            console.log(`체크박스 ${idx + 1} 체크 상태: ${checkbox.checked}`);
-                            
-                            // 체크 상태 변경 시각적 피드백
                             checkbox.style.transform = 'scale(1.2)';
                             setTimeout(() => {
                                 checkbox.style.transform = 'scale(1)';
                             }, 150);
-                        }, idx * 20); // 순차적으로 체크되도록 약간의 지연 추가
+                        }, idx * 20);
                     });
                     
-                    // 버튼 텍스트 업데이트
-                    selectAllBananaBtn.textContent = allChecked ? '🍌 나노바나나 전체선택' : '🍌 나노바나나 전체해제';
-                    
-                    // 버튼 클릭 피드백
-                    selectAllBananaBtn.style.transform = 'scale(0.95)';
+                    selectAllBananaProBtn.textContent = allChecked ? '🍌 나노바나나 PRO 전체선택' : '🍌 나노바나나 PRO 전체해제';
+                    selectAllBananaProBtn.style.transform = 'scale(0.95)';
                     setTimeout(() => {
-                        selectAllBananaBtn.style.transform = 'scale(1)';
+                        selectAllBananaProBtn.style.transform = 'scale(1)';
+                    }, 150);
+                }
+            });
+            
+            // 나노바나나 노말 전체선택 버튼 이벤트 리스너
+            document.addEventListener('click', function(e) {
+                if (e.target && e.target.id === 'selectAllBananaNormalBtn') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    const selectAllBananaNormalBtn = e.target;
+                    const promptInputs = document.getElementById('promptInputs');
+                    if (!promptInputs) {
+                        console.warn('프롬프트 입력 섹션을 찾을 수 없습니다.');
+                        return;
+                    }
+                    
+                    const checkboxes = promptInputs.querySelectorAll('.banana-normal-checkbox');
+                    if (checkboxes.length === 0) {
+                        console.warn('노말 체크박스를 찾을 수 없습니다.');
+                        return;
+                    }
+                    
+                    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+                    const newCheckedState = !allChecked;
+                    
+                    checkboxes.forEach((checkbox, idx) => {
+                        setTimeout(() => {
+                            checkbox.checked = newCheckedState;
+                            checkbox.style.transform = 'scale(1.2)';
+                            setTimeout(() => {
+                                checkbox.style.transform = 'scale(1)';
+                            }, 150);
+                        }, idx * 20);
+                    });
+                    
+                    selectAllBananaNormalBtn.textContent = allChecked ? '🍌 나노바나나 노말 전체선택' : '🍌 나노바나나 노말 전체해제';
+                    selectAllBananaNormalBtn.style.transform = 'scale(0.95)';
+                    setTimeout(() => {
+                        selectAllBananaNormalBtn.style.transform = 'scale(1)';
                     }, 150);
                 }
             });
@@ -1317,13 +1386,17 @@
             if (scriptInput && promptInputSection && promptInputs) {
                 scriptInput.addEventListener('input', () => {
                     const scriptText = scriptInput.value.trim();
-                    const selectAllBananaBtn = document.getElementById('selectAllBananaBtn');
+                    const selectAllBananaProBtn = document.getElementById('selectAllBananaProBtn');
+                    const selectAllBananaNormalBtn = document.getElementById('selectAllBananaNormalBtn');
                     
                     if (!scriptText) {
                         promptInputSection.style.display = 'none';
                         promptInputs.innerHTML = '';
-                        if (selectAllBananaBtn) {
-                            selectAllBananaBtn.style.display = 'none';
+                        if (selectAllBananaProBtn) {
+                            selectAllBananaProBtn.style.display = 'none';
+                        }
+                        if (selectAllBananaNormalBtn) {
+                            selectAllBananaNormalBtn.style.display = 'none';
                         }
                         return;
                     }
@@ -1334,8 +1407,11 @@
                     if (parsedResults && parsedResults.length > 0) {
                         // 패턴이 감지된 경우: 한국어 문장과 영어 프롬프트를 함께 표시
                         promptInputSection.style.display = 'block';
-                        if (selectAllBananaBtn) {
-                            selectAllBananaBtn.style.display = 'block';
+                        if (selectAllBananaProBtn) {
+                            selectAllBananaProBtn.style.display = 'block';
+                        }
+                        if (selectAllBananaNormalBtn) {
+                            selectAllBananaNormalBtn.style.display = 'block';
                         }
                         promptInputs.innerHTML = '';
                         
@@ -1354,29 +1430,62 @@
                             labelContainer.style.gap = '8px';
                             labelContainer.style.marginBottom = '6px';
                             
-                            const checkbox = document.createElement('input');
-                            checkbox.type = 'checkbox';
-                            checkbox.id = `banana-checkbox-${index}`;
-                            checkbox.dataset.index = index;
-                            checkbox.className = 'banana-checkbox';
-                            checkbox.style.width = '20px';
-                            checkbox.style.height = '20px';
-                            checkbox.style.cursor = 'pointer';
-                            checkbox.style.accentColor = '#fbbf24';
-                            checkbox.style.transition = 'transform 0.15s ease';
+                            // 나노바나나 PRO 체크박스
+                            const checkboxPro = document.createElement('input');
+                            checkboxPro.type = 'checkbox';
+                            checkboxPro.id = `banana-pro-checkbox-${index}`;
+                            checkboxPro.dataset.index = index;
+                            checkboxPro.className = 'banana-pro-checkbox';
+                            checkboxPro.style.width = '20px';
+                            checkboxPro.style.height = '20px';
+                            checkboxPro.style.cursor = 'pointer';
+                            checkboxPro.style.accentColor = '#fbbf24';
+                            checkboxPro.style.transition = 'transform 0.15s ease';
+                            
+                            // 나노바나나 노말 체크박스
+                            const checkboxNormal = document.createElement('input');
+                            checkboxNormal.type = 'checkbox';
+                            checkboxNormal.id = `banana-normal-checkbox-${index}`;
+                            checkboxNormal.dataset.index = index;
+                            checkboxNormal.className = 'banana-normal-checkbox';
+                            checkboxNormal.style.width = '20px';
+                            checkboxNormal.style.height = '20px';
+                            checkboxNormal.style.cursor = 'pointer';
+                            checkboxNormal.style.accentColor = '#84cc16';
+                            checkboxNormal.style.transition = 'transform 0.15s ease';
                             
                             const sentenceLabel = document.createElement('label');
-                            sentenceLabel.htmlFor = `banana-checkbox-${index}`;
                             sentenceLabel.style.display = 'flex';
                             sentenceLabel.style.alignItems = 'center';
                             sentenceLabel.style.gap = '6px';
                             sentenceLabel.style.fontWeight = '600';
                             sentenceLabel.style.color = '#1f2937';
                             sentenceLabel.style.cursor = 'pointer';
-                            sentenceLabel.innerHTML = `문장 ${index + 1}: <span>🍌</span>`;
+                            sentenceLabel.textContent = `문장 ${index + 1}:`;
                             
-                            labelContainer.appendChild(checkbox);
+                            // PRO 라벨
+                            const proLabel = document.createElement('label');
+                            proLabel.htmlFor = `banana-pro-checkbox-${index}`;
+                            proLabel.textContent = '🍌 PRO';
+                            proLabel.style.marginLeft = '8px';
+                            proLabel.style.cursor = 'pointer';
+                            proLabel.style.fontSize = '12px';
+                            proLabel.style.color = '#f59e0b';
+                            
+                            // 노말 라벨
+                            const normalLabel = document.createElement('label');
+                            normalLabel.htmlFor = `banana-normal-checkbox-${index}`;
+                            normalLabel.textContent = '🍌 노말';
+                            normalLabel.style.marginLeft = '8px';
+                            normalLabel.style.cursor = 'pointer';
+                            normalLabel.style.fontSize = '12px';
+                            normalLabel.style.color = '#65a30d';
+                            
                             labelContainer.appendChild(sentenceLabel);
+                            labelContainer.appendChild(checkboxPro);
+                            labelContainer.appendChild(proLabel);
+                            labelContainer.appendChild(checkboxNormal);
+                            labelContainer.appendChild(normalLabel);
                             
                             const sentenceText = document.createElement('div');
                             sentenceText.textContent = item.sentence;
@@ -1421,9 +1530,13 @@
                         if (sentences.length === 0) {
                             promptInputSection.style.display = 'none';
                             promptInputs.innerHTML = '';
-                            const selectAllBananaBtn = document.getElementById('selectAllBananaBtn');
-                            if (selectAllBananaBtn) {
-                                selectAllBananaBtn.style.display = 'none';
+                            const selectAllBananaProBtn = document.getElementById('selectAllBananaProBtn');
+                            const selectAllBananaNormalBtn = document.getElementById('selectAllBananaNormalBtn');
+                            if (selectAllBananaProBtn) {
+                                selectAllBananaProBtn.style.display = 'none';
+                            }
+                            if (selectAllBananaNormalBtn) {
+                                selectAllBananaNormalBtn.style.display = 'none';
                             }
                             generateImagesBtn.disabled = true;
                             return;
@@ -1759,9 +1872,13 @@
                         scriptInput.value = '';
                         promptInputSection.style.display = 'none';
                         promptInputs.innerHTML = '';
-                        const selectAllBananaBtn = document.getElementById('selectAllBananaBtn');
-                        if (selectAllBananaBtn) {
-                            selectAllBananaBtn.style.display = 'none';
+                        const selectAllBananaProBtn = document.getElementById('selectAllBananaProBtn');
+                        const selectAllBananaNormalBtn = document.getElementById('selectAllBananaNormalBtn');
+                        if (selectAllBananaProBtn) {
+                            selectAllBananaProBtn.style.display = 'none';
+                        }
+                        if (selectAllBananaNormalBtn) {
+                            selectAllBananaNormalBtn.style.display = 'none';
                         }
                         promptSection.style.display = 'none';
                         promptTableBody.innerHTML = '';
@@ -1936,7 +2053,8 @@
                     return parseInt(a.dataset.index, 10) - parseInt(b.dataset.index, 10);
                 });
                 
-                const bananaModelFlags = []; // 체크박스 상태 저장
+                const bananaProFlags = []; // PRO 체크박스 상태 저장
+                const bananaNormalFlags = []; // 노말 체크박스 상태 저장
                 
                 sortedInputs.forEach(input => {
                     const index = parseInt(input.dataset.index, 10);
@@ -1948,10 +2066,15 @@
                         return;
                     }
                     
-                    // 체크박스 상태 확인
-                    const checkbox = itemDiv.querySelector(`.banana-checkbox[data-index="${index}"]`);
-                    const isBananaModel = checkbox ? checkbox.checked : false;
-                    bananaModelFlags.push(isBananaModel);
+                    // PRO 체크박스 상태 확인
+                    const checkboxPro = itemDiv.querySelector(`.banana-pro-checkbox[data-index="${index}"]`);
+                    const isBananaPro = checkboxPro ? checkboxPro.checked : false;
+                    bananaProFlags.push(isBananaPro);
+                    
+                    // 노말 체크박스 상태 확인
+                    const checkboxNormal = itemDiv.querySelector(`.banana-normal-checkbox[data-index="${index}"]`);
+                    const isBananaNormal = checkboxNormal ? checkboxNormal.checked : false;
+                    bananaNormalFlags.push(isBananaNormal);
                     
                     // 더 안정적인 방법으로 문장 찾기
                     let sentence = '';
@@ -2062,7 +2185,8 @@
                             replicate_api_key: replicateApiKey,
                             elevenlabs_api_key: elevenlabsApiKey,
                             gemini_api_key: geminiApiKey,
-                            banana_model_flags: bananaModelFlags
+                            banana_pro_flags: bananaProFlags,
+                            banana_normal_flags: bananaNormalFlags
                         })
                     });
                     if (!response.ok) {
