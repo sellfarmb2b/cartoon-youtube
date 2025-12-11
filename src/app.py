@@ -2262,22 +2262,36 @@ def srt_to_ass(srt_file: str, ass_file: str):
                 text = "\\N".join(subtitle_text_lines)
                 
                 # 배경 박스용 텍스트 생성 (일정한 크기의 단일 네모 칸)
-                # 텍스트의 최대 너비와 줄 수를 계산하여 배경 박스 크기 결정
-                max_line_length = max(len(line) for line in subtitle_text_lines)
+                # 텍스트의 실제 렌더링 너비를 계산하여 배경 박스 크기 결정
                 num_lines = len(subtitle_text_lines)
                 
                 # 폰트 크기 80 기준으로 대략적인 계산
-                # 한 글자당 약 40픽셀, 줄 높이 약 100픽셀
-                # 배경 박스 너비: 텍스트 최대 너비 + 여유 공간 (픽셀 단위)
-                char_width_px = 40  # 한 글자당 약 40픽셀
+                # 한글/한자는 더 넓고, 영문/숫자는 더 좁음
+                # 실제 렌더링 너비를 더 정확하게 계산
+                def calculate_text_width(text_line):
+                    """텍스트 줄의 실제 렌더링 너비를 계산 (픽셀 단위)"""
+                    width = 0
+                    for char in text_line:
+                        # 한글/한자/일본어: 약 40픽셀
+                        # 영문/숫자/기호: 약 24픽셀
+                        # 공백: 약 20픽셀
+                        if '\uAC00' <= char <= '\uD7A3' or '\u4E00' <= char <= '\u9FFF' or '\u3040' <= char <= '\u309F' or '\u30A0' <= char <= '\u30FF':
+                            width += 40  # 한글/한자/일본어
+                        elif char == ' ':
+                            width += 20  # 공백
+                        else:
+                            width += 24  # 영문/숫자/기호
+                    return width
+                
+                # 각 줄의 실제 너비를 계산하고 최대값 사용
+                max_line_width_px = max(calculate_text_width(line) for line in subtitle_text_lines)
                 line_height_px = 100  # 각 줄당 약 100픽셀
-                padding_x = 80  # 좌우 여유 공간
+                padding_x = 40  # 좌우 여유 공간 (줄임)
                 padding_y = 30  # 상하 여유 공간
                 
                 # 배경 박스 크기 계산 (픽셀 단위)
-                # 텍스트 길이에 맞춰 배경 박스 크기를 동적으로 조정
-                # 최소값과 최대값 제한을 완화하여 텍스트 길이에 맞춰 조정
-                background_width_px = max(400, max_line_length * char_width_px + padding_x)  # 최소 400px만 보장, 텍스트 길이에 맞춰 조정
+                # 텍스트의 실제 렌더링 너비에 맞춰 배경 박스 크기를 정확히 조정
+                background_width_px = max(300, max_line_width_px + padding_x)  # 최소 300px만 보장, 텍스트 실제 너비에 맞춰 조정
                 background_height_px = num_lines * line_height_px + padding_y
                 
                 # 배경 박스 위치 계산 (하단 중앙 정렬, Alignment=2)
@@ -2289,7 +2303,9 @@ def srt_to_ass(srt_file: str, ass_file: str):
                 # 배경 박스용 텍스트 생성 (공백 없이 일정한 크기의 단일 네모 칸)
                 # 각 줄의 높이를 일정하게 유지하기 위해 모든 줄에 동일한 높이의 배경 박스 생성
                 # 단일 큰 네모 칸으로 만들어 높이를 완전히 일정하게 유지
-                background_width_chars = background_width_px // char_width_px  # 문자 단위로 변환
+                # 배경 박스 너비는 계산된 픽셀 너비를 기준으로 문자 개수 계산
+                # \u00B7 (middle dot)는 약 24픽셀 정도이므로 이를 기준으로 계산
+                background_width_chars = max(10, background_width_px // 24)  # 문자 단위로 변환 (최소 10자)
                 # 배경 박스는 단일 큰 네모 칸으로 생성 (공백 없이)
                 # \u00B7 (middle dot)를 사용하되, PrimaryColour가 투명하므로 보이지 않음
                 # 각 줄마다 동일한 너비의 배경 박스 생성
