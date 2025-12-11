@@ -3569,47 +3569,53 @@
                                 this.textContent = "다운로드 중...";
                                 
                                 try {
-                                    // 프론트엔드에서 직접 base64를 Blob으로 변환하여 다운로드
-                                    if (!data.image) {
-                                        throw new Error("이미지 데이터가 없습니다.");
+                                    // 서버 API로 데이터 전송하여 저장 요청
+                                    const response = await fetch('/api/download_thumbnail', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                            image: data.image,
+                                            mime_type: data.mime_type
+                                        })
+                                    });
+
+                                    // 응답 처리
+                                    const contentType = response.headers.get("content-type");
+                                    
+                                    // 1. 서버가 JSON을 반환했다면 (파일이 서버 폴더에 직접 저장된 경우)
+                                    if (contentType && contentType.includes("application/json")) {
+                                        const resData = await response.json();
+                                        if (resData.error) {
+                                            throw new Error(resData.error);
+                                        }
+                                        // 성공 메시지 표시
+                                        alert(`이미지가 다음 경로에 저장되었습니다:\n${resData.path}`);
+                                    } 
+                                    // 2. 서버가 파일을 스트림으로 보냈다면 (폴더 설정이 없는 경우 - 다운로드 창 띄우기)
+                                    else {
+                                        const blob = await response.blob();
+                                        const mimeType = data.mime_type || 'image/png';
+                                        const extension = mimeType.includes('jpeg') ? 'jpg' : 'png';
+                                        const filename = `thumbnail_${Date.now()}.${extension}`;
+                                        
+                                        const url = window.URL.createObjectURL(blob);
+                                        const link = document.createElement('a');
+                                        link.href = url;
+                                        link.download = filename;
+                                        link.style.display = 'none';
+                                        document.body.appendChild(link);
+                                        link.click();
+                                        
+                                        setTimeout(() => {
+                                            document.body.removeChild(link);
+                                            window.URL.revokeObjectURL(url);
+                                        }, 100);
+                                        alert('다운로드가 완료되었습니다. (폴더 설정을 확인해주세요)');
                                     }
-                                    
-                                    // base64 문자열을 Blob으로 변환
-                                    const mimeType = data.mime_type || 'image/png';
-                                    const base64Data = data.image.includes(',') ? data.image.split(',')[1] : data.image;
-                                    
-                                    // base64를 바이너리로 변환
-                                    const byteCharacters = atob(base64Data);
-                                    const byteNumbers = new Array(byteCharacters.length);
-                                    for (let i = 0; i < byteCharacters.length; i++) {
-                                        byteNumbers[i] = byteCharacters.charCodeAt(i);
-                                    }
-                                    const byteArray = new Uint8Array(byteNumbers);
-                                    const blob = new Blob([byteArray], { type: mimeType });
-                                    
-                                    // 파일 확장자 결정
-                                    const extension = mimeType.includes('jpeg') || mimeType.includes('jpg') ? 'jpg' : 'png';
-                                    const filename = `thumbnail_${Date.now()}.${extension}`;
-                                    
-                                    // Blob URL 생성 및 다운로드
-                                    const url = window.URL.createObjectURL(blob);
-                                    const link = document.createElement('a');
-                                    link.href = url;
-                                    link.setAttribute('download', filename);
-                                    link.style.display = 'none';
-                                    document.body.appendChild(link);
-                                    link.click();
-                                    
-                                    // 정리
-                                    setTimeout(() => {
-                                        document.body.removeChild(link);
-                                        window.URL.revokeObjectURL(url);
-                                        alert('다운로드가 성공적으로 완료되었습니다!');
-                                    }, 100);
                                     
                                 } catch (err) {
                                     console.error('다운로드 오류:', err);
-                                    alert('다운로드에 실패했습니다: ' + err.message);
+                                    alert('저장에 실패했습니다: ' + err.message);
                                 } finally {
                                     this.disabled = false;
                                     this.textContent = originalText;

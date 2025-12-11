@@ -6400,7 +6400,7 @@ Text to display: "{copy_text}"
 
 @app.route("/api/download_thumbnail", methods=["POST"])
 def api_download_thumbnail():
-    """썸네일 이미지 다운로드 API (서버를 통해 직접 다운로드)"""
+    """썸네일 이미지 다운로드 API (서버에 직접 저장 후 결과 반환)"""
     try:
         data = request.get_json(silent=True) or {}
         image_base64 = data.get("image")
@@ -6428,12 +6428,33 @@ def api_download_thumbnail():
         if "jpeg" in mime_type or "jpg" in mime_type:
             extension = "jpg"
         
-        # BytesIO로 파일 객체 생성
-        file_obj = BytesIO(image_data)
-        file_obj.seek(0)  # 파일 포인터를 시작 위치로 이동
         filename = f"thumbnail_{int(time.time())}.{extension}"
         
-        # send_file로 직접 다운로드
+        # 1. 설정된 다운로드 폴더가 있는지 확인
+        download_folder_path = config_manager.get("download_folder_path", "").strip()
+        
+        # 2. 폴더가 설정되어 있고 유효하면 직접 저장 (가장 확실한 방법)
+        if download_folder_path and os.path.isdir(download_folder_path):
+            try:
+                save_path = os.path.join(download_folder_path, filename)
+                with open(save_path, "wb") as f:
+                    f.write(image_data)
+                
+                print(f"[썸네일] 파일이 설정된 폴더로 저장됨: {save_path}")
+                # 성공 시 JSON으로 경로 반환 (브라우저 다운로드 창을 띄우지 않음)
+                return jsonify({
+                    "status": "success",
+                    "message": "이미지가 저장되었습니다.",
+                    "path": save_path
+                })
+            except Exception as save_err:
+                print(f"[썸네일] 파일 저장 실패: {save_err}")
+                # 저장 실패 시 아래의 스트림 전송으로 넘어감
+        
+        # 3. 폴더 설정이 없거나 실패한 경우 기존 방식(스트림 전송) 사용
+        file_obj = BytesIO(image_data)
+        file_obj.seek(0)
+        
         return send_file(
             file_obj,
             mimetype=mime_type,
