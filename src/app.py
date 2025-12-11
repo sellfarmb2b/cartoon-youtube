@@ -2213,7 +2213,8 @@ def srt_to_ass(srt_file: str, ass_file: str):
             # 배경 박스 전용 스타일 (일정한 크기의 네모 칸)
             # PrimaryColour를 투명하게 설정하여 텍스트는 보이지 않고 배경만 보임
             f"Style: Background,{SUBTITLE_FONT_NAME},80,&H00000000,&H000000FF,&H00000000,&HFF000000,0,0,0,0,100,100,0,0,3,10,0,2,10,10,50,1\n",
-            # 텍스트 전용 스타일 (배경 없음)
+            # 텍스트 전용 스타일 (배경 없음, 테두리 없음, 그림자 없음)
+            # Outline=0, Shadow=0, BorderStyle=0으로 설정하여 텍스트만 표시
             f"Style: Text,{SUBTITLE_FONT_NAME},80,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,0,0,0,2,10,10,50,1\n",
             "\n",
             "[Events]\n",
@@ -2306,7 +2307,10 @@ def srt_to_ass(srt_file: str, ass_file: str):
                 # \clip 태그를 사용하여 일정한 크기의 네모 칸으로 렌더링
                 ass_content.append(f"Dialogue: 0,{srt_to_ass_time(start_time)},{srt_to_ass_time(end_time)},Background,,0,0,0,,{clip_tag}{background_text}\n")
                 # 텍스트는 공백을 유지한 채로 표시
-                ass_content.append(f"Dialogue: 1,{srt_to_ass_time(start_time)},{srt_to_ass_time(end_time)},Text,,0,0,0,,{text}\n")
+                # 텍스트에 테두리, 그림자, 배경을 완전히 제거하여 공백 부분에서도 높이가 일정하게 유지되도록 함
+                # \bord0: 테두리 제거, \outline0: 외곽선 제거, \shadow0: 그림자 제거, \3c&H00000000: 외곽선 색상 투명
+                text_with_style = f"{{\\bord0\\outline0\\shadow0\\3c&H00000000}}{text}"
+                ass_content.append(f"Dialogue: 1,{srt_to_ass_time(start_time)},{srt_to_ass_time(end_time)},Text,,0,0,0,,{text_with_style}\n")
             
             i += 1  # 빈 줄 건너뛰기
         
