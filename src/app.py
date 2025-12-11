@@ -2210,7 +2210,7 @@ def srt_to_ass(srt_file: str, ass_file: str):
             "\n",
             "[V4+ Styles]\n",
             "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n",
-            f"Style: Default,{SUBTITLE_FONT_NAME},80,&H00FFFFFF,&H000000FF,&H00000000,&HFF000000,0,0,0,0,100,100,0,0,3,10,0,2,10,10,50,1\n",
+            f"Style: Default,{SUBTITLE_FONT_NAME},80,&H00FFFFFF,&H000000FF,&H00000000,&HFF000000,0,0,0,0,100,100,0,0,3,20,0,2,10,10,50,1\n",
             "\n",
             "[Events]\n",
             "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
@@ -2247,7 +2247,9 @@ def srt_to_ass(srt_file: str, ass_file: str):
             i += 2
             while i < len(lines) and lines[i].strip():
                 # 텍스트를 하나의 연속된 문자열로 합치기 (띄어쓰기 유지)
-                subtitle_text_lines.append(lines[i].rstrip())
+                # [수정] 배경 박스 끊김 방지를 위해 일반 공백을 Non-breaking space(\u00A0)로 치환
+                clean_line = lines[i].rstrip().replace(" ", "\u00A0")
+                subtitle_text_lines.append(clean_line)
                 i += 1
             
             if subtitle_text_lines:
@@ -2255,7 +2257,6 @@ def srt_to_ass(srt_file: str, ass_file: str):
                 # ASS 형식에서는 \N으로 줄바꿈
                 text = "\\N".join(subtitle_text_lines)
                 # ASS 형식의 Dialogue 라인 작성
-                # (BorderStyle=3이 이미 설정되어 있어 일반 공백으로도 배경 박스가 끊어지지 않음)
                 ass_content.append(f"Dialogue: 0,{srt_to_ass_time(start_time)},{srt_to_ass_time(end_time)},Default,,0,0,0,,{text}\n")
             
             i += 1  # 빈 줄 건너뛰기
