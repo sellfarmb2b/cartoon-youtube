@@ -2260,28 +2260,51 @@ def srt_to_ass(srt_file: str, ass_file: str):
                 # ASS 형식에서는 \N으로 줄바꿈
                 text = "\\N".join(subtitle_text_lines)
                 
-                # 배경 박스용 텍스트 생성 (각 줄마다 배경 박스 생성)
-                # PrimaryColour가 투명하므로 텍스트는 보이지 않고 배경만 보임
-                # 각 줄의 길이에 맞춰 배경 박스 생성하여 일정한 높이 유지
+                # 배경 박스용 텍스트 생성 (일정한 크기의 단일 네모 칸)
+                # 텍스트의 최대 너비와 줄 수를 계산하여 배경 박스 크기 결정
+                max_line_length = max(len(line) for line in subtitle_text_lines)
+                num_lines = len(subtitle_text_lines)
+                
+                # 폰트 크기 80 기준으로 대략적인 계산
+                # 한 글자당 약 40픽셀, 줄 높이 약 100픽셀
+                # 배경 박스 너비: 텍스트 최대 너비 + 여유 공간 (픽셀 단위)
+                char_width_px = 40  # 한 글자당 약 40픽셀
+                line_height_px = 100  # 각 줄당 약 100픽셀
+                padding_x = 100  # 좌우 여유 공간
+                padding_y = 30  # 상하 여유 공간
+                
+                # 배경 박스 크기 계산 (픽셀 단위)
+                background_width_px = max(800, min(max_line_length * char_width_px + padding_x, 1800))  # 최소 800px, 최대 1800px
+                background_height_px = num_lines * line_height_px + padding_y
+                
+                # 배경 박스 위치 계산 (하단 중앙 정렬, Alignment=2)
+                # 화면 해상도: 1920x1080
+                # 하단에서 50픽셀 위, 중앙 정렬
+                background_x = (1920 - background_width_px) // 2  # 중앙 정렬
+                background_y = 1080 - 50 - background_height_px  # 하단에서 50픽셀 위
+                
+                # 배경 박스용 텍스트 생성 (공백 없이 일정한 크기의 단일 네모 칸)
+                # 각 줄의 높이를 일정하게 유지하기 위해 모든 줄에 동일한 높이의 배경 박스 생성
+                # 단일 큰 네모 칸으로 만들어 높이를 완전히 일정하게 유지
+                background_width_chars = background_width_px // char_width_px  # 문자 단위로 변환
+                # 배경 박스는 단일 큰 네모 칸으로 생성 (공백 없이)
+                # \u00B7 (middle dot)를 사용하되, PrimaryColour가 투명하므로 보이지 않음
+                # 각 줄마다 동일한 너비의 배경 박스 생성
                 background_lines = []
-                for line in subtitle_text_lines:
-                    # 각 줄의 길이에 맞춰 배경 박스 생성
-                    # 공백을 포함한 실제 텍스트 길이 사용
-                    line_length = len(line)
-                    # 최소 길이 보장 (짧은 줄도 일정한 높이 유지)
-                    background_width = max(line_length, 10)  # 최소 10자
-                    # 투명한 문자를 사용하여 배경 박스 크기 결정
-                    # \u00B7 (middle dot)를 사용하되, PrimaryColour가 투명하므로 보이지 않음
-                    # 배경 박스는 BorderStyle=3과 BackColour로만 표시됨
-                    background_line = "\u00B7" * background_width
+                for _ in range(num_lines):
+                    # 공백 없이 일정한 너비의 배경 박스 생성
+                    background_line = "\u00B7" * background_width_chars
                     background_lines.append(background_line)
                 
                 background_text = "\\N".join(background_lines)
                 
+                # ASS의 \clip 태그를 사용하여 배경 박스 크기와 위치를 정확히 지정
+                # \clip(x1,y1,x2,y2) 형식으로 사용하여 일정한 크기의 네모 칸으로 렌더링
+                clip_tag = f"\\clip({background_x},{background_y},{background_x + background_width_px},{background_y + background_height_px})"
+                
                 # 배경 박스는 Layer 0에 배치 (뒤에 렌더링)
-                # 텍스트는 Layer 1에 배치 (앞에 렌더링)
-                # 배경 박스는 일정한 크기의 네모 칸으로 렌더링
-                ass_content.append(f"Dialogue: 0,{srt_to_ass_time(start_time)},{srt_to_ass_time(end_time)},Background,,0,0,0,,{background_text}\n")
+                # \clip 태그를 사용하여 일정한 크기의 네모 칸으로 렌더링
+                ass_content.append(f"Dialogue: 0,{srt_to_ass_time(start_time)},{srt_to_ass_time(end_time)},Background,,0,0,0,,{clip_tag}{background_text}\n")
                 # 텍스트는 공백을 유지한 채로 표시
                 ass_content.append(f"Dialogue: 1,{srt_to_ass_time(start_time)},{srt_to_ass_time(end_time)},Text,,0,0,0,,{text}\n")
             
