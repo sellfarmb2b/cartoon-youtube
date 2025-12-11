@@ -2210,12 +2210,11 @@ def srt_to_ass(srt_file: str, ass_file: str):
             "\n",
             "[V4+ Styles]\n",
             "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n",
-            # 배경 박스 전용 스타일 (일정한 크기의 네모 칸)
-            # PrimaryColour를 투명하게 설정하여 텍스트는 보이지 않고 배경만 보임
-            f"Style: Background,{SUBTITLE_FONT_NAME},80,&H00000000,&H000000FF,&H00000000,&HFF000000,0,0,0,0,100,100,0,0,3,10,0,2,10,10,50,1\n",
-            # 텍스트 전용 스타일 (배경 없음, 테두리 없음, 그림자 없음)
-            # Outline=0, Shadow=0, BorderStyle=0으로 설정하여 텍스트만 표시
-            f"Style: Text,{SUBTITLE_FONT_NAME},80,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,0,0,0,2,10,10,50,1\n",
+            # [수정] 단일 스타일 사용 (Default)
+            # BorderStyle=3 (Opaque Box): 텍스트 뒤에 배경 박스 생성
+            # Outline=20: 배경 박스의 패딩(여백) 역할
+            # BackColour=&H60000000: 반투명 검정 배경 (Alpha 60)
+            f"Style: Default,{SUBTITLE_FONT_NAME},80,&H00FFFFFF,&H000000FF,&H00000000,&H60000000,-1,0,0,0,100,100,0,0,3,20,0,2,10,10,50,1\n",
             "\n",
             "[Events]\n",
             "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
@@ -2257,78 +2256,11 @@ def srt_to_ass(srt_file: str, ass_file: str):
                 i += 1
             
             if subtitle_text_lines:
-                # 여러 줄을 하나로 합치되, 띄어쓰기는 유지
-                # ASS 형식에서는 \N으로 줄바꿈
+                # 여러 줄을 하나로 합치고 ASS 줄바꿈 적용
                 text = "\\N".join(subtitle_text_lines)
                 
-                # 배경 박스용 텍스트 생성 (일정한 크기의 단일 네모 칸)
-                # 텍스트의 실제 렌더링 너비를 계산하여 배경 박스 크기 결정
-                num_lines = len(subtitle_text_lines)
-                
-                # 폰트 크기 80 기준으로 대략적인 계산
-                # 한글/한자는 더 넓고, 영문/숫자는 더 좁음
-                # 실제 렌더링 너비를 더 정확하게 계산
-                def calculate_text_width(text_line):
-                    """텍스트 줄의 실제 렌더링 너비를 계산 (픽셀 단위)"""
-                    width = 0
-                    for char in text_line:
-                        # 한글/한자/일본어: 약 40픽셀
-                        # 영문/숫자/기호: 약 24픽셀
-                        # 공백: 약 20픽셀
-                        if '\uAC00' <= char <= '\uD7A3' or '\u4E00' <= char <= '\u9FFF' or '\u3040' <= char <= '\u309F' or '\u30A0' <= char <= '\u30FF':
-                            width += 40  # 한글/한자/일본어
-                        elif char == ' ':
-                            width += 20  # 공백
-                        else:
-                            width += 24  # 영문/숫자/기호
-                    return width
-                
-                # 각 줄의 실제 너비를 계산하고 최대값 사용
-                max_line_width_px = max(calculate_text_width(line) for line in subtitle_text_lines)
-                line_height_px = 100  # 각 줄당 약 100픽셀
-                padding_x = 40  # 좌우 여유 공간 (줄임)
-                padding_y = 30  # 상하 여유 공간
-                
-                # 배경 박스 크기 계산 (픽셀 단위)
-                # 텍스트의 실제 렌더링 너비에 맞춰 배경 박스 크기를 정확히 조정
-                background_width_px = max(300, max_line_width_px + padding_x)  # 최소 300px만 보장, 텍스트 실제 너비에 맞춰 조정
-                background_height_px = num_lines * line_height_px + padding_y
-                
-                # 배경 박스 위치 계산 (하단 중앙 정렬, Alignment=2)
-                # 화면 해상도: 1920x1080
-                # 하단에서 50픽셀 위, 중앙 정렬
-                background_x = (1920 - background_width_px) // 2  # 중앙 정렬
-                background_y = 1080 - 50 - background_height_px  # 하단에서 50픽셀 위
-                
-                # 배경 박스용 텍스트 생성 (공백 없이 일정한 크기의 단일 네모 칸)
-                # 각 줄의 높이를 일정하게 유지하기 위해 모든 줄에 동일한 높이의 배경 박스 생성
-                # 단일 큰 네모 칸으로 만들어 높이를 완전히 일정하게 유지
-                # 배경 박스 너비는 계산된 픽셀 너비를 기준으로 문자 개수 계산
-                # \u00B7 (middle dot)는 약 24픽셀 정도이므로 이를 기준으로 계산
-                background_width_chars = max(10, background_width_px // 24)  # 문자 단위로 변환 (최소 10자)
-                # 배경 박스는 단일 큰 네모 칸으로 생성 (공백 없이)
-                # \u00B7 (middle dot)를 사용하되, PrimaryColour가 투명하므로 보이지 않음
-                # 각 줄마다 동일한 너비의 배경 박스 생성
-                background_lines = []
-                for _ in range(num_lines):
-                    # 공백 없이 일정한 너비의 배경 박스 생성
-                    background_line = "\u00B7" * background_width_chars
-                    background_lines.append(background_line)
-                
-                background_text = "\\N".join(background_lines)
-                
-                # ASS의 \clip 태그를 사용하여 배경 박스 크기와 위치를 정확히 지정
-                # \clip(x1,y1,x2,y2) 형식으로 사용하여 일정한 크기의 네모 칸으로 렌더링
-                clip_tag = f"\\clip({background_x},{background_y},{background_x + background_width_px},{background_y + background_height_px})"
-                
-                # 배경 박스는 Layer 0에 배치 (뒤에 렌더링)
-                # \clip 태그를 사용하여 일정한 크기의 네모 칸으로 렌더링
-                ass_content.append(f"Dialogue: 0,{srt_to_ass_time(start_time)},{srt_to_ass_time(end_time)},Background,,0,0,0,,{clip_tag}{background_text}\n")
-                # 텍스트는 공백을 유지한 채로 표시
-                # 텍스트에 테두리, 그림자, 배경을 완전히 제거하여 공백 부분에서도 높이가 일정하게 유지되도록 함
-                # \bord0: 테두리 제거, \outline0: 외곽선 제거, \shadow0: 그림자 제거, \3c&H00000000: 외곽선 색상 투명
-                text_with_style = f"{{\\bord0\\outline0\\shadow0\\3c&H00000000}}{text}"
-                ass_content.append(f"Dialogue: 1,{srt_to_ass_time(start_time)},{srt_to_ass_time(end_time)},Text,,0,0,0,,{text_with_style}\n")
+                # [수정] 복잡한 계산 없이 텍스트만 출력하면 ASS 스타일(BorderStyle=3)에 의해 자동으로 박스 생성
+                ass_content.append(f"Dialogue: 0,{srt_to_ass_time(start_time)},{srt_to_ass_time(end_time)},Default,,0,0,0,,{text}\n")
             
             i += 1  # 빈 줄 건너뛰기
         
@@ -2663,9 +2595,11 @@ def create_video(
                 subtitle_kwargs = {}
                 if os.path.isdir(FONTS_FOLDER):
                     subtitle_kwargs["fontsdir"] = os.path.abspath(FONTS_FOLDER)
-                # BackColour와 Outline을 명시적으로 지정하여 검정색 배경 박스가 확실히 표시되도록 함
-                # Outline 값이 배경 박스의 패딩 역할을 함
-                subtitle_kwargs["force_style"] = f"BackColour=&HFF000000,BorderStyle=3,Outline=10"
+                # [수정] force_style 업데이트: 배경 박스가 보이도록 BackColour 수정
+                # &H60000000: 반투명 검정 (Alpha 60)
+                # BorderStyle=3: Opaque Box
+                # Outline=20: 박스 내부 패딩
+                subtitle_kwargs["force_style"] = f"BackColour=&H60000000,BorderStyle=3,Outline=20"
                 
                 # 씬별 ASS 자막 파일이 존재하는 경우에만 자막 적용
                 if os.path.exists(scene_subtitle_ass) and os.path.getsize(scene_subtitle_ass) > 0:
@@ -2806,7 +2740,7 @@ def create_video(
                         fallback_subtitle_kwargs = {}
                         if os.path.isdir(FONTS_FOLDER):
                             fallback_subtitle_kwargs["fontsdir"] = os.path.abspath(FONTS_FOLDER)
-                        fallback_subtitle_kwargs["force_style"] = f"BackColour=&HFF000000,BorderStyle=3,Outline=10"
+                        fallback_subtitle_kwargs["force_style"] = f"BackColour=&H60000000,BorderStyle=3,Outline=20"
                         simple_with_subs = simple_stream.filter("subtitles", scene_subtitle_ass, **fallback_subtitle_kwargs)
                     else:
                         simple_with_subs = simple_stream
