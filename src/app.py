@@ -2271,11 +2271,13 @@ def srt_to_ass(srt_file: str, ass_file: str):
                 # 배경 박스 너비: 텍스트 최대 너비 + 여유 공간 (픽셀 단위)
                 char_width_px = 40  # 한 글자당 약 40픽셀
                 line_height_px = 100  # 각 줄당 약 100픽셀
-                padding_x = 100  # 좌우 여유 공간
+                padding_x = 80  # 좌우 여유 공간
                 padding_y = 30  # 상하 여유 공간
                 
                 # 배경 박스 크기 계산 (픽셀 단위)
-                background_width_px = max(800, min(max_line_length * char_width_px + padding_x, 1800))  # 최소 800px, 최대 1800px
+                # 텍스트 길이에 맞춰 배경 박스 크기를 동적으로 조정
+                # 최소값과 최대값 제한을 완화하여 텍스트 길이에 맞춰 조정
+                background_width_px = max(400, max_line_length * char_width_px + padding_x)  # 최소 400px만 보장, 텍스트 길이에 맞춰 조정
                 background_height_px = num_lines * line_height_px + padding_y
                 
                 # 배경 박스 위치 계산 (하단 중앙 정렬, Alignment=2)
