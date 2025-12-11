@@ -2210,7 +2210,11 @@ def srt_to_ass(srt_file: str, ass_file: str):
             "\n",
             "[V4+ Styles]\n",
             "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n",
-            f"Style: Default,{SUBTITLE_FONT_NAME},80,&H00FFFFFF,&H000000FF,&H00000000,&HFF000000,0,0,0,0,100,100,0,0,3,25,5,2,10,10,50,1\n",
+            # 배경 박스 전용 스타일 (일정한 크기의 네모 칸)
+            # PrimaryColour를 투명하게 설정하여 텍스트는 보이지 않고 배경만 보임
+            f"Style: Background,{SUBTITLE_FONT_NAME},80,&H00000000,&H000000FF,&H00000000,&HFF000000,0,0,0,0,100,100,0,0,3,10,0,2,10,10,50,1\n",
+            # 텍스트 전용 스타일 (배경 없음)
+            f"Style: Text,{SUBTITLE_FONT_NAME},80,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,0,0,0,2,10,10,50,1\n",
             "\n",
             "[Events]\n",
             "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
@@ -2246,17 +2250,8 @@ def srt_to_ass(srt_file: str, ass_file: str):
             subtitle_text_lines = []
             i += 2
             while i < len(lines) and lines[i].strip():
-                # 텍스트를 하나의 연속된 문자열로 합치기 (띄어쓰기 유지)
-                # [수정] 배경 박스 높이 일정하게 유지하기 위해 공백을 완전히 제거하고 단어를 붙여서 표시
-                # ASS 렌더러가 공백을 다르게 처리하여 배경 박스 높이가 달라지는 문제를 근본적으로 해결
-                import re
+                # 텍스트를 그대로 유지 (공백 포함)
                 clean_line = lines[i].rstrip()
-                # 모든 공백 문자를 완전히 제거하여 단어를 붙여서 표시
-                # 이렇게 하면 배경 박스 높이가 일정하게 유지됨
-                clean_line = re.sub(r'\s+', '', clean_line)
-                # 텍스트 앞뒤에 작은 투명 문자(\u200B, zero-width space)를 추가하여 최소 높이 보장
-                # \u200B는 보이지 않지만 배경 박스 높이를 일정하게 유지하는데 도움
-                clean_line = f"\u200B{clean_line}\u200B"
                 subtitle_text_lines.append(clean_line)
                 i += 1
             
@@ -2264,9 +2259,31 @@ def srt_to_ass(srt_file: str, ass_file: str):
                 # 여러 줄을 하나로 합치되, 띄어쓰기는 유지
                 # ASS 형식에서는 \N으로 줄바꿈
                 text = "\\N".join(subtitle_text_lines)
-                # ASS 형식의 Dialogue 라인 작성
-                # BorderStyle=3, Outline=25, Shadow=5로 배경 박스가 일정한 높이를 유지하도록 설정됨
-                ass_content.append(f"Dialogue: 0,{srt_to_ass_time(start_time)},{srt_to_ass_time(end_time)},Default,,0,0,0,,{text}\n")
+                
+                # 배경 박스용 텍스트 생성 (각 줄마다 배경 박스 생성)
+                # PrimaryColour가 투명하므로 텍스트는 보이지 않고 배경만 보임
+                # 각 줄의 길이에 맞춰 배경 박스 생성하여 일정한 높이 유지
+                background_lines = []
+                for line in subtitle_text_lines:
+                    # 각 줄의 길이에 맞춰 배경 박스 생성
+                    # 공백을 포함한 실제 텍스트 길이 사용
+                    line_length = len(line)
+                    # 최소 길이 보장 (짧은 줄도 일정한 높이 유지)
+                    background_width = max(line_length, 10)  # 최소 10자
+                    # 투명한 문자를 사용하여 배경 박스 크기 결정
+                    # \u00B7 (middle dot)를 사용하되, PrimaryColour가 투명하므로 보이지 않음
+                    # 배경 박스는 BorderStyle=3과 BackColour로만 표시됨
+                    background_line = "\u00B7" * background_width
+                    background_lines.append(background_line)
+                
+                background_text = "\\N".join(background_lines)
+                
+                # 배경 박스는 Layer 0에 배치 (뒤에 렌더링)
+                # 텍스트는 Layer 1에 배치 (앞에 렌더링)
+                # 배경 박스는 일정한 크기의 네모 칸으로 렌더링
+                ass_content.append(f"Dialogue: 0,{srt_to_ass_time(start_time)},{srt_to_ass_time(end_time)},Background,,0,0,0,,{background_text}\n")
+                # 텍스트는 공백을 유지한 채로 표시
+                ass_content.append(f"Dialogue: 1,{srt_to_ass_time(start_time)},{srt_to_ass_time(end_time)},Text,,0,0,0,,{text}\n")
             
             i += 1  # 빈 줄 건너뛰기
         
