@@ -2247,8 +2247,14 @@ def srt_to_ass(srt_file: str, ass_file: str):
             i += 2
             while i < len(lines) and lines[i].strip():
                 # 텍스트를 하나의 연속된 문자열로 합치기 (띄어쓰기 유지)
-                # [수정] 배경 박스 끊김 방지를 위해 일반 공백을 Non-breaking space(\u00A0)로 치환
-                clean_line = lines[i].rstrip().replace(" ", "\u00A0")
+                # [수정] 배경 박스 높이 일정하게 유지하기 위해 모든 공백 문자를 Non-breaking space(\u00A0)로 치환
+                # 일반 공백, 탭, 여러 공백 등을 모두 Non-breaking space로 변환
+                import re
+                clean_line = lines[i].rstrip()
+                # 모든 종류의 공백 문자(일반 공백, 탭 등)를 Non-breaking space로 변환
+                clean_line = re.sub(r'[\s\t]+', '\u00A0', clean_line)
+                # 텍스트 앞뒤에 Non-breaking space를 하나씩 추가하여 최소 높이 보장
+                clean_line = f"\u00A0{clean_line}\u00A0"
                 subtitle_text_lines.append(clean_line)
                 i += 1
             
