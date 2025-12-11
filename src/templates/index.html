@@ -3569,26 +3569,25 @@
                                 this.textContent = "다운로드 중...";
                                 
                                 try {
-                                    // 서버를 통해 다운로드 (이미지가 열리지 않도록)
-                                    const downloadResponse = await fetch('/api/download_thumbnail', {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({
-                                            image: data.image,
-                                            mime_type: data.mime_type
-                                        })
-                                    });
-                                    
-                                    if (!downloadResponse.ok) {
-                                        const err = await downloadResponse.json();
-                                        throw new Error(err.error || "다운로드 실패");
+                                    // 프론트엔드에서 직접 base64를 Blob으로 변환하여 다운로드
+                                    if (!data.image) {
+                                        throw new Error("이미지 데이터가 없습니다.");
                                     }
                                     
-                                    // 응답을 Blob으로 변환
-                                    const blob = await downloadResponse.blob();
+                                    // base64 문자열을 Blob으로 변환
+                                    const mimeType = data.mime_type || 'image/png';
+                                    const base64Data = data.image.includes(',') ? data.image.split(',')[1] : data.image;
+                                    
+                                    // base64를 바이너리로 변환
+                                    const byteCharacters = atob(base64Data);
+                                    const byteNumbers = new Array(byteCharacters.length);
+                                    for (let i = 0; i < byteCharacters.length; i++) {
+                                        byteNumbers[i] = byteCharacters.charCodeAt(i);
+                                    }
+                                    const byteArray = new Uint8Array(byteNumbers);
+                                    const blob = new Blob([byteArray], { type: mimeType });
                                     
                                     // 파일 확장자 결정
-                                    const mimeType = data.mime_type || 'image/png';
                                     const extension = mimeType.includes('jpeg') || mimeType.includes('jpg') ? 'jpg' : 'png';
                                     const filename = `thumbnail_${Date.now()}.${extension}`;
                                     
@@ -3596,7 +3595,8 @@
                                     const url = window.URL.createObjectURL(blob);
                                     const link = document.createElement('a');
                                     link.href = url;
-                                    link.setAttribute('download', filename); // download 속성 명시
+                                    link.setAttribute('download', filename);
+                                    link.style.display = 'none';
                                     document.body.appendChild(link);
                                     link.click();
                                     

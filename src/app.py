@@ -6414,8 +6414,13 @@ def api_download_thumbnail():
         from io import BytesIO
         
         try:
+            # data:image/png;base64, 접두사가 있는 경우 제거
+            if ',' in image_base64:
+                image_base64 = image_base64.split(',')[1]
+            
             image_data = base64.b64decode(image_base64)
         except Exception as decode_err:
+            print(f"[썸네일 다운로드] base64 디코딩 오류: {decode_err}")
             return jsonify({"error": f"이미지 디코딩 실패: {decode_err}"}), 400
         
         # 파일 확장자 결정
@@ -6425,6 +6430,7 @@ def api_download_thumbnail():
         
         # BytesIO로 파일 객체 생성
         file_obj = BytesIO(image_data)
+        file_obj.seek(0)  # 파일 포인터를 시작 위치로 이동
         filename = f"thumbnail_{int(time.time())}.{extension}"
         
         # send_file로 직접 다운로드
