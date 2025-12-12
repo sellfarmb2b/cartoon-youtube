@@ -2212,9 +2212,9 @@ def srt_to_ass(srt_file: str, ass_file: str):
             "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n",
             # [수정] 단일 스타일 사용 (Default)
             # BorderStyle=3 (Opaque Box): 텍스트 뒤에 배경 박스 생성
-            # Outline=20: 배경 박스의 패딩(여백) 역할
+            # Outline=0: 텍스트 외곽선 제거 (테두리 없음)
             # BackColour=&H60000000: 반투명 검정 배경 (Alpha 60)
-            f"Style: Default,{SUBTITLE_FONT_NAME},80,&H00FFFFFF,&H000000FF,&H00000000,&H60000000,-1,0,0,0,100,100,0,0,3,20,0,2,10,10,50,1\n",
+            f"Style: Default,{SUBTITLE_FONT_NAME},80,&H00FFFFFF,&H000000FF,&H00000000,&H60000000,-1,0,0,0,100,100,0,0,3,0,0,2,10,10,50,1\n",
             "\n",
             "[Events]\n",
             "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
@@ -2256,10 +2256,11 @@ def srt_to_ass(srt_file: str, ass_file: str):
                 i += 1
             
             if subtitle_text_lines:
-                # 여러 줄을 하나로 합치고 ASS 줄바꿈 적용
-                text = "\\N".join(subtitle_text_lines)
+                # 여러 줄을 공백으로 합쳐서 한 줄로 표시 (줄바꿈 제거)
+                text = " ".join(subtitle_text_lines)
                 
                 # [수정] 복잡한 계산 없이 텍스트만 출력하면 ASS 스타일(BorderStyle=3)에 의해 자동으로 박스 생성
+                # 텍스트는 한 줄로 표시되도록 공백으로 합침
                 ass_content.append(f"Dialogue: 0,{srt_to_ass_time(start_time)},{srt_to_ass_time(end_time)},Default,,0,0,0,,{text}\n")
             
             i += 1  # 빈 줄 건너뛰기
@@ -2598,8 +2599,8 @@ def create_video(
                 # [수정] force_style 업데이트: 배경 박스가 보이도록 BackColour 수정
                 # &H60000000: 반투명 검정 (Alpha 60)
                 # BorderStyle=3: Opaque Box
-                # Outline=20: 박스 내부 패딩
-                subtitle_kwargs["force_style"] = f"BackColour=&H60000000,BorderStyle=3,Outline=20"
+                # Outline=0: 텍스트 외곽선 제거 (테두리 없음)
+                subtitle_kwargs["force_style"] = f"BackColour=&H60000000,BorderStyle=3,Outline=0"
                 
                 # 씬별 ASS 자막 파일이 존재하는 경우에만 자막 적용
                 if os.path.exists(scene_subtitle_ass) and os.path.getsize(scene_subtitle_ass) > 0:
@@ -2740,7 +2741,7 @@ def create_video(
                         fallback_subtitle_kwargs = {}
                         if os.path.isdir(FONTS_FOLDER):
                             fallback_subtitle_kwargs["fontsdir"] = os.path.abspath(FONTS_FOLDER)
-                        fallback_subtitle_kwargs["force_style"] = f"BackColour=&H60000000,BorderStyle=3,Outline=20"
+                        fallback_subtitle_kwargs["force_style"] = f"BackColour=&H60000000,BorderStyle=3,Outline=0"
                         simple_with_subs = simple_stream.filter("subtitles", scene_subtitle_ass, **fallback_subtitle_kwargs)
                     else:
                         simple_with_subs = simple_stream
