@@ -1448,18 +1448,31 @@ def generate_tts_with_alignment(voice_id: str, text: str, audio_filename: str, e
             return None
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/with-timestamps"
         headers = {"xi-api-key": api_key, "Accept": "application/json"}
-        payload = {
-            "text": text,
-            "model_id": model_id,  # 사용자가 선택한 모델 사용
-            "voice_settings": {
-                "stability": 0.92,  # 높일수록 피치 변동을 줄이고 일관성을 높임
-                "similarity_boost": 0.7,  # 너무 높으면 표현이 과도해질 수 있어 완화
-                "style": 0.0,
-                "use_speaker_boost": False,  # 피치 상승을 막기 위해 부스트 비활성화
-            },
-            "output_format": "mp3_44100_256",  # 비트레이트 증가 (128 -> 256)로 음질 개선
-            "optimize_streaming_latency": 4,
-        }
+        
+        # eleven_v3 모델은 다른 voice_settings 파라미터를 사용
+        if model_id == "eleven_v3":
+            payload = {
+                "text": text,
+                "model_id": model_id,
+                "voice_settings": {
+                    "stability": 0.5,  # eleven_v3: 0.0(Creative), 0.5(Natural), 1.0(Robust)만 허용
+                    "similarity_boost": 0.75,
+                },
+                "output_format": "mp3_44100_256",
+            }
+        else:
+            payload = {
+                "text": text,
+                "model_id": model_id,  # 사용자가 선택한 모델 사용
+                "voice_settings": {
+                    "stability": 0.92,  # 높일수록 피치 변동을 줄이고 일관성을 높임
+                    "similarity_boost": 0.7,  # 너무 높으면 표현이 과도해질 수 있어 완화
+                    "style": 0.0,
+                    "use_speaker_boost": False,  # 피치 상승을 막기 위해 부스트 비활성화
+                },
+                "output_format": "mp3_44100_256",  # 비트레이트 증가 (128 -> 256)로 음질 개선
+                "optimize_streaming_latency": 4,
+            }
         last_error = None
         for attempt in range(1, TTS_MAX_RETRIES + 1):
             wait_seconds = TTS_RETRY_BASE_DELAY * attempt
