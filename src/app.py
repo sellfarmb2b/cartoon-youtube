@@ -1517,6 +1517,8 @@ def generate_tts_with_alignment(voice_id: str, text: str, audio_filename: str, e
                 print(f"[TTS] {wait_seconds}초 후 재시도합니다...")
                 time.sleep(wait_seconds)
         print(f"[TTS] 모든 재시도 실패: {last_error}")
+        print(f"[TTS] 사용된 모델 ID: {model_id}")
+        print(f"[TTS] 사용된 voice_id: {voice_id}")
         return None
     except Exception as tts_exc:
         print("=" * 80)
