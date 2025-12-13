@@ -2213,8 +2213,8 @@ def srt_to_ass(srt_file: str, ass_file: str):
             # BorderStyle=3 (Opaque Box): 텍스트 뒤에 배경 박스 자동 생성
             # Outline=20: 배경 박스 패딩(여백) - 넉넉하게 설정
             # OutlineColour=&HFF000000: 완전 투명 (텍스트 테두리 제거)
-            # BackColour=&H40000000: 진한 반투명 검정 배경 (Alpha=64, 배경 박스 색상)
-            f"Style: Default,{SUBTITLE_FONT_NAME},85,&H00FFFFFF,&H000000FF,&HFF000000,&H40000000,0,0,0,0,100,100,0,0,3,20,0,2,10,10,50,1\n",
+            # BackColour=&H00000000: 완전 불투명 검정 배경 (Alpha=00, 배경 박스 완전히 검게)
+            f"Style: Default,{SUBTITLE_FONT_NAME},85,&H00FFFFFF,&H000000FF,&HFF000000,&H00000000,0,0,0,0,100,100,0,0,3,20,0,2,10,10,50,1\n",
             "\n",
             "[Events]\n",
             "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
