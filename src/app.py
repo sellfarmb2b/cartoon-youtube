@@ -1424,7 +1424,7 @@ def generate_visual_prompts(sentences: List[str], mode: str = "animation", progr
 # =============================================================================
 
 
-def generate_tts_with_alignment(voice_id: str, text: str, audio_filename: str, elevenlabs_api_key: Optional[str] = None):
+def generate_tts_with_alignment(voice_id: str, text: str, audio_filename: str, elevenlabs_api_key: Optional[str] = None, model_id: str = "eleven_turbo_v2_5"):
     print("=" * 80)
     print("=== [DEBUG] TTS 생성 요청 받음 ===")
     print(f"=== [DEBUG] voice_id: {voice_id} ===")
@@ -1448,7 +1448,7 @@ def generate_tts_with_alignment(voice_id: str, text: str, audio_filename: str, e
         headers = {"xi-api-key": api_key, "Accept": "application/json"}
         payload = {
             "text": text,
-            "model_id": "eleven_turbo_v2_5",  # 더 빠르고 고품질 모델로 업그레이드
+            "model_id": model_id,  # 사용자가 선택한 모델 사용
             "voice_settings": {
                 "stability": 0.92,  # 높일수록 피치 변동을 줄이고 일관성을 높임
                 "similarity_boost": 0.7,  # 너무 높으면 표현이 과도해질 수 있어 완화
@@ -2009,6 +2009,7 @@ def generate_assets(
     replicate_api_key: Optional[str] = None,
     elevenlabs_api_key: Optional[str] = None,
     custom_style_prompt: str = "",
+    model_id: str = "eleven_turbo_v2_5",
 ):
     print(f"\n[generate_assets 시작] scene_offset={scene_offset}, 문장 개수={len(sentences)}, assets_folder={assets_folder}")
     print(f"  예상 scene_id 범위: {scene_offset + 1} ~ {scene_offset + len(sentences)}")
@@ -2025,7 +2026,7 @@ def generate_assets(
         if progress_cb:
             progress_cb(f"{scene_num}번 씬 TTS 생성 중...")
         print(f"[DEBUG] TTS 생성: scene_num={scene_num}, audio_file={audio_file}, text={text[:50]}...")
-        alignment = generate_tts_with_alignment(voice_id, text, audio_file, elevenlabs_api_key=elevenlabs_api_key)
+        alignment = generate_tts_with_alignment(voice_id, text, audio_file, elevenlabs_api_key=elevenlabs_api_key, model_id=model_id)
         if alignment is None:
             print(f"[경고] scene_num={scene_num}: TTS 생성 실패")
             if progress_cb:
@@ -2210,11 +2211,12 @@ def srt_to_ass(srt_file: str, ass_file: str):
             "\n",
             "[V4+ Styles]\n",
             "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n",
-            # BorderStyle=3 (Opaque Box): 텍스트 뒤에 배경 박스 자동 생성
-            # Outline=20: 배경 박스 패딩(여백) - 넉넉하게 설정
-            # OutlineColour=&HFF000000: 완전 투명 (텍스트 테두리 제거)
-            # BackColour=&H00000000: 완전 불투명 검정 배경 (Alpha=00, 배경 박스 완전히 검게)
-            f"Style: Default,{SUBTITLE_FONT_NAME},85,&H00FFFFFF,&H000000FF,&HFF000000,&H00000000,0,0,0,0,100,100,0,0,3,20,0,2,10,10,50,1\n",
+            # BorderStyle=1 (Outline+Shadow): 띄어쓰기 부분도 일정한 배경 박스 생성
+            # Outline=8: 테두리 두께
+            # Shadow=2: 그림자 추가
+            # OutlineColour=&H80000000: 반투명 검정 (배경 박스 색상)
+            # BackColour=&H80000000: 반투명 검정 배경 (Alpha=80, 약 50% 투명도)
+            f"Style: Default,{SUBTITLE_FONT_NAME},85,&H00FFFFFF,&H000000FF,&H80000000,&H80000000,0,0,0,0,100,100,0,0,1,8,2,2,10,10,50,1\n",
             "\n",
             "[Events]\n",
             "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
@@ -3074,6 +3076,7 @@ def run_generation_job(
     replicate_api_key=None,
     elevenlabs_api_key=None,
     custom_style_prompt="",
+    model_id: str = "eleven_turbo_v2_5",
 ):
     print("=" * 80)
     print("=== [DEBUG] 영상 생성 작업 시작 ===")
@@ -3173,6 +3176,7 @@ def run_generation_job(
                 original_script=script_text,  # 전체 원본 스크립트 전달 (문맥 분석용)
                 scene_offset=sentence_offset,  # 전체 인덱스가 연속되도록 offset 전달
                 replicate_api_key=replicate_api_key,
+                model_id=model_id,
                 elevenlabs_api_key=elevenlabs_api_key,
                 custom_style_prompt=custom_style_prompt,
             )
@@ -4762,6 +4766,8 @@ def start_job():
     # API 키 (사용자가 입력한 경우 사용, 없으면 기본값 사용)
     replicate_api_key = payload.get("replicate_api_key") or None
     elevenlabs_api_key = payload.get("elevenlabs_api_key") or None
+    # ElevenLabs 모델 ID (기본값: eleven_turbo_v2_5)
+    model_id = payload.get("model_id") or "eleven_turbo_v2_5"
 
     try:
         char_limit = int(char_limit_raw) if char_limit_raw else 50
@@ -4813,7 +4819,7 @@ def start_job():
 
     thread = threading.Thread(
         target=run_generation_job,
-        args=(job_id, script_text, char_limit, voice_id, prompts_override, existing_images, mode, sentences_override, include_subtitles, replicate_api_key, elevenlabs_api_key, custom_style_prompt),
+        args=(job_id, script_text, char_limit, voice_id, prompts_override, existing_images, mode, sentences_override, include_subtitles, replicate_api_key, elevenlabs_api_key, custom_style_prompt, model_id),
         daemon=True,
     )
     thread.start()
@@ -5156,6 +5162,8 @@ def api_generate_images_direct():
     replicate_api_key = data.get("replicate_api_key") or None
     elevenlabs_api_key = data.get("elevenlabs_api_key") or None
     gemini_api_key = data.get("gemini_api_key") or None
+    # ElevenLabs 모델 ID (기본값: eleven_turbo_v2_5)
+    model_id = data.get("model_id") or "eleven_turbo_v2_5"
     
     print(f"[API] 요청 파라미터: sentences={len(sentences)}, prompts={len(prompts)}, mode={mode}, test_mode={test_mode}, banana_pro_flags={len(banana_pro_flags)}, banana_normal_flags={len(banana_normal_flags)}")
     
