@@ -6323,13 +6323,57 @@ def api_generate_thumbnail_image():
         
         # 카피 텍스트가 있으면 프롬프트에 포함
         if copy_text:
+            # 색상 매핑 (한국어 -> 영어)
+            color_map = {
+                "빨간색": "red", "빨강": "red", "레드": "red",
+                "파란색": "blue", "파랑": "blue", "블루": "blue",
+                "노란색": "yellow", "노랑": "yellow", "옐로우": "yellow",
+                "검은색": "black", "검정": "black", "블랙": "black",
+                "흰색": "white", "하양": "white", "화이트": "white",
+                "초록색": "green", "녹색": "green", "그린": "green",
+                "주황색": "orange", "오렌지": "orange",
+                "보라색": "purple", "퍼플": "purple",
+                "분홍색": "pink", "핑크": "pink",
+                "회색": "gray", "그레이": "gray", "회색": "grey", "그레이": "grey",
+            }
+            
+            # (색상명) 패턴 찾기 및 처리
+            import re
+            text_color = None
+            actual_text = copy_text
+            
+            # (색상명) 패턴 찾기
+            color_pattern = r'\(([^)]+색|[^)]+)\)'
+            match = re.search(color_pattern, copy_text)
+            
+            if match:
+                color_name = match.group(1).strip()
+                # 색상 매핑에서 찾기
+                color_name_lower = color_name.lower()
+                for korean_color, english_color in color_map.items():
+                    if korean_color.lower() in color_name_lower or color_name_lower in korean_color.lower():
+                        text_color = english_color
+                        break
+                
+                # 매핑에 없으면 그대로 사용 (영어 색상명일 수도 있음)
+                if not text_color:
+                    text_color = color_name
+                
+                # 실제 텍스트에서 색상 부분 제거
+                actual_text = re.sub(color_pattern, '', copy_text).strip()
+            
             # 프롬프트에 텍스트 삽입 지시사항 추가
+            if text_color:
+                color_instruction = f" in {text_color} color"
+            else:
+                color_instruction = ""
+            
             enhanced_prompt = f"""{prompt}
 
 IMPORTANT: Add the following text overlay on the image in a prominent, readable font:
-Text to display: "{copy_text}"
+Text to display: "{actual_text}"{color_instruction}
 - Place the text in a visible area (top, center, or bottom)
-- Use high contrast colors (white text on dark background or vice versa)
+- Use {text_color if text_color else "high contrast"} color for the text
 - Make the text bold and large enough to be clearly readable
 - Ensure the text does not interfere with the main visual elements but is clearly visible"""
             prompt = enhanced_prompt
