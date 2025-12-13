@@ -2213,8 +2213,8 @@ def srt_to_ass(srt_file: str, ass_file: str):
             # BorderStyle=3 (Opaque Box): 텍스트 뒤에 배경 박스 자동 생성
             # Outline=20: 배경 박스 패딩(여백) - 넉넉하게 설정
             # OutlineColour=&HFF000000: 완전 투명 (텍스트 테두리 제거)
-            # BackColour=&H000000FF: 불투명 검정 배경 박스 (Alpha=00=불투명, BGR=000000=검정)
-            f"Style: Default,{SUBTITLE_FONT_NAME},85,&H00FFFFFF,&H000000FF,&HFF000000,&H000000FF,0,0,0,0,100,100,0,0,3,20,0,2,10,10,50,1\n",
+            # BackColour=&H80000000: 반투명 검정 배경 (Alpha=80, 약 50% 투명도)
+            f"Style: Default,{SUBTITLE_FONT_NAME},85,&H00FFFFFF,&H000000FF,&HFF000000,&H80000000,0,0,0,0,100,100,0,0,3,20,0,2,10,10,50,1\n",
             "\n",
             "[Events]\n",
             "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
@@ -2595,8 +2595,8 @@ def create_video(
                 subtitle_kwargs = {}
                 if os.path.isdir(FONTS_FOLDER):
                     subtitle_kwargs["fontsdir"] = os.path.abspath(FONTS_FOLDER)
-                # force_style 활성화 - FFmpeg 필터에서도 스타일 강제 적용
-                subtitle_kwargs["force_style"] = f"OutlineColour=&HFF000000,BackColour=&H000000FF,BorderStyle=3,Outline=20"
+                # force_style 주석 처리 - ASS 파일에 정의한 스타일이 FFmpeg 인자값에 의해 덮어씌워지는 것을 방지
+                # subtitle_kwargs["force_style"] = f"OutlineColour=&HFF000000,BackColour=&H80000000,BorderStyle=3,Outline=20"
                 
                 # 씬별 ASS 자막 파일이 존재하는 경우에만 자막 적용
                 if os.path.exists(scene_subtitle_ass) and os.path.getsize(scene_subtitle_ass) > 0:
@@ -2738,7 +2738,8 @@ def create_video(
                         if os.path.isdir(FONTS_FOLDER):
                             fallback_subtitle_kwargs["fontsdir"] = os.path.abspath(FONTS_FOLDER)
                         # force_style 활성화 - FFmpeg 필터에서도 스타일 강제 적용
-                        fallback_subtitle_kwargs["force_style"] = f"OutlineColour=&HFF000000,BackColour=&H000000FF,BorderStyle=3,Outline=20"
+                        # force_style 주석 처리 - ASS 파일에 정의한 스타일이 FFmpeg 인자값에 의해 덮어씌워지는 것을 방지
+                        # fallback_subtitle_kwargs["force_style"] = f"OutlineColour=&HFF000000,BackColour=&H80000000,BorderStyle=3,Outline=20"
                         simple_with_subs = simple_stream.filter("subtitles", scene_subtitle_ass, **fallback_subtitle_kwargs)
                     else:
                         simple_with_subs = simple_stream
