@@ -2210,12 +2210,12 @@ def srt_to_ass(srt_file: str, ass_file: str):
             "\n",
             "[V4+ Styles]\n",
             "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n",
-            # [수정] 단일 스타일 사용 (Default)
-            # BorderStyle=3 (Opaque Box): 텍스트 뒤에 배경 박스 생성
-            # Outline=10: 배경 박스 패딩 (배경 박스 표시를 위해 필요)
-            # BackColour=&H60000000: 반투명 검정 배경 (Alpha 60)
-            # 텍스트 외곽선은 Dialogue 라인에서 \bord0\outline0 태그로 제거
-            f"Style: Default,{SUBTITLE_FONT_NAME},80,&H00FFFFFF,&H000000FF,&H00000000,&H60000000,-1,0,0,0,100,100,0,0,3,10,0,2,10,10,50,1\n",
+            # 배경 박스 스타일 (Layer 0, 뒤에 위치)
+            # PrimaryColour 투명, BackColour 반투명 검정, BorderStyle=3으로 배경 박스 생성
+            f"Style: Background,{SUBTITLE_FONT_NAME},80,&H00000000,&H000000FF,&H00000000,&H60000000,0,0,0,0,100,100,0,0,3,10,0,2,10,10,50,1\n",
+            # 텍스트 스타일 (Layer 1, 앞에 위치)
+            # PrimaryColour 흰색, BackColour 투명, BorderStyle=0, Outline=0으로 테두리 없음
+            f"Style: Text,{SUBTITLE_FONT_NAME},80,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,0,0,0,2,10,10,50,1\n",
             "\n",
             "[Events]\n",
             "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
@@ -2260,11 +2260,49 @@ def srt_to_ass(srt_file: str, ass_file: str):
                 # 여러 줄을 공백으로 합쳐서 한 줄로 표시 (줄바꿈 제거)
                 text = " ".join(subtitle_text_lines)
                 
-                # [수정] ASS 태그로 텍스트 외곽선 제거 (\bord0\outline0)
-                # BorderStyle=3과 Outline=10은 배경 박스 표시를 위해 유지
-                # 텍스트 자체의 외곽선만 제거하여 테두리 없는 깔끔한 텍스트 표시
-                text_with_style = f"{{\\bord0\\outline0}}{text}"
-                ass_content.append(f"Dialogue: 0,{srt_to_ass_time(start_time)},{srt_to_ass_time(end_time)},Default,,0,0,0,,{text_with_style}\n")
+                # 텍스트 너비 계산 (반응형 배경 박스를 위해)
+                def calculate_text_width(text_line):
+                    """텍스트 줄의 실제 렌더링 너비를 계산 (픽셀 단위)"""
+                    width = 0
+                    for char in text_line:
+                        # 한글/한자/일본어: 약 40픽셀 (폰트 크기 80 기준)
+                        # 영문/숫자/기호: 약 24픽셀
+                        # 공백: 약 20픽셀
+                        if '\uAC00' <= char <= '\uD7A3' or '\u4E00' <= char <= '\u9FFF' or '\u3040' <= char <= '\u309F' or '\u30A0' <= char <= '\u30FF':
+                            width += 40  # 한글/한자/일본어
+                        elif char == ' ':
+                            width += 20  # 공백
+                        else:
+                            width += 24  # 영문/숫자/기호
+                    return width
+                
+                # 텍스트 실제 너비 계산
+                text_width_px = calculate_text_width(text)
+                line_height_px = 100  # 한 줄 높이 (폰트 크기 80 기준)
+                padding_x = 40  # 좌우 여유 공간
+                padding_y = 30  # 상하 여유 공간
+                
+                # 배경 박스 크기 계산 (텍스트 길이에 맞춰 반응형)
+                background_width_px = max(300, text_width_px + padding_x)  # 최소 300px
+                background_height_px = line_height_px + padding_y
+                
+                # 배경 박스 위치 계산 (하단 중앙 정렬, Alignment=2)
+                background_x = (1920 - background_width_px) // 2  # 중앙 정렬
+                background_y = 1080 - 50 - background_height_px  # 하단에서 50픽셀 위
+                
+                # 배경 박스용 텍스트 생성 (투명한 문자로 배경 박스 크기 정의)
+                # \clip 태그를 사용하여 정확한 크기와 위치 지정
+                clip_tag = f"\\clip({background_x},{background_y},{background_x + background_width_px},{background_y + background_height_px})"
+                # 배경 박스 너비에 맞춘 텍스트 (투명 문자 사용)
+                background_width_chars = max(10, background_width_px // 24)  # 문자 단위로 변환
+                background_text = "\u00B7" * background_width_chars  # middle dot (투명 문자)
+                
+                # 배경 박스 레이어 (Layer 0, 뒤에 위치)
+                ass_content.append(f"Dialogue: 0,{srt_to_ass_time(start_time)},{srt_to_ass_time(end_time)},Background,,0,0,0,,{clip_tag}{background_text}\n")
+                
+                # 텍스트 레이어 (Layer 1, 앞에 위치, 테두리 없음)
+                text_with_style = f"{{\\bord0\\outline0\\shadow0}}{text}"
+                ass_content.append(f"Dialogue: 1,{srt_to_ass_time(start_time)},{srt_to_ass_time(end_time)},Text,,0,0,0,,{text_with_style}\n")
             
             i += 1  # 빈 줄 건너뛰기
         
