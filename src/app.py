@@ -6334,7 +6334,7 @@ def api_generate_thumbnail_image():
                 "주황색": "orange", "오렌지": "orange",
                 "보라색": "purple", "퍼플": "purple",
                 "분홍색": "pink", "핑크": "pink",
-                "회색": "gray", "그레이": "gray", "회색": "grey", "그레이": "grey",
+                "회색": "gray", "그레이": "gray", "그레이": "grey",
             }
             
             # (색상명) 패턴 찾기 및 처리
@@ -6342,41 +6342,60 @@ def api_generate_thumbnail_image():
             text_color = None
             actual_text = copy_text
             
-            # (색상명) 패턴 찾기
-            color_pattern = r'\(([^)]+색|[^)]+)\)'
+            # (색상명) 패턴 찾기 - 모든 괄호 안의 내용을 찾음
+            color_pattern = r'\(([^)]+)\)'
             match = re.search(color_pattern, copy_text)
             
             if match:
                 color_name = match.group(1).strip()
-                # 색상 매핑에서 찾기
-                color_name_lower = color_name.lower()
-                for korean_color, english_color in color_map.items():
-                    if korean_color.lower() in color_name_lower or color_name_lower in korean_color.lower():
-                        text_color = english_color
-                        break
+                print(f"[썸네일] 색상 패턴 발견: '{color_name}'")
                 
-                # 매핑에 없으면 그대로 사용 (영어 색상명일 수도 있음)
+                # 색상 매핑에서 정확히 찾기
+                color_name_lower = color_name.lower()
+                # 먼저 정확히 일치하는지 확인
+                if color_name in color_map:
+                    text_color = color_map[color_name]
+                else:
+                    # 부분 일치로 찾기
+                    for korean_color, english_color in color_map.items():
+                        if korean_color == color_name or korean_color.lower() == color_name_lower:
+                            text_color = english_color
+                            break
+                        # 포함 관계로 찾기 (예: "빨간색"이 "빨간색"에 포함)
+                        if korean_color in color_name or color_name in korean_color:
+                            text_color = english_color
+                            break
+                
+                # 매핑에 없으면 영어 색상명으로 간주
                 if not text_color:
-                    text_color = color_name
+                    # 일반적인 영어 색상명인지 확인
+                    common_colors = ["red", "blue", "yellow", "black", "white", "green", "orange", "purple", "pink", "gray", "grey"]
+                    if color_name_lower in common_colors:
+                        text_color = color_name_lower
+                    else:
+                        text_color = color_name  # 그대로 사용
                 
                 # 실제 텍스트에서 색상 부분 제거
                 actual_text = re.sub(color_pattern, '', copy_text).strip()
+                print(f"[썸네일] 처리 결과 - 텍스트: '{actual_text}', 색상: '{text_color}'")
             
             # 프롬프트에 텍스트 삽입 지시사항 추가
             if text_color:
-                color_instruction = f" in {text_color} color"
+                color_instruction = f" The text must be displayed in {text_color} color."
             else:
-                color_instruction = ""
+                color_instruction = " Use high contrast colors (white text on dark background or vice versa)."
             
             enhanced_prompt = f"""{prompt}
 
 IMPORTANT: Add the following text overlay on the image in a prominent, readable font:
-Text to display: "{actual_text}"{color_instruction}
+Text to display: "{actual_text}"
+{color_instruction}
 - Place the text in a visible area (top, center, or bottom)
-- Use {text_color if text_color else "high contrast"} color for the text
 - Make the text bold and large enough to be clearly readable
-- Ensure the text does not interfere with the main visual elements but is clearly visible"""
+- Ensure the text does not interfere with the main visual elements but is clearly visible
+- The text color must be exactly as specified above."""
             prompt = enhanced_prompt
+            print(f"[썸네일] 최종 프롬프트 색상 정보: {color_instruction}")
         
         # API 키 확인
         if not GEMINI_API_KEY:
