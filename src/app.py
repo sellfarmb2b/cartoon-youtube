@@ -1436,8 +1436,10 @@ def generate_tts_with_alignment(voice_id: str, text: str, audio_filename: str, e
         if not text:
             print("[TTS] 입력 문장이 비어 있어 TTS를 건너뜁니다.")
             return None
+        # voice_id 검증: 허용 목록에 없어도 API 호출은 시도 (API에서 최종 검증)
         if not is_voice_allowed(voice_id):
-            voice_id = get_default_voice_id()
+            print(f"[경고] voice_id '{voice_id}'가 허용 목록에 없지만 API 호출을 시도합니다.")
+            # 기본 voice_id로 대체하지 않고 그대로 사용 (사용자가 지정한 voice_id 우선)
         # 사용자가 입력한 API 키를 우선 사용, 없으면 기본값 사용
         api_key = elevenlabs_api_key or ELEVENLABS_API_KEY
         print(f"=== [DEBUG] API 키 확인: {api_key[:10] + '...' if api_key and len(api_key) > 10 else 'None'} ===")
@@ -1499,10 +1501,15 @@ def generate_tts_with_alignment(voice_id: str, text: str, audio_filename: str, e
                     error_detail = ""
                     try:
                         error_json = resp.json()
-                        error_detail = error_json.get("detail") or error_json.get("error", resp.text)
+                        error_detail = error_json.get("detail") or error_json.get("error") or error_json.get("message") or str(error_json)
+                        if not error_detail or error_detail == "{}":
+                            error_detail = resp.text[:500]  # 응답 본문의 처음 500자
                     except Exception:
-                        error_detail = resp.text
-                    print(f"[TTS] 실패 (시도 {attempt}/{TTS_MAX_RETRIES}): {resp.status_code} {error_detail}")
+                        error_detail = resp.text[:500] if resp.text else "응답 파싱 실패"
+                    print(f"[TTS] 실패 (시도 {attempt}/{TTS_MAX_RETRIES}): HTTP {resp.status_code}")
+                    print(f"[TTS] 오류 상세: {error_detail}")
+                    print(f"[TTS] 요청 URL: {url}")
+                    last_error = f"HTTP {resp.status_code}: {error_detail}"
                     if resp.status_code == 429:
                         retry_after = 0
                         try:
